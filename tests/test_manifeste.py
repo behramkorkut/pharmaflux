@@ -1,6 +1,9 @@
 """Le manifeste : ajout seul, lecture tolérante à une coupure, intolérante à la corruption."""
 
+import json
 import logging
+import tracemalloc
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -88,3 +91,82 @@ def test_dernieres_empreintes_retiennent_toute_archive(racine: Path) -> None:
     for enregistrement in (archivee_en_erreur, erreur_sans_archive):
         manifeste.ajouter(racine, enregistrement)
     assert manifeste.dernieres_empreintes(manifeste.lire(racine)) == {"bdpm.specialites": "e1"}
+
+
+def _ecrire_lignes(racine: Path, nombre: int) -> Path:
+    """Un manifeste réaliste de ``nombre`` lignes, écrit d'un bloc (pas un fsync par ligne)."""
+    chemin = manifeste.chemin_manifeste(racine)
+    chemin.parent.mkdir(parents=True)
+    identifiants = [f"bdpm.fichier_{i:02d}" for i in range(14)]
+    with chemin.open("wb") as fichier:
+        for numero in range(nombre):
+            enregistrement = _enregistrement(f"2026{numero:011d}")
+            enregistrement.identifiant = identifiants[numero % 14]
+            enregistrement.empreinte_comparaison = f"e{numero:064d}"
+            enregistrement.sha256 = enregistrement.empreinte_comparaison
+            enregistrement.chemin_archive = f"bronze/bdpm/x/2026-10-24/{numero}__abc.txt.gz"
+            enregistrement.last_modified = "Mon, 29 Sep 2026 15:48:06 GMT"
+            enregistrement.etag = '"1cf7a-6403c5b4c5a9d"'
+            enregistrement.debut = f"2026-10-{25 if numero % 3 else 24}T14:17:00+00:00"
+            fichier.write(json.dumps(asdict(enregistrement), ensure_ascii=False).encode() + b"\n")
+    return chemin
+
+
+def test_etat_connu_retient_empreintes_et_collectes_du_jour(racine: Path) -> None:
+    hier_ok = _enregistrement("p1")
+    hier_ok.debut = "2026-10-23T14:17:00+00:00"
+    hier_ok.empreinte_comparaison = "e1"
+    aujourdhui_erreur = _enregistrement("p2")
+    aujourdhui_erreur.statut = "erreur"
+    aujourdhui_erreur.erreur = "HTTP 503"
+    aujourdhui_autre = _enregistrement("p3")
+    aujourdhui_autre.identifiant = "openmedic.metadonnees"
+    aujourdhui_autre.statut = "inchange"
+    aujourdhui_autre.empreinte_comparaison = "e3"
+    for enregistrement in (hier_ok, aujourdhui_erreur, aujourdhui_autre):
+        manifeste.ajouter(racine, enregistrement)
+    connu = manifeste.etat_connu(racine, "2026-10-24")
+    assert connu.empreintes == {"bdpm.specialites": "e1", "openmedic.metadonnees": "e3"}
+    assert connu.collectes_du_jour == {"openmedic.metadonnees"}, "l'erreur du jour ne compte pas"
+    assert manifeste.etat_connu(racine / "vide", "2026-10-24") == manifeste.EtatConnu()
+    assert not (racine / "vide").exists()
+
+
+def test_parcourir_applique_les_regles_de_lecture(
+    racine: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    manifeste.ajouter(racine, _enregistrement("p1"))
+    chemin = manifeste.chemin_manifeste(racine)
+    with chemin.open("ab") as fichier:
+        fichier.write(TRONQUEE)
+    manifeste.ajouter(racine, _enregistrement("p3"))
+    with chemin.open("ab") as fichier:
+        fichier.write(b"\n\nfin coupee")
+    with caplog.at_level(logging.WARNING, logger="pharmaflux.collecte"):
+        assert [e.passage_id for e in manifeste.parcourir(racine)] == ["p1", "p3"]
+    assert "ligne 2 tronquée" in caplog.text and "dernière ligne (4) illisible" in caplog.text
+    with chemin.open("ab") as fichier:
+        fichier.write(b"\n")
+    manifeste.ajouter(racine, _enregistrement("p5"))
+    parcours = manifeste.parcourir(racine)
+    assert next(parcours).passage_id == "p1" and next(parcours).passage_id == "p3"
+    with pytest.raises(ManifesteCorrompu, match=r"ligne 4 illisible"):
+        next(parcours)
+
+
+def test_etat_connu_en_flux_memoire_bornee(racine: Path) -> None:
+    """Relecture 1, bloquant 2 : la mémoire d'un passage ne dépend pas de l'âge du manifeste."""
+    nombre = 30_000
+    chemin = _ecrire_lignes(racine, nombre)
+    taille = chemin.stat().st_size
+    assert taille > 20_000_000, "un manifeste de quelques mois"
+    tracemalloc.start()
+    try:
+        connu = manifeste.etat_connu(racine, "2026-10-25")
+        _, pic = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert len(connu.empreintes) == 14 and len(connu.collectes_du_jour) == 14
+    dernier = f"bdpm.fichier_{(nombre - 1) % 14:02d}"
+    assert connu.empreintes[dernier] == f"e{nombre - 1:064d}", "la dernière ligne gagne"
+    assert pic < 4 * 1024 * 1024, f"pic de {pic / 1e6:.1f} Mo pour {taille / 1e6:.0f} Mo"

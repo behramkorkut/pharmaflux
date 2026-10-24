@@ -114,14 +114,16 @@ def executer_passage(
     (``OSError``, disque plein) : il n'y a alors plus où consigner.
     """
     debut_passage = maintenant()
-    anterieurs = manifeste.lire(racine)
+    # Le manifeste est parcouru en flux : la mémoire dépend du catalogue, pas de
+    # son âge (il grandit d'environ 290 lignes par jour, sous un MemoryMax).
+    connu = manifeste.etat_connu(racine, debut_passage.strftime("%Y-%m-%d"))
     contexte = _Contexte(
         racine=racine,
         telechargeur=telechargeur,
         maintenant=maintenant,
         passage_id=debut_passage.strftime(FORMAT_PASSAGE_ID),
         version=version_collecteur(),
-        empreintes_connues=manifeste.dernieres_empreintes(anterieurs),
+        empreintes_connues=connu.empreintes,
     )
     bilan = Bilan(contexte.passage_id)
     journal.info("début du passage %s vers %s", contexte.passage_id, racine)
@@ -129,9 +131,7 @@ def executer_passage(
     liens_page: dict[str, LienTelechargement] | None = None
     premier = True
     for entree in entrees:
-        if entree.cadence is Cadence.QUOTIDIENNE and _collectee_ce_jour(
-            anterieurs, entree, debut_passage
-        ):
+        if entree.cadence is Cadence.QUOTIDIENNE and entree.identifiant in connu.collectes_du_jour:
             journal.info(
                 "%s : déjà collectée aujourd'hui (cadence quotidienne)", entree.identifiant
             )
@@ -261,18 +261,6 @@ def _consigner(contexte: _Contexte, bilan: Bilan, enregistrement: Enregistrement
     bilan.enregistrements.append(enregistrement)
     detail = enregistrement.erreur or enregistrement.chemin_archive or ""
     journal.info("%s : %s %s", enregistrement.fichier, enregistrement.statut, detail)
-
-
-def _collectee_ce_jour(
-    anterieurs: list[Enregistrement], entree: Entree, debut_passage: datetime
-) -> bool:
-    jour = debut_passage.strftime("%Y-%m-%d")
-    return any(
-        e.identifiant == entree.identifiant
-        and e.statut != Statut.ERREUR
-        and e.debut.startswith(jour)
-        for e in anterieurs
-    )
 
 
 def _liens_par_url(contenu: bytes) -> dict[str, LienTelechargement] | None:

@@ -11,7 +11,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import asdict, dataclass, fields
+from collections.abc import Iterable, Iterator
+from dataclasses import asdict, dataclass, field, fields
 from enum import StrEnum
 from pathlib import Path
 
@@ -97,32 +98,53 @@ def _fin_sans_retour_ligne(chemin: Path) -> bool:
         return fichier.read(1) != b"\n"
 
 
-def lire(racine: Path) -> list[Enregistrement]:
-    """Toutes les lignes du manifeste, dans l'ordre. Vide s'il n'existe pas.
+def parcourir(racine: Path) -> Iterator[Enregistrement]:
+    """Les lignes du manifeste, une à une et dans l'ordre, sans tout charger.
 
-    Une dernière ligne illisible (coupure pendant ``ajouter``), ou une ligne
-    que ``ajouter`` a marquée tronquée, est ignorée avec un avertissement : la
-    collecte doit continuer sans surveillance. Toute autre ligne illisible lève
-    ``ManifesteCorrompu`` : c'est un signe de corruption, pas une coupure.
+    La mémoire ne dépend pas de l'âge du manifeste : une ligne à la fois, plus
+    au plus une ligne illisible gardée en attente, le temps de savoir si elle
+    est la dernière. Une dernière ligne illisible (coupure pendant
+    ``ajouter``), ou une ligne que ``ajouter`` a marquée tronquée, est ignorée
+    avec un avertissement : la collecte doit continuer sans surveillance.
+    Toute autre ligne illisible lève ``ManifesteCorrompu`` : c'est un signe de
+    corruption, pas une coupure. Rien n'est produit si le fichier n'existe pas.
     """
     chemin = chemin_manifeste(racine)
     if not chemin.exists():
-        return []
-    lignes = [ligne for ligne in chemin.read_bytes().split(b"\n") if ligne.strip()]
-    enregistrements = []
-    for numero, ligne in enumerate(lignes, start=1):
-        try:
-            enregistrements.append(_decoder(ligne))
-        except (ValueError, TypeError) as exc:
-            if ligne.endswith(MARQUE_TRONCATURE):
-                journal.warning("%s : ligne %d tronquée par une coupure, ignorée", chemin, numero)
-            elif numero == len(lignes):
-                journal.warning(
-                    "%s : dernière ligne (%d) illisible, ignorée : %s", chemin, numero, exc
-                )
-            else:
-                raise ManifesteCorrompu(f"{chemin} : ligne {numero} illisible ({exc})") from exc
-    return enregistrements
+        return
+    numero = 0
+    en_attente: tuple[int, Exception] | None = None
+    with chemin.open("rb") as fichier:
+        for brute in fichier:
+            ligne = brute.rstrip(b"\n")
+            if not ligne.strip():
+                continue
+            numero += 1
+            if en_attente is not None:
+                numero_illisible, exc = en_attente
+                raise ManifesteCorrompu(
+                    f"{chemin} : ligne {numero_illisible} illisible ({exc})"
+                ) from exc
+            try:
+                enregistrement = _decoder(ligne)
+            except (ValueError, TypeError) as exc:
+                if ligne.endswith(MARQUE_TRONCATURE):
+                    journal.warning(
+                        "%s : ligne %d tronquée par une coupure, ignorée", chemin, numero
+                    )
+                else:
+                    en_attente = (numero, exc)
+                continue
+            yield enregistrement
+    if en_attente is not None:
+        journal.warning(
+            "%s : dernière ligne (%d) illisible, ignorée : %s", chemin, en_attente[0], en_attente[1]
+        )
+
+
+def lire(racine: Path) -> list[Enregistrement]:
+    """Toutes les lignes du manifeste, en mémoire : pour ``etat``, pas pour un passage."""
+    return list(parcourir(racine))
 
 
 def _decoder(ligne: bytes) -> Enregistrement:
@@ -132,7 +154,34 @@ def _decoder(ligne: bytes) -> Enregistrement:
     return Enregistrement(**connus)
 
 
-def dernieres_empreintes(enregistrements: list[Enregistrement]) -> dict[str, str]:
+@dataclass(slots=True)
+class EtatConnu:
+    """Ce qu'un passage retient du manifeste, borné par le catalogue, pas par son âge.
+
+    ``empreintes`` : la dernière empreinte de comparaison connue, par identifiant.
+    ``collectes_du_jour`` : les identifiants qui ont déjà une ligne sans erreur
+    ce jour-là (les entrées quotidiennes ne repassent pas).
+    """
+
+    empreintes: dict[str, str] = field(default_factory=dict)
+    collectes_du_jour: set[str] = field(default_factory=set)
+
+
+def etat_connu(racine: Path, jour: str) -> EtatConnu:
+    """Un seul parcours du manifeste, en flux, pour le jour ``AAAA-MM-JJ`` donné."""
+    etat = EtatConnu()
+    for enregistrement in parcourir(racine):
+        _retenir_empreinte(etat.empreintes, enregistrement)
+        if (
+            enregistrement.identifiant
+            and enregistrement.statut != Statut.ERREUR
+            and enregistrement.debut.startswith(jour)
+        ):
+            etat.collectes_du_jour.add(enregistrement.identifiant)
+    return etat
+
+
+def dernieres_empreintes(enregistrements: Iterable[Enregistrement]) -> dict[str, str]:
     """La dernière empreinte de comparaison connue, par identifiant du catalogue.
 
     Toute ligne qui a écrit une archive compte, quel que soit son statut (un
@@ -141,13 +190,17 @@ def dernieres_empreintes(enregistrements: list[Enregistrement]) -> dict[str, str
     """
     empreintes: dict[str, str] = {}
     for enregistrement in enregistrements:
-        if (
-            enregistrement.identifiant
-            and enregistrement.empreinte_comparaison
-            and (
-                enregistrement.chemin_archive
-                or enregistrement.statut in (Statut.NOUVEAU, Statut.INCHANGE)
-            )
-        ):
-            empreintes[enregistrement.identifiant] = enregistrement.empreinte_comparaison
+        _retenir_empreinte(empreintes, enregistrement)
     return empreintes
+
+
+def _retenir_empreinte(empreintes: dict[str, str], enregistrement: Enregistrement) -> None:
+    if (
+        enregistrement.identifiant
+        and enregistrement.empreinte_comparaison
+        and (
+            enregistrement.chemin_archive
+            or enregistrement.statut in (Statut.NOUVEAU, Statut.INCHANGE)
+        )
+    ):
+        empreintes[enregistrement.identifiant] = enregistrement.empreinte_comparaison

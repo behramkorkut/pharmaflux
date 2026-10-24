@@ -97,6 +97,22 @@ class GardeFou(unittest.TestCase):
             with self.subTest(commande=commande):
                 self.assertTrue(self.bash(self.codeur, commande))
 
+    def test_faux_positifs_signales_au_paragraphe_0(self) -> None:
+        """Mission 00, §0 H.1 : refusées à tort par la première version."""
+        for commande in (
+            'git status --short && git log --oneline -5 && echo "--- main vs branche ---" '
+            "&& git log --oneline main -3 && find . -path ./.git -prune -o -path ./data -prune "
+            "-o -type f -print | grep -v '/\\.git/' | sort | head -80 && ls -la",
+            'grep -n -i -E "prune|curl|wget|httpx|reseau|MOTIFS|interdit|def |re\\.compile|\\bgit\\b" '
+            ".claude/hooks/garde_fou.py | head -80",
+            "grep -n -i -E 'trailer|Commis|Co-Authored|reserv|RESERV|refus|main|HEAD' "
+            "infra/git-hooks/pre-commit | head -30",
+            "grep -c 'a;b' CLAUDE.md", "cat CLAUDE.md > /tmp/copie.md",
+        ):
+            with self.subTest(commande=commande):
+                self.assertTrue(self.bash(self.codeur, commande))
+                self.assertTrue(self.bash(self.relecteur, commande))
+
     def test_codeur_git_interdit(self) -> None:
         for commande in (
             "git push", "git push -u origin mission-00-essai", "git add -A", "git add .",
@@ -118,6 +134,8 @@ class GardeFou(unittest.TestCase):
             "rm -rf .claude", "cp /tmp/x .claude/settings.json", "mv a infra/git-hooks/pre-push",
             "tee docs/relectures/r.md < x", "python3 -c 'open(\"CLAUDE.md\",\"w\")' CLAUDE.md",
             "sh infra/git-hooks/test-crochets.sh > infra/git-hooks/pre-push",
+            "cat x 2>&1 >CLAUDE.md", "echo x|tee -a docs/missions/m.md", "printf x >| CLAUDE.md",
+            "echo $(git push)", "echo `git reset --hard`", "(cd src; git push)",
             "python3 infra/agents/test_garde_fou.py CLAUDE.md",
         ):
             with self.subTest(commande=commande):

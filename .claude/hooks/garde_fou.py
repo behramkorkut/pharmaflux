@@ -69,7 +69,7 @@ PREFIXES = {"command", "builtin", "exec", "nohup", "time", "noglob"}
 # Filet sur la commande brute : git appelé ailleurs qu'en tête de segment
 # (bash -c, xargs, eval…) pour une opération qui écrit.
 GIT_ECRIT_BRUT = re.compile(
-    r"\bgit\b[^\n|;&]*?\b(push|reset|rebase|checkout|merge|config|worktree|"
+    r"(?<![\w./-])git\b[^\n|;&]*?\b(push|reset|rebase|checkout|merge|config|worktree|"
     r"stash|clean|restore|filter-branch|filter-repo|update-ref|symbolic-ref|"
     r"replace|notes|tag|cherry-pick|revert|am|apply|gc|prune|remote)\b"
 )
@@ -184,21 +184,50 @@ def retirer_heredocs(commande: str) -> str:
     return "\n".join(sortie)
 
 
-def segments(commande: str) -> list[list[str]]:
-    morceaux = re.split(r"\|\||&&|;|\||\n|&(?![>\d])|\$\(|`|\(|\)", commande)
-    resultat = []
-    for morceau in morceaux:
-        morceau = morceau.strip().lstrip("{").strip()
-        if not morceau:
-            continue
-        try:
-            mots = shlex.split(morceau, posix=True)
-        except ValueError:
-            mots = morceau.split()
-        while mots and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", mots[0]) or mots[0] in PREFIXES):
-            mots = mots[1:]
-        if mots:
-            resultat.append(mots)
+# Jetons qui séparent deux commandes, et redirections (le jeton suivant est
+# leur cible ; seules celles en écriture comptent).
+SEPARATEURS = {"|", "||", "&", "&&", ";", ";;", "|&", "(", ")", "`", "{", "}"}
+REDIRECTIONS_ECRITURE = {">", ">>", ">|", "&>", "&>>"}
+REDIRECTIONS_AUTRES = {"<", "<<", "<<<", ">&", "<&", "<>"}
+
+
+def _jetons(ligne: str) -> list[str]:
+    """Découpe une ligne en mots et opérateurs, en respectant les guillemets
+    (un « | » dans un motif grep -E entre guillemets n'est pas un tube)."""
+    lexeur = shlex.shlex(ligne, posix=True, punctuation_chars="();<>|&`")
+    lexeur.whitespace_split = True
+    lexeur.commenters = ""
+    try:
+        return list(lexeur)
+    except ValueError:  # guillemet non fermé : découpage grossier
+        return ligne.split()
+
+
+def segments(commande: str) -> list[tuple[list[str], list[str]]]:
+    """Rend, pour chaque commande simple : (mots, cibles des redirections en écriture)."""
+    resultat: list[tuple[list[str], list[str]]] = []
+    for ligne in commande.split("\n"):
+        mots: list[str] = []
+        cibles: list[str] = []
+        jetons = _jetons(ligne)
+        i = 0
+        while i <= len(jetons):
+            jeton = jetons[i] if i < len(jetons) else ";"
+            if jeton in SEPARATEURS:
+                while mots and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", mots[0]) or mots[0] in PREFIXES):
+                    mots = mots[1:]
+                if mots or cibles:
+                    resultat.append((mots or ["(redirection)"], cibles))
+                mots, cibles = [], []
+            elif jeton in REDIRECTIONS_ECRITURE or jeton in REDIRECTIONS_AUTRES:
+                if mots and mots[-1].isdigit():
+                    mots.pop()  # descripteur : « 2>&1 »
+                if i + 1 < len(jetons) and jeton in REDIRECTIONS_ECRITURE:
+                    cibles.append(jetons[i + 1])
+                i += 1  # saute la cible
+            else:
+                mots.append(jeton)
+            i += 1
     return resultat
 
 
@@ -243,7 +272,7 @@ def verifier_git(role: str, mots: list[str]) -> None:
 
 def verifier_bash(role: str, commande: str) -> None:
     nette = retirer_heredocs(commande)
-    for mots in segments(nette):
+    for mots, cibles in segments(nette):
         tete = Path(mots[0]).name
         # Filet : git caché derrière bash -c, xargs, eval…
         if tete != "git" and tete not in LECTURE:
@@ -268,18 +297,16 @@ def verifier_bash(role: str, commande: str) -> None:
             raise Refus("gh est réservé à beko (PR, dépôt, CI).")
         if role == "iec":
             continue
-        if any(mots[: len(t)] == t
-               and all(a.startswith("-") or re.fullmatch(r"\d?>&\d", a) for a in mots[len(t):])
-               for t in TESTS_GARDE_FOUS):
+        ecrit_reserve = any(mentionne_reserve(c) for c in cibles)
+        if not ecrit_reserve and any(
+            mots[: len(t)] == t and all(a.startswith("-") for a in mots[len(t):])
+            for t in TESTS_GARDE_FOUS
+        ):
             continue
         # Codeur et relecteur : pas d'écriture shell vers un chemin réservé.
-        cible_redir = re.findall(r">>?\s*['\"]?([^\s'\";&|]+)", " ".join(mots))
-        reserve_nomme = any(mentionne_reserve(a) for a in mots[1:]) or any(
-            mentionne_reserve(c) for c in cible_redir
-        )
-        if not reserve_nomme:
+        if not ecrit_reserve and not any(mentionne_reserve(a) for a in mots[1:]):
             continue
-        lecture_pure = tete in LECTURE and not cible_redir and not (
+        lecture_pure = tete in LECTURE and not ecrit_reserve and not (
             tete == "sed" and any(a.startswith("-i") or a == "--in-place" for a in mots)
         )
         if not lecture_pure:

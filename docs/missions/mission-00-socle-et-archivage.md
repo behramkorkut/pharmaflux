@@ -246,9 +246,10 @@ etat` montre au moins 24 h de passages planifiés.
 - Normalisation, décodage, comparaison de snapshots, Redpanda : Lot 1.
 - Téléchargement des CSV Open Medic (§0 F).
 - Docker : rien ne tourne en conteneur dans cette mission.
-- Collecte hébergée (GitHub Actions, VPS, stockage objet) : ADR ultérieur
-  si §0 B le justifie. **Pas d'usage des VPS d'Alamel** : ils appartiennent
-  au client.
+- Collecte sur GitHub Actions ou stockage objet : hors mission. La collecte
+  tourne sur le VPS-1 de beko (addendum 2). **Pas d'usage des VPS
+  d'Alamel** : ils appartiennent au client.
+- Toute utilisation de l'API Claude : Lot 3.
 
 ## Addendum 1 — circuit local (IeC, 24/10/2026, validé par beko)
 
@@ -276,3 +277,98 @@ circuit est revu pour que **tout se vérifie en local** et qu'il n'y ait
    fin, par beko, avec ta `pr.md` pour description.
 5. **CI** : le dépôt est public, les minutes GitHub Actions ne sont pas
    comptées. On garde une CI sobre quand même (un job, cache uv).
+
+## Addendum 2 — §0 tranché (IeC, 24/10/2026, validé par beko)
+
+Réponse au rapport `docs/rapports/mission-00/points-a-trancher.md`
+(commit `fdd550e`). Rapport de qualité : constats mesurés, budget tenu,
+écart déclaré, faux positifs signalés sans contournement. Tes avis sont
+retenus sauf mention contraire.
+
+**A et B — la collecte tourne sur le VPS-1 de beko, pas sur le Mac.**
+beko met à disposition son VPS-1 (Ubuntu/Debian, accès SSH par clé,
+**libre** : aucun service ni aucune donnée d'Alamel ; la règle « pas
+d'usage des VPS d'Alamel » reste entière). Conséquences :
+
+- la question de la veille du Mac disparaît : le VPS tourne en continu ;
+- **deux copies de l'archive** : la principale sur le VPS, une copie
+  rapatriée chaque semaine sur le Mac par beko (`rsync` en tirage, **jamais
+  `--delete`** : l'archive ne fait que grandir) ;
+- la décision 8 change : plus de `launchd`. Tu écris dans
+  `infra/planification/` :
+  - `pharmaflux-collecte.service` et `pharmaflux-collecte.timer`
+    (systemd, unité système exécutée sous un compte dédié `pharmaflux`
+    sans droits d'administration, `OnCalendar=*-*-* *:17:00`,
+    `Persistent=true`, `PHARMAFLUX_DATA` posé dans l'unité) ;
+  - `rapatrier.sh` (Mac ← VPS, hôte en paramètre, aucune adresse dans le
+    dépôt) ;
+  - `README.md` : procédure complète pour beko — créer le compte, installer
+    `uv` pour ce compte, cloner le dépôt public (aucune clé de déploiement
+    nécessaire), `uv sync --frozen`, installer et activer le minuteur,
+    vérifier (`systemctl list-timers`, `journalctl`, `pharmaflux etat`),
+    mettre à jour après une fusion, rapatrier, désinstaller. Une rubrique
+    « Sécurité » : aucun port entrant ouvert pour Pharmaflux, sorties HTTPS
+    seulement, aucun secret sur le VPS dans cette mission ;
+- aucune adresse IP, aucun nom d'hôte, aucun utilisateur SSH réel dans le
+  dépôt : des paramètres (`<hote>`), renseignés par beko au moment de
+  l'installation ;
+- tu n'exécutes rien sur le VPS, tu n'y as aucun accès. Le passage réel du
+  palier 3 se fait toujours **une fois, sur le Mac**, vers une racine
+  temporaire.
+
+La mission est close quand `pharmaflux etat`, **sur le VPS**, montre au
+moins 24 h de passages planifiés.
+
+**C — validé.** Téléchargements sans condition ; page lue à chaque passage
+avec un analyseur HTML (lien et date dans le même élément), archivée
+seulement quand ses couples (fichier, date, taille) changent ; lien absent
+ou nouveau = statut `erreur`, motif `lien_absent` / `lien_nouveau`. Le
+statut `non_modifie_304` reste dans le modèle.
+
+**D — toutes les heures à `:17`, en série, pause de 2 s.** Pas de passage
+toutes les 30 min. L'indicateur du PRD §2.2 sera **découplé** dans la
+v0.2 (je l'écris) : délai de collecte ≤ 60 min par construction, délai de
+traitement p95 < 60 s mesuré. Une fraîcheur annoncée honnêtement vaut
+mieux qu'une charge doublée sur une source qui change une à trois fois par
+semaine.
+
+**E — mécanisme `empreinte_comparaison` validé**, tel que proposé : archive
+et `sha256` toujours sur les octets bruts ; décision `nouveau` / `inchange`
+sur l'empreinte de comparaison déclarée par entrée du catalogue (lignes
+triées pour InfoImportantes, couples pour la page, projection stable pour
+data.gouv). **Requête supplémentaire accordée : une seule**, sur
+`CIS_InfoImportantes.txt`, au moins une heure après la première, pour
+comparer l'ordre des lignes et l'empreinte triée. Résultat dans le rapport
+du palier 2, et le fichier rejoint les fixtures (extrait).
+
+**F — validé** : métadonnées seulement, cadence `quotidienne`, JSON brut
+archivé, empreinte sur la projection proposée. La correction du PRD §6.1
+(dates du robot de data.gouv inutilisables ; date utile = `created_at` de
+la ressource et `last_modified` du jeu) entre dans la v0.2.
+
+**H.1 — corrigé côté IeC** sur `main` : le garde-fou découpe désormais en
+respectant les guillemets, et ignore `git` précédé de `.` ou `/`. Tes trois
+commandes sont dans `infra/agents/test_garde_fou.py`. Merci pour le
+diagnostic, il était exact.
+
+**H.2 — noté pour la mission 01** : encodage et fin de ligne par fichier
+dans les contrats de schéma.
+
+**H.3** — voir D.
+
+**H.4, H.5, H.6 — validés** : champs `empreinte_comparaison`,
+`taille_affichee_ko`, `content_disposition_nom`, `version_collecteur`
+(version du paquet et commit), `essais` ; treize entrées de catalogue avec
+cadence et mode d'empreinte ; relance distinguant erreur de connexion et
+réponse 5xx.
+
+**H.7** — beko retire `.DS_Store` de l'index sur `main`. Toi : `.DS_Store`
+dans le `.gitignore` du palier 1, rien d'autre.
+
+**H.8** — dépôt : `https://github.com/behramkorkut/pharmaflux`
+(`User-Agent` : `pharmaflux/<version> (+https://github.com/behramkorkut/pharmaflux)`).
+
+**H.9** — d'accord : `uv` gère Python 3.12, rien à installer.
+
+**Suite** : palier 1. Ta branche date d'avant cet addendum ; l'ordre qui
+fait foi se lit sur `main` (`git show main:docs/missions/mission-00-socle-et-archivage.md`).

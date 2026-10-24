@@ -31,8 +31,6 @@ build-backend = "uv_build"
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
-# Outils du circuit, écrits et testés par l'IeC (infra/agents/test_garde_fou.py).
-extend-exclude = [".claude", "infra/agents"]
 
 [tool.ruff.lint]
 select = [
@@ -49,7 +47,7 @@ select = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["pharmaflux"]
+known-first-party = ["pharmaflux", "tests"]
 
 [tool.mypy]
 python_version = "3.12"

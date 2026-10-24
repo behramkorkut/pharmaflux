@@ -1,0 +1,92 @@
+"""État de l'archive, calculé depuis le manifeste.
+
+Pour chaque fichier : dernière archive écrite, dernier changement observé
+(un « nouveau » qui n'est pas la première observation du fichier), date de
+mise à jour affichée par la source, dernière erreur, passages des
+dernières 24 h.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+from pharmaflux.collecte.manifeste import Enregistrement, Statut
+
+
+@dataclass(slots=True)
+class LigneEtat:
+    source: str
+    fichier: str
+    derniere_archive: str | None = None
+    dernier_changement: str | None = None
+    date_source: str | None = None
+    derniere_erreur: str | None = None
+    passages_24h: int = 0
+    dernier_statut: str | None = None
+
+
+def calculer_etat(enregistrements: list[Enregistrement], maintenant: datetime) -> list[LigneEtat]:
+    """Une ligne par (source, fichier), dans l'ordre de première apparition."""
+    lignes: dict[tuple[str, str], LigneEtat] = {}
+    seuil = (maintenant - timedelta(hours=24)).isoformat()
+    for e in enregistrements:
+        cle = (e.source, e.fichier)
+        ligne = lignes.get(cle)
+        if ligne is None:
+            ligne = lignes[cle] = LigneEtat(e.source, e.fichier)
+        deja_vu = ligne.dernier_statut is not None
+        ligne.dernier_statut = e.statut
+        if e.debut >= seuil:
+            ligne.passages_24h += 1
+        if e.statut == Statut.NOUVEAU:
+            ligne.derniere_archive = _heure(e.fin)
+            if deja_vu:
+                ligne.dernier_changement = _heure(e.fin)
+        if e.statut == Statut.ERREUR:
+            ligne.derniere_erreur = f"{_heure(e.fin)} {e.erreur or ''}".strip()
+        if e.date_source_affichee:
+            ligne.date_source = e.date_source_affichee
+    return list(lignes.values())
+
+
+def formater_etat(lignes: list[LigneEtat]) -> str:
+    """Un tableau texte, lisible dans un terminal ou un journal systemd."""
+    colonnes = (
+        "fichier",
+        "dernière archive",
+        "dernier changement",
+        "date source",
+        "24 h",
+        "dernière erreur",
+    )
+    rangees = [
+        (
+            f"{ligne.source}/{ligne.fichier}",
+            ligne.derniere_archive or "—",
+            ligne.dernier_changement or "—",
+            ligne.date_source or "—",
+            str(ligne.passages_24h),
+            ligne.derniere_erreur or "—",
+        )
+        for ligne in lignes
+    ]
+    largeurs = [
+        max(len(colonne), *(len(rangee[i]) for rangee in rangees))
+        for i, colonne in enumerate(colonnes)
+    ]
+    separateur = "  "
+    sortie = [
+        separateur.join(colonne.ljust(largeurs[i]) for i, colonne in enumerate(colonnes)),
+        separateur.join("-" * largeur for largeur in largeurs),
+    ]
+    sortie.extend(
+        separateur.join(valeur.ljust(largeurs[i]) for i, valeur in enumerate(rangee))
+        for rangee in rangees
+    )
+    return "\n".join(sortie)
+
+
+def _heure(iso: str) -> str:
+    """``2026-10-24T14:17:03+00:00`` → ``2026-10-24 14:17Z``."""
+    return iso[:16].replace("T", " ") + "Z"

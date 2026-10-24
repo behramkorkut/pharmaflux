@@ -1,0 +1,410 @@
+{
+ "access_audiences": [],
+ "access_type": "open",
+ "access_type_reason": null,
+ "access_type_reason_category": null,
+ "acronym": null,
+ "archived": null,
+ "authorization_request_url": null,
+ "badges": [],
+ "contact_points": [],
+ "created_at": "2015-12-14T11:13:21.567000+00:00",
+ "deleted": null,
+ "description": "L’offre de données Open Medic est constituée d’un ensemble de bases annuelles, portant sur l’usage du médicament, délivré en pharmacie de ville de 2014 à 2024. Elle fournit des informations complémentaires au fichier [Medic’AM](https://www.data.gouv.fr/fr/datasets/medicaments-rembourses-par-lassuran […]",
+ "description_short": null,
+ "doi": null,
+ "extras": {},
+ "featured": false,
+ "frequency": "annual",
+ "frequency_date": "2018-04-23T06:00:00+00:00",
+ "geopf": null,
+ "harvest": null,
+ "id": "566e964188ee3875beaf0bf5",
+ "internal": {
+  "created_at_internal": "2015-12-14T11:13:21.567000+00:00",
+  "last_modified_internal": "2026-07-11T20:34:33.736000+00:00"
+ },
+ "last_modified": "2026-07-11T20:34:33.736000+00:00",
+ "last_update": "2026-10-24T11:29:41.613000+00:00",
+ "license": "fr-lo",
+ "metrics": {
+  "dataservices": 1,
+  "discussions": 55,
+  "discussions_open": 54,
+  "followers": 6,
+  "followers_by_months": {
+   "2025-06": 0,
+   "2025-07": 0,
+   "2025-08": 0,
+   "2025-09": 0,
+   "2025-10": 0,
+   "2025-11": 0,
+   "2025-12": 0,
+   "2026-01": 0,
+   "2026-02": 0,
+   "2026-03": 0,
+   "2026-04": 0,
+   "2026-05": 0,
+   "2026-06": 0
+  },
+  "resources_downloads": 61323,
+  "reuses": 15,
+  "reuses_by_months": {
+   "2025-06": 0,
+   "2025-07": 0,
+   "2025-08": 0,
+   "2025-09": 0,
+   "2025-10": 0,
+   "2025-11": 0,
+   "2025-12": 0,
+   "2026-01": 0,
+   "2026-02": 0,
+   "2026-03": 1,
+   "2026-04": 0,
+   "2026-05": 1,
+   "2026-06": 1
+  },
+  "views": 74210
+ },
+ "organization": {
+  "acronym": "Cnam",
+  "badges": [
+   {
+    "kind": "public-service"
+   },
+   {
+    "kind": "certified"
+   }
+  ],
+  "class": "Organization",
+  "id": "534fff5ca3a7292c64a77d1a",
+  "logo": "https://udata-avatars.s3.rbx.io.cloud.ovh.net/8d/8730ab0848453191079b61525da588.png",
+  "logo_thumbnail": "https://udata-avatars.s3.rbx.io.cloud.ovh.net/8d/8730ab0848453191079b61525da588-100.png",
+  "name": "Caisse nationale de l'Assurance Maladie",
+  "page": "https://www.data.gouv.fr/organizations/caisse-nationale-de-lassurance-maladie",
+  "permissions": {
+   "delete": false,
+   "edit": false,
+   "harvest": false,
+   "members": false,
+   "private": false
+  },
+  "slug": "caisse-nationale-de-lassurance-maladie",
+  "uri": "https://www.data.gouv.fr/api/1/organizations/caisse-nationale-de-lassurance-maladie/"
+ },
+ "owner": null,
+ "page": "https://www.data.gouv.fr/datasets/open-medic-base-complete-sur-les-depenses-de-medicaments-interregimes",
+ "permissions": {
+  "delete": false,
+  "edit": false,
+  "edit_resources": false
+ },
+ "private": false,
+ "quality": {
+  "all_resources_available": true,
+  "dataset_description_quality": true,
+  "has_open_format": true,
+  "has_resources": true,
+  "license": true,
+  "resources_documentation": true,
+  "score": 1.0,
+  "spatial": true,
+  "temporal_coverage": true,
+  "update_frequency": true,
+  "update_fulfilled_in_time": true
+ },
+ "resources": [
+  {
+   "checksum": null,
+   "created_at": "2026-07-11T20:34:33.719000+00:00",
+   "description": null,
+   "extras": {
+    "analysis:check_id": 55690933,
+    "analysis:checksum": "3608d2b9bb40632fb36eed89f701022d17a98995",
+    "analysis:content-length": 1574,
+    "analysis:last-modified-at": "2026-10-23T10:21:01.661267+00:00",
+    "analysis:last-modified-detection": "computed-checksum",
+    "analysis:mime-type": "text/html",
+    "analysis:parsing:error": "csv_detective:Number of columns is not even across the first 10 rows (detected separator: ;).",
+    "analysis:parsing:finished_at": "2026-10-23T10:21:03.420364+00:00",
+    "analysis:parsing:started_at": "2026-10-23T10:21:03.402405+00:00",
+    "check:available": true,
+    "check:cors:status": 200,
+    "check:date": "2026-07-11T20:34:37.555647+00:00",
+    "check:headers:content-type": "text/html",
+    "check:id": 49839047,
+    "check:status": 200,
+    "check:timeout": false
+   },
+   "filesize": null,
+   "filetype": "remote",
+   "format": "csv",
+   "geopf": null,
+   "harvest": null,
+   "id": "2f223966-1d59-4e55-b44b-2f6a72c544d4",
+   "internal": {
+    "created_at_internal": "2026-07-11T20:34:33.719000+00:00",
+    "last_modified_internal": "2026-07-11T20:34:33.719000+00:00"
+   },
+   "last_modified": "2026-10-23T10:21:01.661267+00:00",
+   "latest": "https://www.data.gouv.fr/api/1/datasets/r/2f223966-1d59-4e55-b44b-2f6a72c544d4",
+   "metrics": {
+    "views": 447
+   },
+   "mime": null,
+   "preview_url": null,
+   "schema": null,
+   "title": "Open Medic 2025",
+   "type": "main",
+   "url": "https://open-data-assurance-maladie.ameli.fr/medicaments/download.php?Dir_Rep=Open_MEDIC_Base_Complete&Annee=2025"
+  },
+  {
+   "checksum": null,
+   "created_at": "2026-07-11T20:33:02.560000+00:00",
+   "description": null,
+   "extras": {
+    "analysis:check_id": 55720362,
+    "analysis:checksum": "494193288d0298a3f99d1f57593f26336967f04f",
+    "analysis:content-length": 3121,
+    "analysis:last-modified-at": "2026-10-23T18:53:14.187256+00:00",
+    "analysis:last-modified-detection": "computed-checksum",
+    "analysis:mime-type": "text/html",
+    "analysis:parsing:error": "csv_detective:Number of columns is not even across the first 10 rows (detected separator: ;).",
+    "analysis:parsing:finished_at": "2026-10-23T18:53:16.138286+00:00",
+    "analysis:parsing:started_at": "2026-10-23T18:53:16.113770+00:00",
+    "check:available": true,
+    "check:cors:status": 200,
+    "check:date": "2026-07-11T20:33:06.185928+00:00",
+    "check:headers:content-type": "text/html",
+    "check:id": 49839045,
+    "check:status": 200,
+    "check:timeout": false
+   },
+   "filesize": null,
+   "filetype": "remote",
+   "format": "csv",
+   "geopf": null,
+   "harvest": null,
+   "id": "7f7046d2-0571-45a3-994d-4150a5d57794",
+   "internal": {
+    "created_at_internal": "2026-07-11T20:33:02.560000+00:00",
+    "last_modified_internal": "2026-07-11T20:33:02.560000+00:00"
+   },
+   "last_modified": "2026-10-23T18:53:14.187256+00:00",
+   "latest": "https://www.data.gouv.fr/api/1/datasets/r/7f7046d2-0571-45a3-994d-4150a5d57794",
+   "metrics": {
+    "views": 151
+   },
+   "mime": null,
+   "preview_url": null,
+   "schema": null,
+   "title": "2025 ATC1",
+   "type": "main",
+   "url": "https://open-data-assurance-maladie.ameli.fr/medicaments/download2.php?Dir_Rep=2025_ATC1"
+  },
+  {
+   "checksum": null,
+   "created_at": "2026-07-11T20:30:29.276000+00:00",
+   "description": null,
+   "extras": {
+    "analysis:check_id": 55756426,
+    "analysis:checksum": "c62cd693bebf560386f08dbbbe16e872542ccf81",
+    "analysis:content-length": 3121,
+    "analysis:last-modified-at": "2026-10-24T05:20:43.570736+00:00",
+    "analysis:last-modified-detection": "computed-checksum",
+    "analysis:mime-type": "text/html",
+    "analysis:parsing:error": "csv_detective:Number of columns is not even across the first 10 rows (detected separator: ;).",
+    "analysis:parsing:finished_at": "2026-10-24T05:20:45.028043+00:00",
+    "analysis:parsing:started_at": "2026-10-24T05:20:45.011881+00:00",
+    "check:available": true,
+    "check:cors:status": 200,
+    "check:date": "2026-07-11T20:30:32.056644+00:00",
+    "check:headers:content-type": "text/html",
+    "check:id": 49839034,
+    "check:status": 200,
+    "check:timeout": false
+   },
+   "filesize": null,
+   "filetype": "remote",
+   "format": "csv",
+   "geopf": null,
+   "harvest": null,
+   "id": "c417b74c-60d9-4083-a445-e01c9d9174a0",
+   "internal": {
+    "created_at_internal": "2026-07-11T20:30:29.276000+00:00",
+    "last_modified_internal": "2026-07-11T20:30:29.276000+00:00"
+   },
+   "last_modified": "2026-10-24T05:20:43.570736+00:00",
+   "latest": "https://www.data.gouv.fr/api/1/datasets/r/c417b74c-60d9-4083-a445-e01c9d9174a0",
+   "metrics": {
+    "views": 114
+   },
+   "mime": null,
+   "preview_url": null,
+   "schema": {
+    "name": null,
+    "url": "https://open-data-assurance-maladie.ameli.fr/medicaments/download2.php?Dir_Rep=2025_ATC2",
+    "version": null
+   },
+   "title": "2025 ATC2",
+   "type": "main",
+   "url": "https://open-data-assurance-maladie.ameli.fr/medicaments/download2.php?Dir_Rep=2025_ATC2"
+  },
+  {
+   "checksum": null,
+   "created_at": "2026-07-11T20:29:03.524000+00:00",
+   "description": null,
+   "extras": {
+    "analysis:check_id": 55757405,
+    "analysis:checksum": "8008c54a62b7538caa1d362dd81f8cf2e8376c71",
+    "analysis:content-length": 3121,
+    "analysis:last-modified-at": "2026-10-24T05:41:43.048110+00:00",
+    "analysis:last-modified-detection": "computed-checksum",
+    "analysis:mime-type": "text/html",
+    "analysis:parsing:error": "csv_detective:Number of columns is not even across the first 10 rows (detected separator: ;).",
+    "analysis:parsing:finished_at": "2026-10-24T05:41:44.352087+00:00",
+    "analysis:parsing:started_at": "2026-10-24T05:41:44.336347+00:00",
+    "check:available": true,
+    "check:cors:status": 200,
+    "check:date": "2026-10-03T00:59:28.296087+00:00",
+    "check:headers:content-type": "text/html",
+    "check:id": 54385220,
+    "check:status": 200,
+    "check:timeout": false
+   },
+   "filesize": null,
+   "filetype": "remote",
+   "format": "csv",
+   "geopf": null,
+   "harvest": null,
+   "id": "23107e88-6a41-4c43-909d-a1eb539965cc",
+   "internal": {
+    "created_at_internal": "2026-07-11T20:29:03.524000+00:00",
+    "last_modified_internal": "2026-07-11T20:29:03.524000+00:00"
+   },
+   "last_modified": "2026-10-24T05:41:43.048110+00:00",
+   "latest": "https://www.data.gouv.fr/api/1/datasets/r/23107e88-6a41-4c43-909d-a1eb539965cc",
+   "metrics": {
+    "views": 115
+   },
+   "mime": null,
+   "preview_url": null,
+   "schema": {
+    "name": null,
+    "url": "https://open-data-assurance-maladie.ameli.fr/medicaments/download2.php?Dir_Rep=2025_ATC3",
+    "version": null
+   },
+   "title": "2025 ATC3",
+   "type": "main",
+   "url": "https://open-data-assurance-maladie.ameli.fr/medicaments/download2.php?Dir_Rep=2025_ATC3"
+  },
+  {
+   "checksum": null,
+   "created_at": "2026-07-11T20:27:33.663000+00:00",
+   "description": null,
+   "extras": {
+    "analysis:check_id": 55725271,
+    "analysis:checksum": "23524dae09f99901e8e1f38fa9e08d262ac7d666",
+    "analysis:content-length": 3121,
+    "analysis:last-modified-at": "2026-10-23T20:01:40.232416+00:00",
+    "analysis:last-modified-detection": "computed-checksum",
+    "analysis:mime-type": "text/html",
+    "analysis:parsing:error": "csv_detective:Number of columns is not even across the first 10 rows (detected separator: ;).",
+    "analysis:parsing:finished_at": "2026-10-23T20:01:41.525061+00:00",
+    "analysis:parsing:started_at": "2026-10-23T20:01:41.505562+00:00",
+    "check:available": true,
+    "check:cors:status": 200,
+    "check:date": "2026-07-11T20:27:37.610000",
+    "check:headers:content-type": "text/html",
+    "check:id": 49839016,
+    "check:status": 200,
+    "check:timeout": false
+   },
+   "filesize": null,
+   "filetype": "remote",
+   "format": "csv",
+   "geopf": null,
+   "harvest": null,
+   "id": "4db19d3e-7c5b-4381-b4fe-28b39d26e159",
+   "internal": {
+    "created_at_internal": "2026-07-11T20:27:33.663000+00:00",
+    "last_modified_internal": "2026-07-11T20:27:43.091000+00:00"
+   },
+   "last_modified": "2026-10-23T20:01:40.232416+00:00",
+   "latest": "https://www.data.gouv.fr/api/1/datasets/r/4db19d3e-7c5b-4381-b4fe-28b39d26e159",
+   "metrics": {
+    "views": 133
+   },
+   "mime": null,
+   "preview_url": null,
+   "schema": null,
+   "title": "2025 ATC4",
+   "type": "main",
+   "url": "https://open-data-assurance-maladie.ameli.fr/medicaments/download2.php?Dir_Rep=2025_ATC4"
+  },
+  {
+   "checksum": null,
+   "created_at": "2026-07-11T20:26:25.201000+00:00",
+   "description": null,
+   "extras": {
+    "analysis:check_id": 55732080,
+    "analysis:checksum": "6ff7090c71eca9826f30a77e44f8a377e9a9a3eb",
+    "analysis:content-length": 3121,
+    "analysis:last-modified-at": "2026-10-23T22:17:22.926717+00:00",
+    "analysis:last-modified-detection": "computed-checksum",
+    "analysis:mime-type": "text/html",
+    "analysis:parsing:error": "csv_detective:Number of columns is not even across the first 10 rows (detected separator: ;).",
+    "analysis:parsing:finished_at": "2026-10-23T22:17:24.314843+00:00",
+    "analysis:parsing:started_at": "2026-10-23T22:17:24.292772+00:00",
+    "check:available": true,
+    "check:cors:status": 200,
+    "check:date": "2026-07-11T20:26:28.862000",
+    "check:headers:content-type": "text/html",
+    "check:id": 49839007,
+    "check:status": 200,
+    "check:timeout": false
+   },
+   "filesize": null,
+   "filetype": "remote",
+   "format": "csv",
+   "geopf": null,
+   "harvest": null,
+   "id": "45d9c947-d2f1-4d71-8dad-455b570b0b6e",
+   "internal": {
+    "created_at_internal": "2026-07-11T20:26:25.201000+00:00",
+    "last_modified_internal": "2026-07-11T20:26:35.075000+00:00"
+   },
+   "last_modified": "2026-10-23T22:17:22.926717+00:00",
+   "latest": "https://www.data.gouv.fr/api/1/datasets/r/45d9c947-d2f1-4d71-8dad-455b570b0b6e",
+   "metrics": {
+    "views": 250
+   },
+   "mime": null,
+   "preview_url": null,
+   "schema": null,
+   "title": "2025 ATC5",
+   "type": "main",
+   "url": "https://open-data-assurance-maladie.ameli.fr/medicaments/download2.php?Dir_Rep=2025_ATC5"
+  }
+ ],
+ "schema": null,
+ "slug": "open-medic-base-complete-sur-les-depenses-de-medicaments-interregimes",
+ "spatial": {
+  "geom": null,
+  "granularity": "fr:region",
+  "zones": [
+   "country:fr"
+  ]
+ },
+ "tags": [
+  "assurance-maladie",
+  "medicament",
+  "prescription"
+ ],
+ "temporal_coverage": {
+  "end": "2025-12-31",
+  "start": "2014-01-01"
+ },
+ "title": "Open Medic : base complète sur les dépenses de médicaments interrégimes",
+ "uri": "https://www.data.gouv.fr/api/1/datasets/open-medic-base-complete-sur-les-depenses-de-medicaments-interregimes/"
+}

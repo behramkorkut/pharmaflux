@@ -33,3 +33,14 @@ entrée du catalogue ; métadonnées Open Medic une fois par jour.
 `src/pharmaflux/`, CLI déclarée (`collecte`, `etat`, `--version`), CI en
 un job, `.gitignore`, README, `docs/CONTEXTE.md`, gabarit d'ADR. Le
 collecteur arrive au palier 2.
+
+## 2026-10-24 — Mission 00, palier 2 : collecteur
+
+Catalogue déclaratif (13 entrées), téléchargement httpx (60 s, trois
+essais, `User-Agent` du projet), archive bronze immuable (temporaire puis
+`os.link`, jamais de réécriture), manifeste JSONL en ajout seul, `collecte`
+et `etat` réels. 45 tests sans réseau sur des extraits réels
+(`tests/fixtures/`). Seconde requête autorisée sur
+`CIS_InfoImportantes.txt` : fichier identique à l'octet près 76 min plus
+tard, l'ordre des lignes n'a pas bougé. Découverte : la page offre un
+douzième lien, la documentation PDF du format (v5).

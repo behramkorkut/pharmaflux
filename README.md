@@ -40,10 +40,20 @@ uv sync
 uv run pharmaflux --help
 ```
 
-Les commandes `pharmaflux collecte` (un passage d'archivage) et
-`pharmaflux etat` sont déclarées et livrées au palier 2 de la mission 00.
-L'archive s'écrit hors du dépôt, sous `PHARMAFLUX_DATA`
-(défaut : `~/pharmaflux-data`). Rien de `data/` n'entre dans git.
+```bash
+uv run pharmaflux catalogue          # les treize entrées collectées
+uv run pharmaflux collecte           # un passage : télécharge, compare, archive, consigne
+uv run pharmaflux etat               # dernière archive, dernier changement, erreurs, 24 h
+```
+
+Un passage télécharge la page de téléchargement de la BDPM et ses onze
+fichiers, plus les métadonnées Open Medic une fois par jour. Chaque
+fichier reçu est conservé à l'octet près, compressé, sous
+`bronze/<source>/<fichier>/<jour>/<horodatage UTC>__<sha256>.gz`, et
+chaque passage laisse une ligne par fichier dans
+`manifeste/collecte.jsonl`, même en erreur. L'archive s'écrit hors du
+dépôt, sous `PHARMAFLUX_DATA` (défaut : `~/pharmaflux-data`). Rien de
+`data/` n'entre dans git. La planification horaire arrive au palier 3.
 
 Vérifications locales, identiques à la CI :
 

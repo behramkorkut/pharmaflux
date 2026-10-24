@@ -1,0 +1,14 @@
+HTTP/2 200 
+server: nginx
+date: Sat, 24 Oct 2026 13:20:30 GMT
+content-type: application/json
+content-length: 146025
+vary: Accept-Encoding
+vary: Origin, Cookie
+pragma: public
+cache-control: public
+x-content-type-options: nosniff
+x-xss-protection: 1; mode=block
+x-frame-options: SAMEORIGIN
+strict-transport-security: max-age=15768000; includeSubDomains; preload;
+

@@ -1,0 +1,40 @@
+1	CIMETIDINE 200 mg - TAGAMET 200 mg, comprimé pelliculé	65383183	0	1
+1	CIMETIDINE 200 mg - TAGAMET 200 mg, comprimé pelliculé	67535309	1	2
+2	CIMETIDINE 200 mg - TAGAMET 200 mg, comprimé effervescent	65025026	0	1
+2	CIMETIDINE 200 mg - TAGAMET 200 mg, comprimé effervescent	68053454	1	2
+3	CIMETIDINE 400 mg - TAGAMET 400 mg, comprimé pelliculé	69472373	0	1
+4	CIMETIDINE 800 mg - TAGAMET 800 mg, comprimé pelliculé sécable	60089516	0	1
+4	CIMETIDINE 800 mg - TAGAMET 800 mg, comprimé pelliculé sécable	60756034	1	2
+4	CIMETIDINE 800 mg - TAGAMET 800 mg, comprimé pelliculé sécable	62844636	2	3
+7	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 150 mg - AZANTAC 150 mg, comprimé pelliculé - RANIPLEX 150 mg, comprimé pelliculé.	65109314	0	1
+7	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 150 mg - AZANTAC 150 mg, comprimé pelliculé - RANIPLEX 150 mg, comprimé pelliculé.	66024386	0	2
+7	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 150 mg - AZANTAC 150 mg, comprimé pelliculé - RANIPLEX 150 mg, comprimé pelliculé.	65812914	1	3
+8	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 300 mg - AZANTAC 300 mg, comprimé pelliculé - RANIPLEX 300 mg, comprimé pelliculé.	61177182	0	1
+8	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 300 mg - AZANTAC 300 mg, comprimé pelliculé - RANIPLEX 300 mg, comprimé pelliculé.	63758510	0	2
+8	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 300 mg - AZANTAC 300 mg, comprimé pelliculé - RANIPLEX 300 mg, comprimé pelliculé.	66333404	1	3
+9	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 75 mg - AZANTAC 75 mg, comprimé effervescent - RANIPLEX 75 mg, comprimé effervescent.	64439241	0	1
+9	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 75 mg - AZANTAC 75 mg, comprimé effervescent - RANIPLEX 75 mg, comprimé effervescent.	62838569	0	2
+9	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 75 mg - AZANTAC 75 mg, comprimé effervescent - RANIPLEX 75 mg, comprimé effervescent.	69128963	1	3
+10	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 150 mg - AZANTAC 150 mg, comprimé effervescent - RANIPLEX 150 mg, comprimé effervescent.	61541821	0	1
+10	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 150 mg - AZANTAC 150 mg, comprimé effervescent - RANIPLEX 150 mg, comprimé effervescent.	63771461	0	2
+10	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 150 mg - AZANTAC 150 mg, comprimé effervescent - RANIPLEX 150 mg, comprimé effervescent.	62349845	1	3
+10	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 150 mg - AZANTAC 150 mg, comprimé effervescent - RANIPLEX 150 mg, comprimé effervescent.	64940633	1	4
+11	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 300 mg - AZANTAC 300 mg, comprimé effervescent - RANIPLEX 300 mg, comprimé effervescent.	66293778	0	1
+11	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 300 mg - AZANTAC 300 mg, comprimé effervescent - RANIPLEX 300 mg, comprimé effervescent.	69194575	0	2
+11	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 300 mg - AZANTAC 300 mg, comprimé effervescent - RANIPLEX 300 mg, comprimé effervescent.	62803066	1	3
+11	RANITIDINE (CHLORHYDRATE DE) équivalant à RANITIDINE 300 mg - AZANTAC 300 mg, comprimé effervescent - RANIPLEX 300 mg, comprimé effervescent.	65102309	1	4
+12	FAMOTIDINE 20 mg - PEPDINE 20 mg, comprimé pelliculé	67942333	0	1
+12	FAMOTIDINE 20 mg - PEPDINE 20 mg, comprimé pelliculé	60005856	1	2
+13	FAMOTIDINE 40 mg - PEPDINE 40 mg, comprimé pelliculé	68121033	0	1
+13	FAMOTIDINE 40 mg - PEPDINE 40 mg, comprimé pelliculé	67557907	1	2
+14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	64103828	0	1
+14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	63404013	0	2
+14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	65773614	1	3
+14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	61274368	1	4
+14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	60806188	1	5
+14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	61565950	1	6
+14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	66266101	1	7
+14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	69816753	1	8
+14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	69335481	1	9
+14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	67995040	1	10
+14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	61193553	1	11

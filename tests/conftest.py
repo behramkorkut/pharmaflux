@@ -1,0 +1,145 @@
+"""Outils communs des tests : serveur simulé sur fixtures, horloge, lancement d'un passage.
+
+Aucun test n'appelle le réseau : ``httpx.MockTransport`` sert les fichiers de
+``tests/fixtures/`` (extraits réels, voir ``tests/fixtures/README.md``).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import httpx
+import pytest
+
+from pharmaflux.collecte.catalogue import CATALOGUE, Entree
+from pharmaflux.collecte.passage import Bilan, executer_passage
+from pharmaflux.collecte.telechargement import Telechargeur
+
+FIXTURES = Path(__file__).parent / "fixtures"
+EN_TETES_IGNORES = {"transfer-encoding", "content-length", "content-encoding"}
+
+# Une réponse scénarisée : (statut, contenu, en-têtes) ou une exception à lever.
+ReponseSimulee = tuple[int, bytes, dict[str, str]] | Exception
+
+
+def chemin_fixture(entree: Entree) -> Path:
+    return FIXTURES / entree.source / entree.fichier.replace("metadonnees.json", "dataset.json")
+
+
+def contenu_fixture(entree: Entree) -> bytes:
+    return chemin_fixture(entree).read_bytes()
+
+
+def en_tetes_fixture(entree: Entree) -> dict[str, str]:
+    """Les en-têtes HTTP relevés au §0, sans ceux que le transport gère lui-même."""
+    en_tetes: dict[str, str] = {}
+    lignes = chemin_fixture(entree).with_suffix(chemin_fixture(entree).suffix + ".headers")
+    for ligne in lignes.read_text(encoding="utf-8").splitlines()[1:]:
+        nom, separateur, valeur = ligne.partition(":")
+        if separateur and nom.strip().lower() not in EN_TETES_IGNORES:
+            en_tetes[nom.strip()] = valeur.strip()
+    return en_tetes
+
+
+@dataclass
+class ServeurSimule:
+    """Répond aux URL du catalogue avec les fixtures ; scénarisable URL par URL."""
+
+    reponses: dict[str, list[ReponseSimulee]] = field(default_factory=dict)
+    requetes: list[httpx.Request] = field(default_factory=list)
+
+    def servir_catalogue(self) -> None:
+        for entree in CATALOGUE:
+            self.reponses[entree.url] = [(200, contenu_fixture(entree), en_tetes_fixture(entree))]
+
+    def scenariser(self, url: str, *suite: ReponseSimulee) -> None:
+        """Les réponses successives de ``url`` ; la dernière est répétée ensuite."""
+        self.reponses[url] = list(suite)
+
+    def remplacer_contenu(self, url: str, contenu: bytes) -> None:
+        statut, _, en_tetes = self._derniere(url)
+        self.reponses[url] = [(statut, contenu, en_tetes)]
+
+    def _derniere(self, url: str) -> tuple[int, bytes, dict[str, str]]:
+        derniere = self.reponses[url][-1]
+        assert not isinstance(derniere, Exception)
+        return derniere
+
+    def _repondre(self, requete: httpx.Request) -> httpx.Response:
+        self.requetes.append(requete)
+        suite = self.reponses.get(str(requete.url))
+        if not suite:
+            return httpx.Response(404, content=b"inconnu du serveur simule")
+        reponse = suite.pop(0) if len(suite) > 1 else suite[0]
+        if isinstance(reponse, Exception):
+            raise reponse
+        statut, contenu, en_tetes = reponse
+        return httpx.Response(statut, content=contenu, headers=en_tetes)
+
+    def transport(self) -> httpx.MockTransport:
+        return httpx.MockTransport(self._repondre)
+
+    def requetes_vers(self, url: str) -> int:
+        return sum(1 for requete in self.requetes if str(requete.url) == url)
+
+
+@dataclass
+class Horloge:
+    """Une horloge qui avance d'une seconde à chaque lecture, pilotable."""
+
+    instant: datetime = datetime(2026, 10, 24, 14, 17, 0, tzinfo=UTC)
+
+    def maintenant(self) -> datetime:
+        courant = self.instant
+        self.instant += timedelta(seconds=1)
+        return courant
+
+    def avancer(self, **duree: int) -> None:
+        self.instant += timedelta(**duree)
+
+
+@pytest.fixture
+def serveur() -> ServeurSimule:
+    simule = ServeurSimule()
+    simule.servir_catalogue()
+    return simule
+
+
+@pytest.fixture
+def horloge() -> Horloge:
+    return Horloge()
+
+
+@pytest.fixture
+def racine(tmp_path: Path) -> Path:
+    return tmp_path / "pharmaflux-data"
+
+
+Lanceur = Callable[..., Bilan]
+
+
+@pytest.fixture
+def lancer(racine: Path, serveur: ServeurSimule, horloge: Horloge) -> Lanceur:
+    """Un passage sans réseau, sans attente, sur l'horloge et le serveur simulés."""
+
+    def _lancer(entrees: Iterable[Entree] = CATALOGUE) -> Bilan:
+        with Telechargeur(
+            transport=serveur.transport(), attente_base=0, dormir=lambda _: None
+        ) as telechargeur:
+            return executer_passage(
+                racine,
+                list(entrees),
+                telechargeur,
+                maintenant=horloge.maintenant,
+                dormir=lambda _: None,
+                pause=0,
+            )
+
+    return _lancer
+
+
+def entree(identifiant: str) -> Entree:
+    return next(e for e in CATALOGUE if e.identifiant == identifiant)

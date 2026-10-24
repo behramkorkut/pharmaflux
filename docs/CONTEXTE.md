@@ -59,6 +59,17 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
   HTML) : la décision « nouveau / inchangé » se prend sur une **empreinte
   de comparaison** déclarée par entrée du catalogue, alors que l'archive
   et le `sha256` du manifeste restent ceux des octets bruts.
+- La page de téléchargement porte aussi un lien vers la documentation PDF
+  du format (v5 au 24/10/2026) : il entre dans l'empreinte de la page (un
+  changement de version sera vu) mais pas dans le contrôle « lien nouveau »,
+  réservé aux fichiers `.txt`.
+- Un lien que la page n'affiche plus (`lien_absent`) est quand même
+  téléchargé et archivé : la ligne de manifeste est en `erreur` pour alerter,
+  mais l'archive ne perd rien.
+- `CIS_InfoImportantes.txt` : deux téléchargements à 76 min d'écart le
+  24/10/2026 étaient identiques à l'octet près (même ordre des lignes) ;
+  seul le nom dans `Content-Disposition` change. L'empreinte sur lignes
+  triées reste en place, par prudence et à coût nul.
 - Le `User-Agent` identifie le projet :
   `pharmaflux/<version> (+https://github.com/behramkorkut/pharmaflux)`.
   Téléchargements en série, pause de 2 s, une fois par heure à `:17`.
@@ -68,7 +79,7 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 | Quoi | Où |
 |---|---|
 | Spécifications (PRD) | `01_Specifications/` |
-| Code | `src/pharmaflux/` (`cli.py`, `collecte/`) |
+| Code | `src/pharmaflux/` : `cli.py` ; `collecte/` : `catalogue.py` (13 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` |
 | Tests et fixtures | `tests/`, `tests/fixtures/` |
 | Planification de la collecte (systemd, rapatriement) | `infra/planification/` |
 | Décisions d'architecture | `docs/adr/` (gabarit : `0000-modele.md`) |

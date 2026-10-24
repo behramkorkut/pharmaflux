@@ -58,4 +58,4 @@ pretty = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q --strict-markers"
+addopts = "--strict-markers"

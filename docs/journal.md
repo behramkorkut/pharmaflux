@@ -128,3 +128,17 @@ contre 341 Mo en lecture complète. `etat` reste en lecture complète
 docstring d'`executer_passage` exacte, motif du README, assertion
 simplifiée. 66 tests. Réponse :
 `docs/rapports/mission-00/reponse-relecture-1.md`.
+
+## 2026-10-24 — Mission 00, relecture 2 : CONFORME
+
+Relecture du relecteur sur `1ccc9c0` (`docs/relectures/mission-00/relecture-2.md`) :
+les deux bloquants du tour 1 sont levés, aucun point à corriger, cinq
+remarques mineures. Fait : `pyproject.toml` ne met plus `-q` dans
+`addopts` (avec la commande de `CLAUDE.md`, `-qq` masquait la ligne
+`N passed`). Correction de l'entrée précédente : les 122 640 lignes
+mesurées représentent environ **14 mois** de manifeste, pas un an ; la
+conclusion (plafond atteint vers l'été 2027) ne change pas. Expliqué par
+l'IeC et le relecteur : `ruff format` compte aussi les fichiers Markdown,
+d'où un nombre qui grandit à chaque rapport. Réponse :
+`docs/rapports/mission-00/reponse-relecture-2.md`. `pr.md` attend les
+24 h de passages sur le VPS.

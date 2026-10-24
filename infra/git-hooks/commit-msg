@@ -1,0 +1,16 @@
+#!/bin/sh
+# Crochet commit-msg de Pharmaflux.
+# Sous Claude Code, exige les deux trailers qui rendent le commit traçable :
+#   Commis-par: codeur
+#   Co-Authored-By: <modèle> <noreply@anthropic.com>
+# Hors Claude Code (beko), il ne fait rien.
+
+NOM_CROCHET=commit-msg
+. "$(dirname "$0")/commun.sh"
+
+sous_claude_code || exit 0
+
+grep -q '^Commis-par: codeur$' "$1" || refus "trailer « Commis-par: codeur » manquant."
+grep -q '^Co-Authored-By: .*<noreply@anthropic.com>$' "$1" || refus "trailer « Co-Authored-By: … <noreply@anthropic.com> » manquant."
+
+exit 0

@@ -1,0 +1,37 @@
+#!/bin/sh
+# Crochet pre-push de Pharmaflux (repris d'Alamel, durci).
+# Activé par beko, une fois : git config core.hooksPath infra/git-hooks
+#
+# Refuse :
+#   - TOUT push lancé sous Claude Code : dans Pharmaflux, seul beko pousse,
+#     depuis Terminal.app ;
+#   - tout push non fast-forward (forcé), pour tout le monde ;
+#   - toute suppression de référence distante, pour tout le monde.
+# Entrée standard (githooks(1)) : <ref locale> <oid local> <ref distante> <oid distant>
+# Testé sans rien pousser : test-crochets.sh.
+
+NOM_CROCHET=pre-push
+. "$(dirname "$0")/commun.sh"
+
+ZERO="0000000000000000000000000000000000000000"
+
+if sous_claude_code; then
+  refus "push lancé par un agent. Seul beko pousse, depuis Terminal.app."
+fi
+
+while read -r ref_locale oid_local ref_distante oid_distant; do
+  [ -n "$ref_distante" ] || continue
+  if [ "$oid_local" = "$ZERO" ]; then
+    refus "suppression de la référence distante « $ref_distante » ($ref_locale)."
+  fi
+  if [ "$oid_distant" != "$ZERO" ]; then
+    if ! git cat-file -e "$oid_distant" 2>/dev/null; then
+      refus "état distant inconnu ici pour « $ref_distante » : git fetch d'abord — jamais de push forcé."
+    fi
+    if ! git merge-base --is-ancestor "$oid_distant" "$oid_local" 2>/dev/null; then
+      refus "push non fast-forward (forcé) vers « $ref_distante »."
+    fi
+  fi
+done
+
+exit 0

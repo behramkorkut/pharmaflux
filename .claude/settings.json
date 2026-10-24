@@ -55,7 +55,29 @@
       "Bash(launchctl:*)",
       "Bash(crontab:*)",
       "Read(**/.env)",
-      "Read(**/.env.local)"
+      "Read(**/.env.local)",
+      "Bash(git push:*)",
+      "Bash(git worktree add:*)",
+      "Bash(git worktree remove:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr ready:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(brew:*)",
+      "Bash(sudo:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__terminal__.*|mcp__computer-use__.*|mcp__claude-in-chrome__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'for d in \"$CLAUDE_PROJECT_DIR\" \"$(git rev-parse --show-toplevel 2>/dev/null)\"; do f=\"$d/.claude/hooks/garde_fou.py\"; [ -f \"$f\" ] && exec python3 -I \"$f\"; done; echo \"garde-fou Pharmaflux introuvable : appel refusé\" >&2; exit 2'",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }

@@ -1,0 +1,26 @@
+#!/bin/sh
+# Crochet pre-commit de Pharmaflux.
+# Sous Claude Code (le codeur, seul agent qui committe), refuse :
+#   - un commit sur main ou sur une HEAD détachée : le codeur committe
+#     seulement sur sa branche de mission ;
+#   - un commit qui touche un chemin réservé à l'IeC (consignes, ordres de
+#     mission, garde-fous) : ceux-là, beko les committe sur main.
+# Hors Claude Code (beko), il ne fait rien.
+
+NOM_CROCHET=pre-commit
+. "$(dirname "$0")/commun.sh"
+
+sous_claude_code || exit 0
+
+branche=$(git symbolic-ref --quiet --short HEAD) || refus "HEAD détachée : un agent ne committe que sur sa branche de mission."
+case "$branche" in
+  mission-*) ;;
+  *) refus "branche « $branche » : un agent ne committe que sur une branche mission-NN-…" ;;
+esac
+
+interdits=$(git diff --cached --name-only | grep -E "$RESERVES_RE")
+if [ -n "$interdits" ]; then
+  refus "chemins réservés à l'IeC dans le commit : $(echo "$interdits" | tr '\n' ' ')"
+fi
+
+exit 0

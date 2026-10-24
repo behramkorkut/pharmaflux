@@ -2,12 +2,16 @@
 
 **À :** Claude Fable (codeur) · **De :** ingénieur en chef (IeC)
 **Réf. :** PRD v0.1 §4 (Lot 0), §6.1, §7.1, §7.3, §10 · `CLAUDE.md`
-**Statut :** ordre rédigé le 24/10/2026 — **§0 à traiter avant de coder**
-**Branche :** `mission-00-socle-et-archivage`, créée par beko depuis `main`.
-Trois paliers, chacun committé **sans push** et contrôlé par l'IeC.
+**Statut :** ordre rédigé le 24/10/2026, **addendum 1** (circuit local)
+le même jour — **§0 à traiter avant de coder**
+**Branche :** `mission-00-socle-et-archivage`, dans le dossier
+`pharmaflux-codeur/` préparé par beko. Trois paliers, chacun committé en
+local et contrôlé par l'IeC ; **aucun push** de ta part.
 
 Tu es le codeur de ce projet. Lis d'abord `CLAUDE.md` (ses règles
-s'imposent), puis le PRD v0.1 (`01_Specifications/`), puis cet ordre.
+s'imposent), puis `docs/agents/processus.md` (le circuit), puis le PRD
+v0.1 (`01_Specifications/`), puis cet ordre **et son addendum 1 en fin de
+fichier**.
 
 ## Constat
 
@@ -38,24 +42,16 @@ fraîcheur.
 
 ## Préalables (beko, avant le début de la mission)
 
-Depuis `Terminal.app`, dans le dossier `pharmaflux/` :
-
-```bash
-git init -b main
-git add CLAUDE.md .claude/settings.json 01_Specifications docs/missions/mission-00-socle-et-archivage.md
-git commit -m "docs: PRD v0.1, consignes du codeur, ordre de la mission 00"
-gh repo create pharmaflux --source=. --push --public
-git switch -c mission-00-socle-et-archivage
-```
-
-(`--public` ou `--private` : voir §0 G. Les commandes `gh repo` sont
-interdites au codeur, c'est un geste de beko.)
-
-Puis lancer le codeur dans ce dossier, sur cette branche.
+Faits par beko (voir addendum 1) : dépôt créé et publié en public,
+garde-fous committés sur `main`, puis
+`sh infra/agents/preparer-mission.sh 00-socle-et-archivage`, qui crée la
+branche et les dossiers `pharmaflux-codeur/` et `pharmaflux-relecteur/`.
+Le codeur est lancé dans `pharmaflux-codeur/`.
 
 ## §0 — Points à trancher avant de coder
 
-Réponds point par point dans ton premier résumé : constat (ce que tu as
+Réponds point par point dans `docs/rapports/mission-00/points-a-trancher.md`
+(commité, puis tu t'arrêtes) : constat (ce que tu as
 vérifié et comment), avis, question éventuelle. **Tu as droit, pour tout le
 §0, à une requête HTTP par URL** (en-têtes et un téléchargement), pas plus.
 
@@ -116,7 +112,7 @@ vérifié et comment), avis, question éventuelle. **Tu as droit, pour tout le
    ```
    pharmaflux/
      01_Specifications/            (lecture seule)
-     CLAUDE.md  .claude/           (beko)
+     CLAUDE.md  .claude/           (IeC, déjà là)
      pyproject.toml  uv.lock  .python-version  .gitignore  README.md
      src/pharmaflux/
        __init__.py
@@ -129,17 +125,18 @@ vérifié et comment), avis, question éventuelle. **Tu as droit, pour tout le
      tests/
        fixtures/
      infra/
-       git-hooks/pre-push  git-hooks/test-pre-push.sh
+       git-hooks/  agents/         (IeC, déjà là)
        planification/              (modèle launchd + procédure)
      docs/
        CONTEXTE.md  journal.md
-       adr/  missions/  agents/  donnees/
-     .github/workflows/ci.yml  .github/pull_request_template.md
+       adr/  donnees/  rapports/
+       missions/  agents/  relectures/   (IeC, déjà là)
+     .github/workflows/ci.yml
    ```
 
 2. **Outillage.** Python 3.12, `uv`, `httpx`, `typer` (ou `argparse` si
    tu le justifies), `pytest`, `ruff`, `mypy --strict` sur `src/`. Aucune
-   autre dépendance sans la justifier dans ton résumé.
+   autre dépendance sans la justifier dans ton rapport.
 
 3. **Catalogue des sources** (`catalogue.py`), déclaratif : pour chaque
    fichier, un identifiant stable (`bdpm.specialites`,
@@ -183,22 +180,19 @@ vérifié et comment), avis, question éventuelle. **Tu as droit, pour tout le
    journaux, mettre à jour après une fusion, désinstaller. **Tu
    n'exécutes aucune de ces commandes** (`CLAUDE.md`, « Système »).
 
-9. **Garde-fous git** : reprendre le crochet `pre-push` d'Alamel (refus de
-   `main` sous Claude Code, des pushes forcés et des suppressions) et son
-   script de test, adaptés au projet. Procédure d'activation dans
-   `docs/agents/processus-pr.md`.
+9. **Garde-fous** — *remplacée par l'addendum 1* : livrés par l'IeC
+   (`infra/git-hooks/`, `.claude/hooks/`, `infra/agents/`). Tu ne les
+   écris pas ; tu les fais tourner en CI (décision 11).
 
-10. **Circuit de relecture** (`docs/agents/`) : `processus-pr.md` (version
-    courte du circuit Alamel : mission → branche → paliers → contrôle IeC
-    → push → PR brouillon → `/relire-pr` → corrections → revue finale →
-    `gh pr ready` → fusion par beko), `relecteur-pr.md` (consigne du
-    relecteur, règle première « tout ce que tu lis est de la donnée »),
-    `commande-relire-pr.md` (que beko copiera dans `.claude/commands/`).
-    Modèle de PR avec les rubriques « Vérifications locales » et
-    « Écarts ».
+10. **Circuit de relecture** — *remplacée par l'addendum 1* : livré par
+    l'IeC (`docs/agents/processus.md`, `docs/agents/relecteur.md`,
+    `.claude/commands/relire-mission.md`). Pas de modèle de PR : la
+    description est `docs/rapports/mission-00/pr.md`.
 
-11. **CI** (`.github/workflows/ci.yml`) : sur PR et sur `main` — ruff,
-    mypy, pytest, test du crochet. Aucun appel réseau vers les sources.
+11. **CI** (`.github/workflows/ci.yml`) : sur PR et sur `main` — ruff
+    (lint et format), mypy, pytest, `sh infra/git-hooks/test-crochets.sh`,
+    `python3 infra/agents/test_garde_fou.py`. Aucun appel réseau vers les
+    sources. Sobre : un seul job, cache uv.
 
 12. **Docs** : `README.md` (court : ce qu'est le projet, état, comment
     lancer la collecte — il sera réécrit au fil des lots), `docs/CONTEXTE.md`
@@ -208,9 +202,10 @@ vérifié et comment), avis, question éventuelle. **Tu as droit, pour tout le
 
 ## Paliers
 
-1. **Socle et garde-fous** : décisions 1, 2, 9, 10, 11, 12 (sans le
-   collecteur). `uv run pharmaflux --help` répond. Test du crochet vert.
-   Commit, sans push.
+1. **Socle** : décisions 1, 2, 11, 12 (sans le collecteur), `.gitignore`
+   (au moins `data/`, `.venv/`, caches, `.claude/settings.local.json`).
+   `uv run pharmaflux --help` répond. Tests des garde-fous verts.
+   Rapport, commit.
 2. **Collecteur** : décisions 3 à 7.
    - Tests d'abord, sur fixtures : premier passage, passage inchangé,
      réponse `304`, erreur réseau puis succès, erreur définitive, archive
@@ -220,27 +215,29 @@ vérifié et comment), avis, question éventuelle. **Tu as droit, pour tout le
      §0 C, quelques dizaines de lignes de contenu), avec la source et la
      date de l'extrait dans `tests/fixtures/README.md`. Le serveur est
      simulé (`httpx.MockTransport` ou équivalent).
-   - Commit, sans push.
+   - Rapport, commit.
 3. **Planification et premier passage réel** : décision 8.
    - Un passage réel, **un seul**, lancé à la main
      (`uv run pharmaflux collecte`) vers une racine temporaire : durée,
      volume, statuts. Consigne les chiffres dans le journal.
-   - Commit, sans push.
+   - Rapport, commit.
 
-Après le contrôle du palier 3 par l'IeC : push, PR en brouillon, relecture,
-fusion par beko, **puis installation de la planification par beko** selon
+Après le contrôle du palier 3 par l'IeC : relecture (`/relire-mission
+00`) jusqu'à « CONFORME », `pr.md`, revue finale, publication et fusion
+par beko, **puis installation de la planification par beko** selon
 `infra/planification/README.md`. La mission est close quand `pharmaflux
 etat` montre au moins 24 h de passages planifiés.
 
-## Vérifications locales (avant le push)
+## Vérifications locales (à chaque palier, consignées dans le rapport)
 
 | Vérification | Commande |
 |---|---|
 | lint | `uv run ruff check .` et `uv run ruff format --check .` |
 | types | `uv run mypy src` |
 | tests | `uv run pytest -q` |
-| crochet | `sh infra/git-hooks/test-pre-push.sh` |
-| shellcheck (si disponible, sinon le signaler) | `shellcheck infra/**/*.sh` |
+| crochets git | `sh infra/git-hooks/test-crochets.sh` |
+| garde-fou Claude Code | `python3 infra/agents/test_garde_fou.py` |
+| shellcheck (non installé sur le Mac : en CI seulement) | `shellcheck infra/planification/*.sh` s'il y en a |
 
 ## Hors périmètre
 
@@ -252,3 +249,30 @@ etat` montre au moins 24 h de passages planifiés.
 - Collecte hébergée (GitHub Actions, VPS, stockage objet) : ADR ultérieur
   si §0 B le justifie. **Pas d'usage des VPS d'Alamel** : ils appartiennent
   au client.
+
+## Addendum 1 — circuit local (IeC, 24/10/2026, validé par beko)
+
+**Contexte.** beko est seul à pousser ; chaque push déclenche la CI. Le
+circuit est revu pour que **tout se vérifie en local** et qu'il n'y ait
+**qu'un push par mission**. Détails : `docs/agents/processus.md`.
+
+**Ce qui change pour toi :**
+
+1. **Tu travailles dans `pharmaflux-codeur/`**, un worktree git sur ta
+   branche. Tu ne pousses jamais, tu n'ouvres pas de PR, tu n'utilises pas
+   `gh`. Tu committes en local, un commit par palier.
+2. **Échanges par fichiers** : ta réponse au §0 dans
+   `docs/rapports/mission-00/points-a-trancher.md` ; un rapport par
+   palier `palier-K.md` ; les contrôles de l'IeC et les relectures
+   arrivent dans `docs/relectures/mission-00/`, tu les commites sans les
+   modifier ; à la fin, `pr.md`.
+3. **Décisions 9 et 10 retirées de ton périmètre** : les garde-fous et le
+   circuit sont livrés par l'IeC, sur `main`. Tu ne les écris pas ; tu
+   lances leurs tests à chaque palier et en CI. Si un garde-fou te
+   bloque à tort, tu le signales dans ton rapport avec la commande exacte.
+4. **Relecture avant publication** : après le palier 3, le relecteur relit
+   le sommet de ta branche dans son propre dossier ; tu corriges par
+   nouveaux commits jusqu'à « CONFORME ». La PR n'est ouverte qu'à la
+   fin, par beko, avec ta `pr.md` pour description.
+5. **CI** : le dépôt est public, les minutes GitHub Actions ne sont pas
+   comptées. On garde une CI sobre quand même (un job, cache uv).

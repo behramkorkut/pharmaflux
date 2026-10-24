@@ -107,3 +107,24 @@ README : `readlink -f` du Python, `Mem peak` et score
 `systemd-analyze security`, chemin du manifeste et versions distinctes,
 séquence de mise à jour d'une unité, rubrique « VPS partagé ». Rapport :
 `docs/rapports/mission-00/correctif-unite.md`.
+
+## 2026-10-24 — Mission 00, relecture 1 : NON CONFORME, corrigée
+
+Relecture du relecteur sur `07c77a6` (`docs/relectures/mission-00/relecture-1.md`),
+deux bloquants reproduits hors dépôt. **Bloquant 1** (`4aef8e4`) :
+`TooManyRedirects` et `DecodingError` (dérivés de `RequestError`, pas de
+`TransportError`) faisaient sortir l'exception d'`executer_passage`, zéro
+ligne de manifeste. `telecharger` convertit toute `httpx.HTTPError`
+(définitive sans relance hors transport) ; filet `inattendue: <type>:
+<message>` par entrée avec trace ; `projection_datagouv` refuse une
+ressource qui n'est pas un objet. **Bloquant 2** (`9cf7710`) : le passage
+chargeait tout le manifeste (394 Mo mesurés par le relecteur pour un an,
+`MemoryMax=256M` atteint vers l'été 2027). `manifeste.parcourir` (flux,
+règles de C2 inchangées) et `etat_connu` (dernière empreinte par
+identifiant, collectes du jour) : 18 Mo de `ru_maxrss` pour 122 640 lignes
+contre 341 Mo en lecture complète. `etat` reste en lecture complète
+(mission 01). **Non bloquants** (`778a8fe`) : `etat` s'appuie sur
+`chemin_archive`, `rapatrier.sh` en `--partial-dir=.rsync-partiel`,
+docstring d'`executer_passage` exacte, motif du README, assertion
+simplifiée. 66 tests. Réponse :
+`docs/rapports/mission-00/reponse-relecture-1.md`.

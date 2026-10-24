@@ -72,3 +72,22 @@ observation de `CIS_InfoImportantes.txt` (5 h après la première) : toujours
 le même sha256 `a27b30e12c83…`. Dates affichées par la page ce jour :
 `CIS_CIP_bdpm.txt` 23/10, `CIS_CIP_Dispo_Spec.txt` 21/10, `CIS_MITM.txt`
 13/10, les autres 29/09.
+
+## 2026-10-24 — Mission 00, correctifs du contrôle du palier 3
+
+Contrôle de l'IeC (`docs/relectures/mission-00/controle-palier-3.md`) :
+correctifs C1/C2 et marque de troncature acceptés, palier 3 accepté sous
+réserve de P1. **P1** : la procédure échouait à l'étape 4, `cd
+/home/pharmaflux/pharmaflux` étant lancé par le compte SSH de beko avant
+son entrée dans le groupe `pharmaflux` (répertoire en `750` ou `700`).
+`infra/planification/README.md` réécrit sans aucun `cd` : chemins absolus
+partout, `uv sync --directory`, `git -C … pull --ff-only`, `install` avec
+les chemins complets ; ajout au groupe et `chmod 750` remontés à l'étape 2
+avec la reconnexion SSH. Ajouté : clonage depuis la branche de mission
+(`git clone --branch mission-00-socle-et-archivage`), puis retour sur
+`main` après la fusion (`git -C … switch main`, `pull --ff-only`, `uv
+sync`). Remarques mineures prises : `--shell /usr/sbin/nologin` (et
+`UV_NO_MODIFY_PATH=1` à l'installation d'`uv`), version d'`uv` figée dans
+l'URL (`0.10.10`, celle du Mac). Propositions (a), (b), (c) acceptées pour
+la mission 01 ou le prochain passage dans `cli.py`. `pr.md` attend les
+24 h de passages sur le VPS.

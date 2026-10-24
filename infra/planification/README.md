@@ -16,8 +16,11 @@ Fichiers de ce dossier :
 | `rapatrier.sh` | Mac ← VPS, hôte en paramètre, `rsync -a` sans `--delete` |
 
 Toutes les commandes ci-dessous sont exécutées **par beko** (le codeur ne
-touche pas au VPS). `<hote>` désigne le VPS tel que la configuration SSH
-du Mac le nomme ; aucune adresse n'est écrite dans le dépôt.
+touche pas au VPS), depuis son propre compte SSH, **sans jamais changer de
+répertoire** : `/home/pharmaflux` n'est pas traversable par les autres
+comptes tant que l'étape 2 n'est pas terminée, et chaque commande porte
+donc son chemin absolu. `<hote>` désigne le VPS tel que la configuration
+SSH du Mac le nomme ; aucune adresse n'est écrite dans le dépôt.
 
 ## 1. Prérequis
 
@@ -25,22 +28,45 @@ du Mac le nomme ; aucune adresse n'est écrite dans le dépôt.
   `curl` installés (`sudo apt install git curl`).
 - Sur le Mac : `rsync` et `ssh` (présents d'origine), le dépôt cloné.
 
-## 2. Créer le compte `pharmaflux`
+## 2. Créer le compte `pharmaflux` et y donner accès en lecture
 
-Compte système, sans mot de passe, sans sudo, sans clé SSH : il ne sert
-qu'à exécuter la collecte.
+Compte système, sans mot de passe, sans sudo, sans clé SSH et **sans shell
+de connexion** : il ne sert qu'à exécuter la collecte, et toutes les
+commandes ci-dessous passent par `sudo -u pharmaflux -H <commande>`, qui
+n'a pas besoin de shell.
 
 ```bash
-sudo useradd --system --create-home --home-dir /home/pharmaflux --shell /bin/bash pharmaflux
+sudo useradd --system --create-home --home-dir /home/pharmaflux --shell /usr/sbin/nologin pharmaflux
 ```
+
+`useradd --create-home` crée `/home/pharmaflux` en `750` (Ubuntu) ou `700`
+(Debian). Pour que le compte SSH de beko puisse **lire** l'archive
+(vérification à l'étape 6, rapatriement à l'étape 8) sans être root,
+l'ajouter au groupe `pharmaflux` et rendre le répertoire traversable par
+le groupe :
+
+```bash
+sudo usermod -aG pharmaflux <utilisateur-ssh>
+sudo chmod 750 /home/pharmaflux
+```
+
+**Se déconnecter puis se reconnecter en SSH** pour que le nouveau groupe
+prenne effet (`id` doit alors lister `pharmaflux`). L'écriture reste
+réservée au compte `pharmaflux`.
 
 ## 3. Installer `uv` pour ce compte
 
+La version d'`uv` est **figée dans l'URL** (celle du Mac de beko au moment
+de l'écriture, `uv --version` pour la relever) : la même installation
+donne le même résultat dans six mois.
+
 ```bash
-sudo -u pharmaflux -H sh -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+sudo -u pharmaflux -H sh -c 'curl -LsSf https://astral.sh/uv/0.10.10/install.sh | env UV_NO_MODIFY_PATH=1 sh'
 sudo -u pharmaflux -H /home/pharmaflux/.local/bin/uv --version
 ```
 
+`UV_NO_MODIFY_PATH=1` : le compte n'a pas de shell de connexion, inutile
+de toucher à son profil ; `uv` est toujours appelé par son chemin complet.
 `uv` installe lui-même Python 3.12 dans le projet (`.python-version`) :
 rien d'autre à installer sur le système.
 
@@ -48,26 +74,40 @@ rien d'autre à installer sur le système.
 
 Le dépôt est public : aucune clé de déploiement, aucun jeton.
 
+**Pendant la mission 00**, le collecteur n'est que sur la branche de
+mission (la PR n'est fusionnée qu'après 24 h de passages sur le VPS) :
+cloner cette branche.
+
 ```bash
-sudo -u pharmaflux -H git clone https://github.com/behramkorkut/pharmaflux.git /home/pharmaflux/pharmaflux
-cd /home/pharmaflux/pharmaflux
-sudo -u pharmaflux -H /home/pharmaflux/.local/bin/uv sync --frozen --no-dev
+sudo -u pharmaflux -H git clone --branch mission-00-socle-et-archivage https://github.com/behramkorkut/pharmaflux.git /home/pharmaflux/pharmaflux
+sudo -u pharmaflux -H /home/pharmaflux/.local/bin/uv sync --directory /home/pharmaflux/pharmaflux --frozen --no-dev
 sudo -u pharmaflux -H mkdir -p /home/pharmaflux/pharmaflux-data
 ```
 
-`--frozen` installe exactement les versions de `uv.lock` ; `--no-dev`
-laisse de côté les outils de développement (ruff, mypy, pytest), inutiles
-sur le VPS. Vérifier que la commande répond :
+`--directory` tient lieu de `cd` : `uv` travaille dans le dépôt et y crée
+`.venv`. `--frozen` installe exactement les versions de `uv.lock` ;
+`--no-dev` laisse de côté les outils de développement (ruff, mypy,
+pytest), inutiles sur le VPS. Vérifier que la commande répond :
 
 ```bash
 sudo -u pharmaflux -H /home/pharmaflux/pharmaflux/.venv/bin/pharmaflux --version
 sudo -u pharmaflux -H /home/pharmaflux/pharmaflux/.venv/bin/pharmaflux catalogue
 ```
 
+**Après la fusion de la PR sur `main`**, revenir sur `main` (entre deux
+passages, voir l'étape 7) ; les mises à jour suivantes se font ensuite par
+l'étape 7 :
+
+```bash
+sudo -u pharmaflux -H git -C /home/pharmaflux/pharmaflux switch main
+sudo -u pharmaflux -H git -C /home/pharmaflux/pharmaflux pull --ff-only
+sudo -u pharmaflux -H /home/pharmaflux/.local/bin/uv sync --directory /home/pharmaflux/pharmaflux --frozen --no-dev
+```
+
 ## 5. Installer et activer le minuteur
 
 ```bash
-sudo install -m 644 infra/planification/pharmaflux-collecte.service infra/planification/pharmaflux-collecte.timer /etc/systemd/system/
+sudo install -m 644 /home/pharmaflux/pharmaflux/infra/planification/pharmaflux-collecte.service /home/pharmaflux/pharmaflux/infra/planification/pharmaflux-collecte.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now pharmaflux-collecte.timer
 ```
@@ -120,29 +160,22 @@ vérifié que rien ne tourne (`systemctl is-active pharmaflux-collecte.service`
 répond `inactive` ou `failed`) :
 
 ```bash
-cd /home/pharmaflux/pharmaflux
-sudo -u pharmaflux -H git pull --ff-only
-sudo -u pharmaflux -H /home/pharmaflux/.local/bin/uv sync --frozen --no-dev
+sudo -u pharmaflux -H git -C /home/pharmaflux/pharmaflux pull --ff-only
+sudo -u pharmaflux -H /home/pharmaflux/.local/bin/uv sync --directory /home/pharmaflux/pharmaflux --frozen --no-dev
 ```
 
-Si `infra/planification/*.service` ou `*.timer` ont changé, refaire
-l'étape 5 (`install`, `daemon-reload`, puis
+(La première fois, après la fusion de la PR de la mission 00, faire
+d'abord le `git switch main` de l'étape 4.) Si
+`infra/planification/*.service` ou `*.timer` ont changé, refaire l'étape 5
+(`install`, `daemon-reload`, puis
 `sudo systemctl restart pharmaflux-collecte.timer`). Le passage suivant
 consigne la nouvelle version dans la colonne `version_collecteur` du
 manifeste (`0.1.0+<commit>`).
 
 ## 8. Rapatrier la copie sur le Mac (chaque semaine)
 
-Prérequis, une fois : l'utilisateur SSH de beko sur le VPS doit pouvoir
-lire l'archive. Le plus simple est de l'ajouter au groupe `pharmaflux`
-et de rendre le répertoire traversable par le groupe :
-
-```bash
-sudo usermod -aG pharmaflux <utilisateur-ssh>
-sudo chmod 750 /home/pharmaflux
-```
-
-Puis, depuis le dépôt sur le Mac :
+Prérequis : le compte SSH de beko lit l'archive, c'est l'appartenance au
+groupe `pharmaflux` posée à l'étape 2. Puis, depuis le dépôt sur le Mac :
 
 ```bash
 sh infra/planification/rapatrier.sh --simuler <hote>   # montre ce qui serait copié
@@ -174,8 +207,9 @@ vérifiée (`pharmaflux etat` sur la copie).
   `base-donnees-publique.medicaments.gouv.fr` et `www.data.gouv.fr`.
 - **Aucun secret sur le VPS** dans cette mission : dépôt public cloné en
   HTTPS sans jeton, aucune clé de déploiement, aucun `.env`. Le compte
-  `pharmaflux` n'a ni mot de passe, ni sudo, ni clé SSH ; il ne peut écrire
-  que dans l'archive.
+  `pharmaflux` n'a ni mot de passe, ni sudo, ni clé SSH, ni shell de
+  connexion ; il ne peut écrire que dans l'archive. Le compte SSH de beko
+  ne fait que lire l'archive (groupe `pharmaflux`).
 - **Unité durcie** : `NoNewPrivileges`, `ProtectSystem=strict`,
   `ProtectHome=read-only` avec `ReadWritePaths` sur la seule archive,
   `PrivateTmp`, `PrivateDevices`, familles d'adresses limitées à IP et
@@ -184,6 +218,6 @@ vérifiée (`pharmaflux etat` sur la copie).
 - Les données collectées sont publiques ; le manifeste ne contient que des
   URL publiques, des empreintes et des en-têtes HTTP sans cookie.
 - Les mises à jour du code sont **manuelles** (étape 7) : rien ne tire
-  `main` automatiquement sur le VPS.
+  `main` automatiquement sur le VPS. La version d'`uv` est figée (étape 3).
 - Le `User-Agent` identifie le projet et renvoie vers ce dépôt :
   `pharmaflux/<version> (+https://github.com/behramkorkut/pharmaflux)`.

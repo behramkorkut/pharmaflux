@@ -16,8 +16,8 @@ l'octet près, horodaté, avec son empreinte, et n'est jamais réécrit.
 - **L'archive est irremplaçable.** La BDPM n'a pas d'historique : un jour
   sans collecte est un jour perdu pour toujours. On ne supprime jamais une
   archive, on ne la réécrit jamais, on ne la « nettoie » jamais. Une copie
-  hors du serveur de collecte est tenue à jour (voir
-  `infra/planification/` à partir du palier 3 de la mission 00).
+  hors du serveur de collecte est tenue à jour chaque semaine
+  (`infra/planification/rapatrier.sh`, rsync sans `--delete`).
 - **Octets bruts.** Le contenu archivé est exactement ce que le serveur a
   envoyé, compressé (gzip), jamais converti ni réencodé : la licence BDPM
   interdit l'altération, et le rejeu du Lot 1 en dépend.

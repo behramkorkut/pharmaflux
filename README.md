@@ -54,7 +54,10 @@ fichier reçu est conservé à l'octet près, compressé, sous
 chaque passage laisse une ligne par fichier dans
 `manifeste/collecte.jsonl`, même en erreur. L'archive s'écrit hors du
 dépôt, sous `PHARMAFLUX_DATA` (défaut : `~/pharmaflux-data`). Rien de
-`data/` n'entre dans git. La planification horaire arrive au palier 3.
+`data/` n'entre dans git. En production, la collecte tourne toutes les
+heures à `:17` sur un VPS (minuteur systemd) et une copie est rapatriée
+chaque semaine : procédure dans
+[`infra/planification/README.md`](infra/planification/README.md).
 
 Vérifications locales, identiques à la CI :
 

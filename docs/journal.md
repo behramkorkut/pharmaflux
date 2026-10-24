@@ -57,3 +57,18 @@ ignorée avec un avertissement, `ajouter` repart sur une ligne propre ; une
 ligne illisible au milieu reste une erreur franche. Quatorzième entrée du
 catalogue : la documentation PDF du format BDPM, quotidienne, empreinte
 octets (une requête réelle pour la fixture, 4 Ko conservés).
+
+## 2026-10-24 — Mission 00, palier 3 : planification et premier passage réel
+
+`infra/planification/` : `pharmaflux-collecte.service` (oneshot durci,
+compte `pharmaflux`, `PHARMAFLUX_DATA` dans l'unité) et `.timer`
+(`*-*-* *:17:00`, `Persistent=true`), `rapatrier.sh` (Mac ← VPS, rsync en
+tirage, jamais `--delete`), procédure complète pour beko dans le README du
+dossier. **Un passage réel sur le Mac** (18:27:36 UTC, racine temporaire
+hors dépôt) : 14 requêtes, 14 `nouveau`, 0 erreur, **30 s** de bout en bout
+(pause de 2 s comprise entre entrées), 29,1 Mo bruts, 3,7 Mo archivés
+(gzip), 14 lignes de manifeste, aucun fichier partiel. Troisième
+observation de `CIS_InfoImportantes.txt` (5 h après la première) : toujours
+le même sha256 `a27b30e12c83…`. Dates affichées par la page ce jour :
+`CIS_CIP_bdpm.txt` 23/10, `CIS_CIP_Dispo_Spec.txt` 21/10, `CIS_MITM.txt`
+13/10, les autres 29/09.

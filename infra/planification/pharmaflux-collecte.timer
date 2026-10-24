@@ -1,0 +1,16 @@
+# Pharmaflux : déclenche un passage de collecte toutes les heures à :17.
+# Persistent=true : si le VPS était éteint à l'heure dite, le passage manqué
+# part dès le redémarrage (un seul, pas un par heure manquée).
+# Installation : infra/planification/README.md.
+
+[Unit]
+Description=Pharmaflux : collecte toutes les heures à :17
+
+[Timer]
+OnCalendar=*-*-* *:17:00
+Persistent=true
+AccuracySec=10s
+Unit=pharmaflux-collecte.service
+
+[Install]
+WantedBy=timers.target

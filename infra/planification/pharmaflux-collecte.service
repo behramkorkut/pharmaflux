@@ -1,0 +1,47 @@
+# Pharmaflux : un passage de collecte (télécharger, comparer, archiver,
+# consigner). Unité système déclenchée par pharmaflux-collecte.timer, sous le
+# compte dédié « pharmaflux », sans droits d'administration.
+# Installation et vérification : infra/planification/README.md.
+#
+# Chemins supposés (procédure du README) :
+#   dépôt   /home/pharmaflux/pharmaflux        (clone public, uv sync --frozen)
+#   archive /home/pharmaflux/pharmaflux-data   (PHARMAFLUX_DATA, hors dépôt)
+
+[Unit]
+Description=Pharmaflux : un passage de collecte des sources publiques (BDPM, Open Medic)
+Documentation=https://github.com/behramkorkut/pharmaflux
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pharmaflux
+Group=pharmaflux
+WorkingDirectory=/home/pharmaflux/pharmaflux
+Environment=PHARMAFLUX_DATA=/home/pharmaflux/pharmaflux-data
+Environment=PYTHONUNBUFFERED=1
+# Le script de l'environnement créé par « uv sync » : aucun outil à lancer au
+# passage, uv ne sert qu'à l'installation et aux mises à jour.
+ExecStart=/home/pharmaflux/pharmaflux/.venv/bin/pharmaflux collecte
+SyslogIdentifier=pharmaflux-collecte
+
+# Un passage dure quelques secondes ; le pire cas (quatorze téléchargements
+# de 60 s, trois essais chacun) reste sous l'heure. Au-delà, on coupe pour
+# ne jamais chevaucher le passage suivant.
+TimeoutStartSec=55min
+Nice=10
+
+# Durcissement : rien d'écrit en dehors de l'archive, aucun privilège.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/pharmaflux/pharmaflux-data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

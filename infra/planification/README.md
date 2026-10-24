@@ -87,11 +87,15 @@ sudo -u pharmaflux -H mkdir -p /home/pharmaflux/pharmaflux-data
 `--directory` tient lieu de `cd` : `uv` travaille dans le dépôt et y crée
 `.venv`. `--frozen` installe exactement les versions de `uv.lock` ;
 `--no-dev` laisse de côté les outils de développement (ruff, mypy,
-pytest), inutiles sur le VPS. Vérifier que la commande répond :
+pytest), inutiles sur le VPS. Vérifier que la commande répond, et que le
+Python de l'environnement est bien celui qu'`uv` a installé sous
+`/home/pharmaflux/.local/share/uv/python` (c'est l'un des trois seuls
+chemins de `/home` que l'unité rend visibles, étape 5) :
 
 ```bash
 sudo -u pharmaflux -H /home/pharmaflux/pharmaflux/.venv/bin/pharmaflux --version
 sudo -u pharmaflux -H /home/pharmaflux/pharmaflux/.venv/bin/pharmaflux catalogue
+sudo -u pharmaflux -H readlink -f /home/pharmaflux/pharmaflux/.venv/bin/python
 ```
 
 **Après la fusion de la PR sur `main`**, revenir sur `main` (entre deux
@@ -121,7 +125,20 @@ sudo journalctl -u pharmaflux-collecte -n 40 --no-pager
 ```
 
 Le journal doit se terminer par une ligne `passage <id> : 14 nouveau(x),
-0 inchangé(s), 0 non modifié(s) 304, 0 erreur(s)`.
+0 inchangé(s), 0 non modifié(s) 304, 0 erreur(s)`. Puis relever ce que
+l'unité a consommé et son score d'exposition systemd :
+
+```bash
+systemctl status pharmaflux-collecte.service --no-pager | grep -E 'Mem peak|CPU:'
+systemd-analyze security pharmaflux-collecte.service --no-pager | tail -1
+```
+
+`Mem peak` doit rester loin sous le plafond `MemoryMax=256M` (47 Mo
+mesurés au premier passage). Le score d'exposition va de 0 (le plus
+fermé) à 10 ; l'unité est classée au moins `OK`. Si un passage est tué
+pour dépassement mémoire, `systemctl status` le dit (`oom-kill`), et le
+minuteur relance à l'heure suivante : à signaler à l'IeC avant de toucher
+au plafond.
 
 ## 6. Vérifier
 
@@ -153,6 +170,16 @@ Place disque : 3,7 Mo compressés par passage qui archive tout ; si tout
 changeait chaque jour, 1,3 Go par an. `du -sh /home/pharmaflux/pharmaflux-data`
 et `df -h /home` de temps en temps.
 
+Le manifeste est `/home/pharmaflux/pharmaflux-data/manifeste/collecte.jsonl`
+(une ligne JSON par fichier et par passage, lisible par le groupe
+`pharmaflux`). Chaque ligne porte la version du collecteur qui l'a écrite
+(`0.1.0+<commit>`) ; les versions qui ont tourné, et combien de lignes
+chacune a écrites :
+
+```bash
+grep -o '"version_collecteur": "[^"]*"' /home/pharmaflux/pharmaflux-data/manifeste/collecte.jsonl | sort | uniq -c
+```
+
 ## 7. Mettre à jour après une fusion sur `main`
 
 Entre deux passages (par exemple entre `:20` et `:10`), ou après avoir
@@ -166,11 +193,24 @@ sudo -u pharmaflux -H /home/pharmaflux/.local/bin/uv sync --directory /home/phar
 
 (La première fois, après la fusion de la PR de la mission 00, faire
 d'abord le `git switch main` de l'étape 4.) Si
-`infra/planification/*.service` ou `*.timer` ont changé, refaire l'étape 5
-(`install`, `daemon-reload`, puis
-`sudo systemctl restart pharmaflux-collecte.timer`). Le passage suivant
+`infra/planification/*.service` ou `*.timer` ont changé, réinstaller les
+unités, puis un passage manuel pour valider la nouvelle unité avant que le
+minuteur ne la déclenche :
+
+```bash
+sudo install -m 644 /home/pharmaflux/pharmaflux/infra/planification/pharmaflux-collecte.service /home/pharmaflux/pharmaflux/infra/planification/pharmaflux-collecte.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl restart pharmaflux-collecte.timer
+sudo systemctl start pharmaflux-collecte.service
+sudo journalctl -u pharmaflux-collecte -n 40 --no-pager
+systemctl status pharmaflux-collecte.service --no-pager | grep -E 'Mem peak|CPU:'
+systemd-analyze security pharmaflux-collecte.service --no-pager | tail -1
+```
+
+Le passage manuel doit afficher `0 erreur(s)` et des entrées `inchangé`
+(rien n'a changé à la source entre deux passages). Le passage suivant
 consigne la nouvelle version dans la colonne `version_collecteur` du
-manifeste (`0.1.0+<commit>`).
+manifeste (`0.1.0+<commit>`, étape 6).
 
 ## 8. Rapatrier la copie sur le Mac (chaque semaine)
 
@@ -210,11 +250,21 @@ vérifiée (`pharmaflux etat` sur la copie).
   `pharmaflux` n'a ni mot de passe, ni sudo, ni clé SSH, ni shell de
   connexion ; il ne peut écrire que dans l'archive. Le compte SSH de beko
   ne fait que lire l'archive (groupe `pharmaflux`).
+- **VPS partagé** : d'autres applications tournent sur la même machine.
+  L'unité garantit que la collecte ne les voit pas et ne les gêne pas :
+  `ProtectHome=tmpfs` remplace `/home` par un système de fichiers vide,
+  dans lequel seuls **trois chemins** sont rendus visibles, le dépôt
+  `/home/pharmaflux/pharmaflux` et le Python d'`uv`
+  (`/home/pharmaflux/.local/share/uv/python`) en lecture seule
+  (`BindReadOnlyPaths`), l'archive `/home/pharmaflux/pharmaflux-data` en
+  écriture (`BindPaths`). Plafonds : `MemoryMax=256M` (cinq fois le pic
+  mesuré), `CPUQuota=50%` (la moitié d'un cœur, un quart de la machine),
+  `Nice=10` et `IOSchedulingClass=idle` (CPU et disque servis après tout
+  le monde).
 - **Unité durcie** : `NoNewPrivileges`, `ProtectSystem=strict`,
-  `ProtectHome=read-only` avec `ReadWritePaths` sur la seule archive,
-  `PrivateTmp`, `PrivateDevices`, familles d'adresses limitées à IP et
-  Unix. Un passage qui dépasse 55 min est coupé pour ne jamais chevaucher
-  le suivant.
+  `PrivateTmp`, `PrivateDevices`, `ProtectKernel*`, familles d'adresses
+  limitées à IP et Unix. Un passage qui dépasse 55 min est coupé pour ne
+  jamais chevaucher le suivant.
 - Les données collectées sont publiques ; le manifeste ne contient que des
   URL publiques, des empreintes et des en-têtes HTTP sans cookie.
 - Les mises à jour du code sont **manuelles** (étape 7) : rien ne tire

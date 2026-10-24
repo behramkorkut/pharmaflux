@@ -91,3 +91,19 @@ sync`). Remarques mineures prises : `--shell /usr/sbin/nologin` (et
 l'URL (`0.10.10`, celle du Mac). Propositions (a), (b), (c) acceptées pour
 la mission 01 ou le prochain passage dans `cli.py`. `pr.md` attend les
 24 h de passages sur le VPS.
+
+## 2026-10-24 — Mission 00, durcissement de l'unité pour un VPS partagé
+
+Consigne de l'IeC (`docs/relectures/mission-00/consigne-unite-vps.md`) :
+le VPS héberge aussi une autre application jusqu'à mi-novembre ; premier
+passage réel sur le VPS conforme (14 `nouveau`, 29 s, 2,35 s de CPU, pic
+mémoire 46,9 Mo). `pharmaflux-collecte.service` : `ProtectHome=tmpfs`,
+`BindReadOnlyPaths` sur le dépôt et le Python d'`uv`, `BindPaths` sur
+l'archive (trois chemins visibles dans `/home`), `MemoryMax=256M`,
+`CPUQuota=50%`, `IOSchedulingClass=idle`, `Nice=10` conservé. Vérifié dans
+`src/` que rien d'autre n'est lu sous `/home` (racine par variable,
+`git rev-parse` dans le dépôt, certificats `certifi` dans `.venv`).
+README : `readlink -f` du Python, `Mem peak` et score
+`systemd-analyze security`, chemin du manifeste et versions distinctes,
+séquence de mise à jour d'une unité, rubrique « VPS partagé ». Rapport :
+`docs/rapports/mission-00/correctif-unite.md`.

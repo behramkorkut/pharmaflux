@@ -1,11 +1,13 @@
 # Pharmaflux : un passage de collecte (télécharger, comparer, archiver,
 # consigner). Unité système déclenchée par pharmaflux-collecte.timer, sous le
-# compte dédié « pharmaflux », sans droits d'administration.
+# compte dédié « pharmaflux », sans droits d'administration, sur un VPS que
+# d'autres applications partagent.
 # Installation et vérification : infra/planification/README.md.
 #
 # Chemins supposés (procédure du README) :
-#   dépôt   /home/pharmaflux/pharmaflux        (clone public, uv sync --frozen)
-#   archive /home/pharmaflux/pharmaflux-data   (PHARMAFLUX_DATA, hors dépôt)
+#   dépôt   /home/pharmaflux/pharmaflux                 (clone public, uv sync --frozen)
+#   Python  /home/pharmaflux/.local/share/uv/python     (installé par uv, cible de .venv/bin/python)
+#   archive /home/pharmaflux/pharmaflux-data            (PHARMAFLUX_DATA, hors dépôt)
 
 [Unit]
 Description=Pharmaflux : un passage de collecte des sources publiques (BDPM, Open Medic)
@@ -29,15 +31,34 @@ SyslogIdentifier=pharmaflux-collecte
 # de 60 s, trois essais chacun) reste sous l'heure. Au-delà, on coupe pour
 # ne jamais chevaucher le passage suivant.
 TimeoutStartSec=55min
+
+# Ressources : le VPS est partagé, un passage ne doit jamais gêner le reste.
+# Mesuré au premier passage : pic mémoire 47 Mo, 2,35 s de CPU.
+# Nice=10 : priorité CPU basse, l'ordonnanceur sert d'abord les autres.
 Nice=10
+# MemoryMax : cinq fois le pic mesuré ; au-delà, le passage est tué (puis
+# relancé à l'heure suivante) plutôt que de pousser la machine en swap.
+MemoryMax=256M
+# CPUQuota : la moitié d'un cœur, soit un quart des deux cœurs du VPS ;
+# le passage dure quelques secondes de plus, rien d'autre ne ralentit.
+CPUQuota=50%
+# IOSchedulingClass=idle : les lectures et écritures disque ne passent que
+# quand personne d'autre n'en demande.
+IOSchedulingClass=idle
 
 # Durcissement : rien d'écrit en dehors de l'archive, aucun privilège.
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=/home/pharmaflux/pharmaflux-data
+# /home est remplacé par un tmpfs vide : le service ne voit, des dossiers
+# personnels, que les trois chemins rendus visibles ci-dessous.
+ProtectHome=tmpfs
+# En lecture seule : le dépôt (code, .venv, .git pour la version du
+# collecteur) et le Python installé par uv, cible du lien .venv/bin/python.
+BindReadOnlyPaths=/home/pharmaflux/pharmaflux /home/pharmaflux/.local/share/uv/python
+# En écriture : la seule archive.
+BindPaths=/home/pharmaflux/pharmaflux-data
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

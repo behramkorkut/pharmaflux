@@ -97,3 +97,25 @@ def test_content_disposition_avec_guillemets_et_sans() -> None:
     serveur = ServeurSimule({URL: [(200, b"", {})]})
     with _telechargeur(serveur, []) as telechargeur:
         assert telechargeur.telecharger(URL).content_disposition_nom is None
+
+
+def test_redirection_en_boucle_definitive_sans_relance() -> None:
+    serveur = ServeurSimule({URL: [(302, b"", {"Location": URL})]})
+    attentes: list[float] = []
+    with (
+        _telechargeur(serveur, attentes) as telechargeur,
+        pytest.raises(ErreurTelechargement) as info,
+    ):
+        telechargeur.telecharger(URL)
+    assert info.value.essais == 1 and info.value.http_statut is None
+    assert str(info.value).startswith("TooManyRedirects")
+    assert attentes == [], "rien à attendre d'un nouvel essai"
+
+
+def test_corps_indecodable_definitif_sans_relance() -> None:
+    serveur = ServeurSimule({URL: [(200, b"pas du gzip", {"Content-Encoding": "gzip"})]})
+    with _telechargeur(serveur, []) as telechargeur, pytest.raises(ErreurTelechargement) as info:
+        telechargeur.telecharger(URL)
+    assert info.value.essais == 1
+    assert str(info.value).startswith("DecodingError")
+    assert serveur.requetes_vers(URL) == 1

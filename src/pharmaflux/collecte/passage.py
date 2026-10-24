@@ -40,6 +40,7 @@ FORMAT_PASSAGE_ID = "%Y%m%dT%H%M%SZ"
 MOTIF_LIEN_ABSENT = "lien_absent"
 MOTIF_LIEN_NOUVEAU = "lien_nouveau"
 MOTIF_ARCHIVE_EXISTANTE = "archive_existante"
+MOTIF_INATTENDUE = "inattendue"
 
 
 def maintenant_utc() -> datetime:
@@ -105,7 +106,13 @@ def executer_passage(
     dormir: Callable[[float], None] = time.sleep,
     pause: float = PAUSE_SECONDES,
 ) -> Bilan:
-    """Un passage complet sur ``entrees``. Ne lève pas : tout finit dans le manifeste."""
+    """Un passage complet sur ``entrees`` : tout finit dans le manifeste.
+
+    Une erreur sur une entrée, prévue (téléchargement, analyse, archive) ou
+    non (filet ``inattendue``), donne une ligne en erreur et le passage
+    continue. Ne lève que si le manifeste lui-même ne peut plus être écrit
+    (``OSError``, disque plein) : il n'y a alors plus où consigner.
+    """
     debut_passage = maintenant()
     anterieurs = manifeste.lire(racine)
     contexte = _Contexte(
@@ -133,11 +140,16 @@ def executer_passage(
             dormir(pause)
         premier = False
 
-        enregistrement, contenu = _collecter(contexte, entree)
-        if entree.empreinte is ModeEmpreinte.PAGE_BDPM and contenu is not None:
-            liens_page = _liens_par_url(contenu)
-        elif entree.source == "bdpm" and liens_page is not None:
-            _appliquer_page(enregistrement, liens_page.get(entree.url))
+        enregistrement: Enregistrement | None = None
+        try:
+            enregistrement, contenu = _collecter(contexte, entree)
+            if entree.empreinte is ModeEmpreinte.PAGE_BDPM and contenu is not None:
+                liens_page = _liens_par_url(contenu)
+            elif entree.source == "bdpm" and liens_page is not None:
+                _appliquer_page(enregistrement, liens_page.get(entree.url))
+        except Exception as exc:  # filet (décision 6) : une entrée n'arrête pas les autres
+            journal.exception("%s : erreur inattendue", entree.identifiant)
+            enregistrement = _marquer_inattendue(contexte, entree, enregistrement, exc)
         _consigner(contexte, bilan, enregistrement)
 
     if liens_page is not None:
@@ -214,6 +226,34 @@ def _collecter(contexte: _Contexte, entree: Entree) -> tuple[Enregistrement, byt
 def _terminer(contexte: _Contexte, enregistrement: Enregistrement) -> Enregistrement:
     enregistrement.fin = contexte.maintenant().isoformat()
     return enregistrement
+
+
+def _marquer_inattendue(
+    contexte: _Contexte, entree: Entree, enregistrement: Enregistrement | None, exc: BaseException
+) -> Enregistrement:
+    """La ligne d'une entrée dont le traitement a levé une exception imprévue.
+
+    Si ``_collecter`` avait déjà produit sa ligne (archive écrite, puis page
+    illisible par exemple), elle est gardée et passe en erreur, motif
+    enchaîné ; sinon une ligne minimale est créée. La trace est dans le journal.
+    """
+    motif = f"{MOTIF_INATTENDUE}: {type(exc).__name__}: {exc}".strip(": ")
+    if enregistrement is None:
+        instant = contexte.maintenant().isoformat()
+        enregistrement = Enregistrement(
+            passage_id=contexte.passage_id,
+            identifiant=entree.identifiant,
+            source=entree.source,
+            fichier=entree.fichier,
+            url=entree.url,
+            debut=instant,
+            fin=instant,
+            statut=Statut.ERREUR,
+            version_collecteur=contexte.version,
+        )
+    enregistrement.statut = Statut.ERREUR
+    enregistrement.erreur = " ; ".join(filter(None, (enregistrement.erreur, motif)))
+    return _terminer(contexte, enregistrement)
 
 
 def _consigner(contexte: _Contexte, bilan: Bilan, enregistrement: Enregistrement) -> None:

@@ -59,7 +59,9 @@ def projection_datagouv(contenu: bytes) -> dict[str, Any]:
         raise AnalyseImpossible(f"JSON invalide : {exc}") from exc
     if not isinstance(jeu, dict) or not isinstance(jeu.get("resources"), list):
         raise AnalyseImpossible("JSON sans liste « resources »")
-    ressources: list[dict[str, Any]] = jeu["resources"]
+    ressources: list[Any] = jeu["resources"]
+    if not all(isinstance(ressource, dict) for ressource in ressources):
+        raise AnalyseImpossible("une ressource n'est pas un objet JSON")
     return {
         "last_modified": jeu.get("last_modified"),
         "nombre_ressources": len(ressources),

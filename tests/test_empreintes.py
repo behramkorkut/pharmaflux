@@ -104,3 +104,8 @@ def test_json_invalide_refuse() -> None:
         empreinte_comparaison(ModeEmpreinte.METADONNEES_DATAGOUV, b"<html>erreur</html>")
     with pytest.raises(AnalyseImpossible):
         empreinte_comparaison(ModeEmpreinte.METADONNEES_DATAGOUV, b'{"resources": null}')
+
+
+def test_ressource_qui_n_est_pas_un_objet_refusee() -> None:
+    with pytest.raises(AnalyseImpossible, match="objet"):
+        projection_datagouv(b'{"resources": [{"id": "a"}, "pas un objet"]}')

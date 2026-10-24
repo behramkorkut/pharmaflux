@@ -3,7 +3,9 @@
 Les sources sont des services publics : téléchargements en série, un
 ``User-Agent`` qui identifie le projet, et des relances mesurées. Une erreur
 de connexion est relancée tout de suite puis avec attente exponentielle ;
-une réponse 5xx attend d'emblée ; une réponse 4xx n'est pas relancée.
+une réponse 5xx attend d'emblée ; une réponse 4xx, une redirection en boucle
+ou un corps indécodable ne sont pas relancés. Toute erreur ``httpx`` ressort
+en ``ErreurTelechargement`` : rien d'autre ne sort de ``telecharger``.
 """
 
 from __future__ import annotations
@@ -116,9 +118,13 @@ class Telechargeur:
                 reponse = self._client.get(url)
             except httpx.TransportError as exc:
                 # Connexion, délai, lecture interrompue : relance immédiate puis exponentielle.
-                derniere_erreur = f"{type(exc).__name__}: {exc}".strip(": ")
+                derniere_erreur = _libelle(exc)
                 dernier_statut = None
                 attente = 0.0 if essai == 1 else self._attente_base * 2 ** (essai - 2)
+            except httpx.HTTPError as exc:
+                # Redirection en boucle, corps indécodable (Content-Encoding menteur)… :
+                # un nouvel essai donnerait la même chose, l'erreur est définitive.
+                raise ErreurTelechargement(_libelle(exc), essais=essai) from exc
             else:
                 if reponse.status_code in (200, 304):
                     return Reponse(reponse.status_code, reponse.content, reponse.headers, essai)
@@ -133,3 +139,8 @@ class Telechargeur:
             if essai < ESSAIS_MAX:
                 self._dormir(attente)
         raise ErreurTelechargement(derniere_erreur, essais=ESSAIS_MAX, http_statut=dernier_statut)
+
+
+def _libelle(exc: httpx.HTTPError) -> str:
+    """``TooManyRedirects: Exceeded maximum allowed redirects.`` : le type, puis le message."""
+    return f"{type(exc).__name__}: {exc}".strip(": ")

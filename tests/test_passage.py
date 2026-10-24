@@ -1,6 +1,7 @@
 """Un passage de bout en bout, sur le serveur simulé : tous les cas de l'ordre de mission."""
 
 import json
+import logging
 from pathlib import Path
 
 import httpx
@@ -312,3 +313,72 @@ def test_manifeste_complet_et_ajout_seul(lancer: Lanceur, racine: Path, horloge:
     relus = manifeste.lire(racine)
     assert [e.passage_id for e in relus] == [ligne["passage_id"] for ligne in lignes]
     assert len(manifeste.dernieres_empreintes(relus)) == 14
+
+
+def test_redirection_en_boucle_et_corps_indecodable_n_arretent_pas_les_autres(
+    lancer: Lanceur, serveur: ServeurSimule, racine: Path
+) -> None:
+    """Relecture 1, bloquant 1 : toute erreur httpx finit en ligne d'erreur."""
+    serveur.scenariser(SPECIALITES.url, (302, b"", {"Location": SPECIALITES.url}))
+    serveur.scenariser(INFOS.url, (200, b"pas du gzip", {"Content-Encoding": "gzip"}))
+    bilan = lancer()
+    assert bilan.compter(Statut.ERREUR) == 2 and bilan.compter(Statut.NOUVEAU) == 12
+    lignes = _par_fichier(racine, bilan.passage_id)
+    assert len(lignes) == 14, "aucun passage ne manque"
+    specialites, infos = lignes["CIS_bdpm.txt"], lignes["CIS_InfoImportantes.txt"]
+    assert str(specialites["erreur"]).startswith("TooManyRedirects") and specialites["essais"] == 1
+    assert str(infos["erreur"]).startswith("DecodingError") and infos["chemin_archive"] is None
+    assert specialites["date_source_affichee"] == "2026-09-29", "la page a quand même été lue"
+
+
+def test_exception_imprevue_sur_un_fichier_n_arrete_pas_les_autres(
+    lancer: Lanceur,
+    racine: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Le filet : une exception hors des cas prévus donne une ligne « inattendue »."""
+    from pharmaflux.collecte import passage
+
+    chemin_archive_original = passage.chemin_archive
+
+    def chemin_qui_casse(racine_: Path, entree_: object, debut: object, sha: str) -> Path:
+        if entree_ is INFOS:
+            raise RuntimeError("boum")
+        return chemin_archive_original(racine_, entree_, debut, sha)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(passage, "chemin_archive", chemin_qui_casse)
+    with caplog.at_level(logging.ERROR, logger="pharmaflux.collecte"):
+        bilan = lancer()
+    assert bilan.compter(Statut.ERREUR) == 1 and bilan.compter(Statut.NOUVEAU) == 13
+    lignes = _par_fichier(racine, bilan.passage_id)
+    assert len(lignes) == 14
+    infos = lignes["CIS_InfoImportantes.txt"]
+    assert infos["statut"] == "erreur" and infos["erreur"] == "inattendue: RuntimeError: boum"
+    assert infos["identifiant"] == INFOS.identifiant and infos["chemin_archive"] is None
+    assert "erreur inattendue" in caplog.text and "Traceback" in caplog.text
+
+
+def test_exception_imprevue_apres_archivage_garde_l_archive(
+    lancer: Lanceur, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pharmaflux.collecte import passage
+
+    def liens_qui_cassent(_contenu: bytes) -> None:
+        raise RuntimeError("analyse de la page")
+
+    monkeypatch.setattr(passage, "_liens_par_url", liens_qui_cassent)
+    bilan = lancer([PAGE, SPECIALITES])
+    page, specialites = bilan.enregistrements
+    assert page.statut == "erreur" and page.erreur == "inattendue: RuntimeError: analyse de la page"
+    assert page.chemin_archive is not None, "l'archive déjà écrite est consignée"
+    assert specialites.statut == "nouveau" and specialites.date_source_affichee is None
+
+
+def test_ressource_datagouv_qui_n_est_pas_un_objet_donne_analyse_impossible(
+    lancer: Lanceur, serveur: ServeurSimule
+) -> None:
+    serveur.remplacer_contenu(OPENMEDIC.url, b'{"resources": [1, 2]}')
+    (ligne,) = lancer([OPENMEDIC]).enregistrements
+    assert ligne.statut == "erreur" and str(ligne.erreur).startswith("analyse_impossible:")
+    assert ligne.chemin_archive is not None, "archivée quand même (C1)"

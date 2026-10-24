@@ -1,9 +1,10 @@
 """État de l'archive, calculé depuis le manifeste.
 
-Pour chaque fichier : dernière archive écrite, dernier changement observé
-(un « nouveau » qui n'est pas la première observation du fichier), date de
-mise à jour affichée par la source, dernière erreur, passages des
-dernières 24 h.
+Pour chaque fichier : dernière archive écrite (quel que soit le statut de
+la ligne : une ``lien_absent`` ou une ``analyse_impossible`` archive aussi),
+dernier changement observé (une archive écrite alors qu'une autre existait
+déjà), date de mise à jour affichée par la source, dernière erreur,
+passages des dernières 24 h.
 """
 
 from __future__ import annotations
@@ -35,14 +36,15 @@ def calculer_etat(enregistrements: list[Enregistrement], maintenant: datetime) -
         ligne = lignes.get(cle)
         if ligne is None:
             ligne = lignes[cle] = LigneEtat(e.source, e.fichier)
-        deja_vu = ligne.dernier_statut is not None
         ligne.dernier_statut = e.statut
         if e.debut >= seuil:
             ligne.passages_24h += 1
-        if e.statut == Statut.NOUVEAU:
-            ligne.derniere_archive = _heure(e.fin)
-            if deja_vu:
+        if e.chemin_archive:
+            # Une archive de plus, alors qu'une existait : le contenu a changé
+            # (un contenu identique n'est jamais réarchivé, voir dernieres_empreintes).
+            if ligne.derniere_archive is not None:
                 ligne.dernier_changement = _heure(e.fin)
+            ligne.derniere_archive = _heure(e.fin)
         if e.statut == Statut.ERREUR:
             ligne.derniere_erreur = f"{_heure(e.fin)} {e.erreur or ''}".strip()
         if e.date_source_affichee:

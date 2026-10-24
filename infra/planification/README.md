@@ -225,7 +225,10 @@ uv run pharmaflux etat                                  # l'état, lu sur la cop
 
 `rsync -a` ne copie que ce qui manque ou a changé (les archives sont
 immuables : seul le manifeste grandit) ; **jamais `--delete`**, dans aucun
-sens. Si l'archive distante n'est pas au chemin par défaut :
+sens. Un transfert coupé laisse son morceau dans un dossier
+`.rsync-partiel/` à côté du fichier, jamais sous le nom définitif : la copie
+ne contient pas d'archive tronquée, et le passage suivant reprend le
+morceau. Si l'archive distante n'est pas au chemin par défaut :
 `PHARMAFLUX_VPS_DATA=/autre/chemin sh infra/planification/rapatrier.sh <hote>`.
 
 ## 9. Désinstaller

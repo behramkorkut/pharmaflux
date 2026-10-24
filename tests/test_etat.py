@@ -49,3 +49,36 @@ def test_etat_par_fichier() -> None:
     texte = formater_etat([specialites, mitm])
     assert texte.splitlines()[0].startswith("fichier")
     assert "bdpm/CIS_bdpm.txt" in texte and "HTTP 503" in texte and "—" in texte
+
+
+def test_archive_ecrite_en_erreur_compte_comme_derniere_archive() -> None:
+    """Relecture 1, point 1 : une « lien_absent » ou « analyse_impossible » archive aussi."""
+    maintenant = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
+    il_y_a = lambda heures: maintenant - timedelta(hours=heures)  # noqa: E731
+    (ligne,) = calculer_etat(
+        [
+            _ligne("p1", il_y_a(5), "nouveau", chemin_archive="a"),
+            _ligne("p2", il_y_a(4), "inchange"),
+            _ligne("p3", il_y_a(3), "erreur", chemin_archive="b", erreur="lien_absent"),
+            _ligne("p4", il_y_a(2), "erreur", erreur="HTTP 503"),
+        ],
+        maintenant,
+    )
+    assert ligne.derniere_archive == "2026-10-26 09:00Z", "l'archive en erreur est la dernière"
+    assert ligne.dernier_changement == "2026-10-26 09:00Z", "et son contenu différait"
+    assert ligne.derniere_erreur == "2026-10-26 10:00Z HTTP 503"
+
+
+def test_premiere_archive_apres_une_erreur_n_est_pas_un_changement() -> None:
+    maintenant = datetime(2026, 10, 26, 12, 0, tzinfo=UTC)
+    il_y_a = lambda heures: maintenant - timedelta(hours=heures)  # noqa: E731
+    (ligne,) = calculer_etat(
+        [
+            _ligne("p1", il_y_a(3), "erreur", erreur="HTTP 503"),
+            _ligne("p2", il_y_a(2), "nouveau", chemin_archive="a"),
+            _ligne("p3", il_y_a(1), "erreur", erreur="archive_existante"),
+        ],
+        maintenant,
+    )
+    assert ligne.derniere_archive == "2026-10-26 10:00Z"
+    assert ligne.dernier_changement is None, "première archive : pas un changement"

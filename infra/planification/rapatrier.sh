@@ -14,6 +14,9 @@
 # Jamais de --delete : l'archive ne fait que grandir, et une copie ne doit
 # pouvoir supprimer ni un fichier distant ni un fichier local. Les fichiers
 # temporaires d'une écriture en cours (.<nom>.partiel-<pid>) ne sont pas copiés.
+# Un transfert coupé laisse son morceau dans un dossier .rsync-partiel/ à côté
+# du fichier, jamais sous le nom définitif : la copie ne contient aucune
+# archive tronquée qui aurait l'air bonne, et le transfert suivant reprend là.
 
 set -eu
 
@@ -39,10 +42,11 @@ source_distante="${PHARMAFLUX_VPS_DATA:-/home/pharmaflux/pharmaflux-data}"
 mkdir -p "$destination"
 
 echo "rapatriement ${simulation:+(simulation) }: $hote:$source_distante/ -> $destination/"
-# -a : droits, dates et arborescence conservés ; --partial : une coupure
-# reprend où elle s'était arrêtée ; les .gz sont déjà compressés, pas de -z.
+# -a : droits, dates et arborescence conservés ; --partial-dir : une coupure
+# reprend où elle s'était arrêtée, le morceau attend dans .rsync-partiel/ ;
+# les .gz sont déjà compressés, pas de -z.
 # shellcheck disable=SC2086  # $simulation est vide ou un seul mot
-rsync -a -v --partial $simulation \
+rsync -a -v --partial-dir=.rsync-partiel $simulation \
     --exclude '.*.partiel-*' \
     "$hote:$source_distante/" "$destination/"
 

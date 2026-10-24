@@ -50,7 +50,7 @@ Un passage télécharge la page de téléchargement de la BDPM et ses onze
 fichiers ; une fois par jour, la documentation PDF de leur format et les
 métadonnées Open Medic. Chaque
 fichier reçu est conservé à l'octet près, compressé, sous
-`bronze/<source>/<fichier>/<jour>/<horodatage UTC>__<sha256>.gz`, et
+`bronze/<source>/<fichier>/<jour>/<horodatage UTC>__<sha256, 12 car.>.<ext>.gz`, et
 chaque passage laisse une ligne par fichier dans
 `manifeste/collecte.jsonl`, même en erreur. L'archive s'écrit hors du
 dépôt, sous `PHARMAFLUX_DATA` (défaut : `~/pharmaflux-data`). Rien de

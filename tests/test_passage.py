@@ -207,9 +207,7 @@ def test_ecriture_interrompue(
     (ligne,) = bilan.enregistrements
     assert ligne.statut == "erreur" and str(ligne.erreur).startswith("ecriture:")
     assert ligne.sha256 == sha256_hex(contenu_fixture(SPECIALITES))
-    assert list((racine / "bronze").rglob("*")) == [
-        p for p in (racine / "bronze").rglob("*") if p.is_dir()
-    ], "aucun fichier partiel visible"
+    assert not [p for p in (racine / "bronze").rglob("*") if p.is_file()], "aucun partiel"
     assert len(_lignes(racine)) == 1
 
 

@@ -79,7 +79,7 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 | Quoi | Où |
 |---|---|
 | Spécifications (PRD) | `01_Specifications/` |
-| Code | `src/pharmaflux/` : `cli.py` ; `collecte/` : `catalogue.py` (13 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` |
+| Code | `src/pharmaflux/` : `cli.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` |
 | Tests et fixtures | `tests/`, `tests/fixtures/` |
 | Planification de la collecte (systemd, rapatriement) | `infra/planification/` |
 | Décisions d'architecture | `docs/adr/` (gabarit : `0000-modele.md`) |

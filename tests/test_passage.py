@@ -16,8 +16,18 @@ from tests.conftest import Horloge, Lanceur, ServeurSimule, contenu_fixture, ent
 PAGE = entree("bdpm.page_telechargement")
 SPECIALITES = entree("bdpm.specialites")
 INFOS = entree("bdpm.infos_importantes")
+MITM = entree("bdpm.mitm")
+DOCUMENTATION = entree("bdpm.documentation_formats")
 OPENMEDIC = entree("openmedic.metadonnees")
 NONCE_RECU = b"7KSjne/4hYYj0QHlCN6aaA=="
+PAGE_SANS_MITM = contenu_fixture(PAGE).replace(
+    b'href="/download/file/CIS_MITM.txt"', b'href="/download/file/CIS_MITM_v2.txt"'
+)
+PAGE_MAINTENANCE = b"<html><body>Maintenance</body></html>"
+
+
+def _archives(racine: Path, fichier: str) -> list[Path]:
+    return sorted((racine / "bronze" / "bdpm" / fichier).rglob("*.gz"))
 
 
 def _lignes(racine: Path) -> list[dict[str, object]]:
@@ -39,11 +49,11 @@ def test_premier_passage_archive_tout(
     bilan = lancer()
     assert bilan.code_sortie == 0
     assert bilan.passage_id == "20261024T141700Z"
-    assert bilan.compter(Statut.NOUVEAU) == 13 and bilan.compter(Statut.ERREUR) == 0
-    assert len(serveur.requetes) == 13, "une requête par entrée, aucune autre"
+    assert bilan.compter(Statut.NOUVEAU) == 14 and bilan.compter(Statut.ERREUR) == 0
+    assert len(serveur.requetes) == 14, "une requête par entrée, aucune autre"
 
     lignes = _par_fichier(racine, bilan.passage_id)
-    assert len(lignes) == 13
+    assert len(lignes) == 14
     for entree_catalogue in CATALOGUE:
         ligne = lignes[entree_catalogue.fichier]
         brut = contenu_fixture(entree_catalogue)
@@ -75,11 +85,12 @@ def test_passage_inchange_n_archive_rien(lancer: Lanceur, racine: Path, horloge:
     horloge.avancer(hours=1)
     second = lancer()
     assert second.passage_id != premier.passage_id
-    assert second.compter(Statut.INCHANGE) == 12, "tout sauf Open Medic, déjà collecté ce jour"
+    assert second.compter(Statut.INCHANGE) == 12, "tout sauf les quotidiennes, déjà collectées"
     assert second.compter(Statut.NOUVEAU) == 0 and second.code_sortie == 0
     assert sorted(p for p in (racine / "bronze").rglob("*.gz")) == archives_avant
     lignes = _par_fichier(racine, second.passage_id)
     assert len(lignes) == 12 and "metadonnees.json" not in lignes
+    assert DOCUMENTATION.fichier not in lignes
     assert all(ligne["chemin_archive"] is None and ligne["sha256"] for ligne in lignes.values())
     assert lignes["CIS_bdpm.txt"]["date_source_affichee"] == "2026-09-29"
 
@@ -157,9 +168,9 @@ def test_erreur_definitive_n_arrete_pas_les_autres(
     serveur.scenariser(INFOS.url, httpx.ConnectTimeout("delai"))
     bilan = lancer()
     assert bilan.code_sortie == 1
-    assert bilan.compter(Statut.ERREUR) == 2 and bilan.compter(Statut.NOUVEAU) == 11
+    assert bilan.compter(Statut.ERREUR) == 2 and bilan.compter(Statut.NOUVEAU) == 12
     lignes = _par_fichier(racine, bilan.passage_id)
-    assert len(lignes) == 13, "aucun passage ne manque, même en erreur"
+    assert len(lignes) == 14, "aucun passage ne manque, même en erreur"
     specialites = lignes["CIS_bdpm.txt"]
     assert specialites["statut"] == "erreur" and specialites["http_statut"] == 503
     assert specialites["essais"] == 3 and specialites["erreur"] == "HTTP 503"
@@ -202,13 +213,10 @@ def test_ecriture_interrompue(
 
 
 def test_lien_absent_et_lien_nouveau(lancer: Lanceur, serveur: ServeurSimule, racine: Path) -> None:
-    page = contenu_fixture(PAGE).replace(
-        b'href="/download/file/CIS_MITM.txt"', b'href="/download/file/CIS_MITM_v2.txt"'
-    )
-    serveur.remplacer_contenu(PAGE.url, page)
+    serveur.remplacer_contenu(PAGE.url, PAGE_SANS_MITM)
     bilan = lancer()
     lignes = _par_fichier(racine, bilan.passage_id)
-    assert len(lignes) == 14
+    assert len(lignes) == 15
     mitm = lignes["CIS_MITM.txt"]
     assert mitm["statut"] == "erreur" and mitm["erreur"] == "lien_absent"
     assert mitm["chemin_archive"], "le fichier est quand même archivé : l'archive est irremplaçable"
@@ -220,12 +228,75 @@ def test_lien_absent_et_lien_nouveau(lancer: Lanceur, serveur: ServeurSimule, ra
 
 
 def test_page_illisible_n_empeche_pas_les_fichiers(lancer: Lanceur, serveur: ServeurSimule) -> None:
-    serveur.remplacer_contenu(PAGE.url, b"<html><body>Maintenance</body></html>")
+    serveur.remplacer_contenu(PAGE.url, PAGE_MAINTENANCE)
     bilan = lancer([PAGE, SPECIALITES])
     page, specialites = bilan.enregistrements
     assert page.statut == "erreur" and str(page.erreur).startswith("analyse_impossible")
     assert page.chemin_archive, "la page reçue est archivée quand même"
+    assert page.empreinte_comparaison == page.sha256, "repli sur les octets"
     assert specialites.statut == "nouveau" and specialites.date_source_affichee is None
+
+
+def test_lien_absent_archive_une_seule_fois(
+    lancer: Lanceur, serveur: ServeurSimule, racine: Path, horloge: Horloge
+) -> None:
+    """C1 : l'alerte dure, l'archive n'est écrite qu'une fois."""
+    serveur.remplacer_contenu(PAGE.url, PAGE_SANS_MITM)
+    lancer([PAGE, MITM])
+    horloge.avancer(hours=1)
+    bilan = lancer([PAGE, MITM])
+    mitm = bilan.enregistrements[1]  # la troisième ligne est le lien nouveau CIS_MITM_v2.txt
+    assert mitm.statut == "erreur" and mitm.erreur == "lien_absent"
+    assert mitm.chemin_archive is None and mitm.empreinte_comparaison
+    assert len(_archives(racine, MITM.fichier)) == 1
+    assert bilan.code_sortie == 1, "l'alerte reste visible"
+
+
+def test_page_illisible_archivee_une_seule_fois(
+    lancer: Lanceur, serveur: ServeurSimule, racine: Path, horloge: Horloge
+) -> None:
+    """C1 : une page de maintenance identique n'est pas réarchivée à chaque passage."""
+    serveur.remplacer_contenu(PAGE.url, PAGE_MAINTENANCE)
+    lancer([PAGE])
+    horloge.avancer(hours=1)
+    (page,) = lancer([PAGE]).enregistrements
+    assert page.statut == "erreur" and str(page.erreur).startswith("analyse_impossible")
+    assert page.chemin_archive is None
+    assert len(_archives(racine, PAGE.fichier)) == 1
+    horloge.avancer(hours=1)
+    serveur.remplacer_contenu(PAGE.url, contenu_fixture(PAGE))
+    (page,) = lancer([PAGE]).enregistrements
+    assert page.statut == "nouveau", "la page revenue est archivée"
+    assert len(_archives(racine, PAGE.fichier)) == 2
+
+
+def test_erreur_http_et_lien_absent_s_enchainent(lancer: Lanceur, serveur: ServeurSimule) -> None:
+    """C1 : ``lien_absent`` n'écrase pas l'erreur de téléchargement."""
+    serveur.remplacer_contenu(PAGE.url, PAGE_SANS_MITM)
+    serveur.scenariser(MITM.url, (404, b"", {}))
+    mitm = lancer([PAGE, MITM]).enregistrements[1]
+    assert mitm.statut == "erreur" and mitm.http_statut == 404
+    assert mitm.erreur == "HTTP 404 ; lien_absent"
+
+
+def test_manifeste_tronque_n_arrete_pas_la_collecte(
+    lancer: Lanceur, racine: Path, horloge: Horloge
+) -> None:
+    """C2 : une dernière ligne coupée (coupure pendant l'écriture) est ignorée."""
+    lancer([SPECIALITES])
+    chemin = manifeste.chemin_manifeste(racine)
+    with chemin.open("ab") as fichier:
+        fichier.write(b'{"passage_id": "20261024T1517')
+    horloge.avancer(hours=1)
+    (ligne,) = lancer([SPECIALITES]).enregistrements
+    assert ligne.statut == "inchange", "l'empreinte de la ligne saine est retrouvée"
+    horloge.avancer(hours=1)
+    lancer([SPECIALITES])
+    relus = manifeste.lire(racine)
+    assert [e.statut for e in relus] == ["nouveau", "inchange", "inchange"]
+    brutes = chemin.read_bytes().split(b"\n")
+    assert brutes[1].startswith(b'{"passage_id": "20261024T1517\t#'), "coupée, marquée, isolée"
+    assert brutes[2].startswith(b"{") and brutes[-1] == b""
 
 
 def test_manifeste_complet_et_ajout_seul(lancer: Lanceur, racine: Path, horloge: Horloge) -> None:
@@ -233,11 +304,11 @@ def test_manifeste_complet_et_ajout_seul(lancer: Lanceur, racine: Path, horloge:
     horloge.avancer(hours=1)
     lancer()
     lignes = _lignes(racine)
-    assert len(lignes) == 25
+    assert len(lignes) == 26
     for ligne in lignes:
         assert tuple(ligne) == CHAMPS, "toutes les colonnes, toujours dans le même ordre"
         assert ligne["debut"] <= ligne["fin"]
         assert ligne["debut"].endswith("+00:00"), "UTC"
     relus = manifeste.lire(racine)
     assert [e.passage_id for e in relus] == [ligne["passage_id"] for ligne in lignes]
-    assert len(manifeste.dernieres_empreintes(relus)) == 13
+    assert len(manifeste.dernieres_empreintes(relus)) == 14

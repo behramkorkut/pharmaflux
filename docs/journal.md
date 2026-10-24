@@ -44,3 +44,16 @@ et `etat` réels. 45 tests sans réseau sur des extraits réels
 `CIS_InfoImportantes.txt` : fichier identique à l'octet près 76 min plus
 tard, l'ordre des lignes n'a pas bougé. Découverte : la page offre un
 douzième lien, la documentation PDF du format (v5).
+
+## 2026-10-24 — Mission 00, correctifs du contrôle du palier 2
+
+C1 : une ligne qui a écrit une archive laisse toujours son empreinte
+connue, quel que soit son statut ; `analyse_impossible` compare sur les
+octets ; `lien_absent` s'ajoute à l'erreur existante (`HTTP 404 ;
+lien_absent`) au lieu de l'écraser. Sans cela, un lien disparu ou une page
+illisible aurait réarchivé le même contenu 24 fois par jour. C2 : une
+dernière ligne tronquée du manifeste (coupure pendant l'écriture) est
+ignorée avec un avertissement, `ajouter` repart sur une ligne propre ; une
+ligne illisible au milieu reste une erreur franche. Quatorzième entrée du
+catalogue : la documentation PDF du format BDPM, quotidienne, empreinte
+octets (une requête réelle pour la fixture, 4 Ko conservés).

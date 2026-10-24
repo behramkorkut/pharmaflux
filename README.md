@@ -41,13 +41,14 @@ uv run pharmaflux --help
 ```
 
 ```bash
-uv run pharmaflux catalogue          # les treize entrées collectées
+uv run pharmaflux catalogue          # les quatorze entrées collectées
 uv run pharmaflux collecte           # un passage : télécharge, compare, archive, consigne
 uv run pharmaflux etat               # dernière archive, dernier changement, erreurs, 24 h
 ```
 
 Un passage télécharge la page de téléchargement de la BDPM et ses onze
-fichiers, plus les métadonnées Open Medic une fois par jour. Chaque
+fichiers ; une fois par jour, la documentation PDF de leur format et les
+métadonnées Open Medic. Chaque
 fichier reçu est conservé à l'octet près, compressé, sous
 `bronze/<source>/<fichier>/<jour>/<horodatage UTC>__<sha256>.gz`, et
 chaque passage laisse une ligne par fichier dans

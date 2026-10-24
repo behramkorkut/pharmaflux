@@ -32,7 +32,7 @@ def test_version() -> None:
 def test_catalogue() -> None:
     resultat = lanceur.invoke(application, ["catalogue"])
     assert resultat.exit_code == 0
-    assert len(resultat.output.splitlines()) == 13
+    assert len(resultat.output.splitlines()) == 14
 
 
 def test_source_inconnue() -> None:

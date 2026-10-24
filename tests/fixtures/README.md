@@ -25,6 +25,7 @@ d'une seconde requête à 14:37 UTC, identique à l'octet près à la première)
 | `CIS_CIP_Dispo_Spec.txt` | `/download/file/CIS_CIP_Dispo_Spec.txt` | 40 premières lignes |
 | `CIS_MITM.txt` | `/download/file/CIS_MITM.txt` | 40 premières lignes |
 | `CIS_InfoImportantes.txt` | `/download/CIS_InfoImportantes.txt` | 40 premières lignes (UTF-8, LF ; généré à la demande) |
+| `Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf` | `/download/file/Contenu_et_format_…_v5.pdf` | 4 096 premiers octets du PDF (295 557 octets, `%PDF-1.7`), téléchargé le 24/10/2026 à 18:18 UTC (une requête, pour la 14e entrée du catalogue) |
 
 Les fichiers BDPM sont des extraits de données publiques sous la licence de
 la BDPM (citation de la source, aucune altération : les lignes sont
@@ -41,7 +42,7 @@ ces fichiers (`owner` nul, `contact_points` vide).
 
 ## Les renouveler
 
-Un téléchargement réel par fichier, puis `head -n 40` (jamais de
-conversion). Mettre à jour la date ci-dessus et vérifier que
+Un téléchargement réel par fichier, puis `head -n 40` (`head -c 4096` pour
+le PDF ; jamais de conversion). Mettre à jour la date ci-dessus et vérifier que
 `tests/test_empreintes.py` reflète toujours les dates et tailles affichées
 par la page.

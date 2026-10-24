@@ -1,8 +1,9 @@
 """Catalogue des sources : ce que le collecteur télécharge, déclaré une fois.
 
-Treize entrées : la page de téléchargement de la BDPM (preuve datée de ce
-que le site affiche), les onze fichiers BDPM de l'annexe A du PRD, et les
-métadonnées du jeu Open Medic sur data.gouv.fr. Chaque entrée porte sa
+Quatorze entrées : la page de téléchargement de la BDPM (preuve datée de ce
+que le site affiche), les onze fichiers BDPM de l'annexe A du PRD, la
+documentation PDF de leur format (un changement y signale un changement de
+schéma) et les métadonnées du jeu Open Medic sur data.gouv.fr. Chaque entrée porte sa
 cadence et le mode de calcul de son empreinte de comparaison (voir
 ``empreintes.py``). Rien n'est téléchargé qui ne soit déclaré ici.
 """
@@ -15,6 +16,7 @@ from pathlib import PurePosixPath
 
 SITE_BDPM = "https://base-donnees-publique.medicaments.gouv.fr"
 URL_PAGE_BDPM = f"{SITE_BDPM}/telechargement"
+FICHIER_DOCUMENTATION_FORMATS = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf"
 URL_METADONNEES_OPENMEDIC = (
     "https://www.data.gouv.fr/api/1/datasets/"
     "open-medic-base-complete-sur-les-depenses-de-medicaments-interregimes/"
@@ -113,6 +115,14 @@ CATALOGUE: tuple[Entree, ...] = (
         url=f"{SITE_BDPM}/download/CIS_InfoImportantes.txt",
         description="Informations importantes (généré à la demande, lignes non triées)",
         empreinte=ModeEmpreinte.LIGNES_TRIEES,
+    ),
+    Entree(
+        identifiant="bdpm.documentation_formats",
+        source="bdpm",
+        fichier=FICHIER_DOCUMENTATION_FORMATS,
+        url=f"{SITE_BDPM}/download/file/{FICHIER_DOCUMENTATION_FORMATS}",
+        description="Documentation du format des fichiers BDPM (PDF) : change avec le schéma",
+        cadence=Cadence.QUOTIDIENNE,
     ),
     Entree(
         identifiant="openmedic.metadonnees",

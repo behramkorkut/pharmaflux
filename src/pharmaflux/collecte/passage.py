@@ -180,21 +180,22 @@ def _collecter(contexte: _Contexte, entree: Entree) -> tuple[Enregistrement, byt
         return _terminer(contexte, enregistrement), None
 
     contenu = reponse.contenu
-    enregistrement.sha256 = sha256_hex(contenu)
+    sha256 = sha256_hex(contenu)
+    enregistrement.sha256 = sha256
     enregistrement.taille_octets = len(contenu)
     try:
-        enregistrement.empreinte_comparaison = empreinte_comparaison(entree.empreinte, contenu)
+        empreinte = empreinte_comparaison(entree.empreinte, contenu)
     except AnalyseImpossible as exc:
         # Forme inattendue : on archive quand même (l'archive est irremplaçable),
-        # mais la ligne est en erreur pour que quelqu'un regarde.
+        # mais la ligne est en erreur pour que quelqu'un regarde. L'empreinte
+        # retombe sur les octets : un contenu identique n'est pas réarchivé.
         enregistrement.erreur = f"analyse_impossible: {exc}"
-    else:
-        if (
-            contexte.empreintes_connues.get(entree.identifiant)
-            == enregistrement.empreinte_comparaison
-        ):
+        empreinte = sha256
+    enregistrement.empreinte_comparaison = empreinte
+    if contexte.empreintes_connues.get(entree.identifiant) == empreinte:
+        if enregistrement.erreur is None:
             enregistrement.statut = Statut.INCHANGE
-            return _terminer(contexte, enregistrement), contenu
+        return _terminer(contexte, enregistrement), contenu
 
     chemin = chemin_archive(contexte.racine, entree, debut, enregistrement.sha256)
     try:
@@ -242,10 +243,14 @@ def _liens_par_url(contenu: bytes) -> dict[str, LienTelechargement] | None:
 
 
 def _appliquer_page(enregistrement: Enregistrement, lien: LienTelechargement | None) -> None:
-    """Reporte la date et la taille affichées ; signale un lien que la page n'a plus."""
+    """Reporte la date et la taille affichées ; signale un lien que la page n'a plus.
+
+    Une erreur déjà présente (``HTTP 404``…) n'est pas écrasée : les motifs
+    s'enchaînent (``HTTP 404 ; lien_absent``).
+    """
     if lien is None:
         enregistrement.statut = Statut.ERREUR
-        enregistrement.erreur = MOTIF_LIEN_ABSENT
+        enregistrement.erreur = " ; ".join(filter(None, (enregistrement.erreur, MOTIF_LIEN_ABSENT)))
         return
     enregistrement.date_source_affichee = lien.date_affichee
     enregistrement.taille_affichee_ko = lien.taille_affichee_ko

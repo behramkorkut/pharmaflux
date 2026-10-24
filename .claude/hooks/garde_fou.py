@@ -61,6 +61,8 @@ GIT_LECTURE = {
     "cat-file",
     "merge-base",
     "rev-list",
+    "ls-tree",
+    "check-ignore",
 }
 # Commandes qui ne font que lire : elles peuvent nommer un chemin réservé.
 LECTURE = {

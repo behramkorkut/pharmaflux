@@ -132,6 +132,8 @@ class GardeFou(unittest.TestCase):
             "git commit -F - <<'FIN'\nfeat(m00): palier 1\n\ngit push et CLAUDE.md cités\n"
             "\nCommis-par: codeur\nFIN",
             "git show main:docs/missions/mission-00.md | head -50",
+            "git ls-tree --name-only main docs/missions/",
+            "git check-ignore -v data/bronze/x.gz",
             "uv run pytest -q 2>&1 | tail -25",
             "cat CLAUDE.md",
             "grep -n push docs/agents/processus.md",

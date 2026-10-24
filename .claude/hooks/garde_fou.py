@@ -48,14 +48,46 @@ RELECTURES = "docs/relectures/"
 
 # Sous-commandes git en lecture seule, permises à tous les rôles.
 GIT_LECTURE = {
-    "status", "log", "diff", "show", "rev-parse", "ls-files", "blame",
-    "grep", "shortlog", "describe", "cat-file", "merge-base", "rev-list",
+    "status",
+    "log",
+    "diff",
+    "show",
+    "rev-parse",
+    "ls-files",
+    "blame",
+    "grep",
+    "shortlog",
+    "describe",
+    "cat-file",
+    "merge-base",
+    "rev-list",
 }
 # Commandes qui ne font que lire : elles peuvent nommer un chemin réservé.
 LECTURE = {
-    "cat", "head", "tail", "grep", "rg", "ls", "wc", "diff", "file", "stat",
-    "sed", "echo", "printf", "test", "[", "realpath", "dirname", "basename",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "rg",
+    "ls",
+    "wc",
+    "diff",
+    "file",
+    "stat",
+    "sed",
+    "echo",
+    "printf",
+    "test",
+    "[",
+    "realpath",
+    "dirname",
+    "basename",
+    "cut",
+    "tr",
+    "sort",
+    "uniq",
 }
+# awk n'y est pas : print > fichier et system() en font un outil d'écriture.
 # Exécutions permises sous un chemin réservé : les tests des garde-fous.
 TESTS_GARDE_FOUS = (
     ["sh", "infra/git-hooks/test-crochets.sh"],
@@ -75,7 +107,7 @@ GIT_ECRIT_BRUT = re.compile(
 )
 
 
-class Refus(Exception):
+class Refus(Exception):  # noqa: N818 (nom français voulu)
     """Appel refusé ; le message est montré à l'agent."""
 
 
@@ -85,7 +117,10 @@ class Refus(Exception):
 def _git(dossier: Path, *args: str) -> str:
     sortie = subprocess.run(
         ["git", "-C", str(dossier), *args],
-        capture_output=True, text=True, check=True, timeout=10,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
     )
     return sortie.stdout.strip()
 
@@ -132,11 +167,11 @@ def est_reserve(relatif: str) -> bool:
 
 
 def mentionne_reserve(mot: str) -> bool:
-    """Un mot de commande shell désigne-t-il un chemin réservé ?"""
+    """Un mot de commande shell désigne-t-il un chemin réservé (aussi dans --option=chemin) ?"""
     mot = mot.strip("'\"")
     for r in RESERVES:
         nu = r.rstrip("/")
-        if nu in mot and re.search(r"(^|/)" + re.escape(nu) + r"(/|$)", mot):
+        if nu in mot and re.search(r"(^|[/=:])" + re.escape(nu) + r"(/|$)", mot):
             return True
     return False
 
@@ -214,7 +249,9 @@ def segments(commande: str) -> list[tuple[list[str], list[str]]]:
         while i <= len(jetons):
             jeton = jetons[i] if i < len(jetons) else ";"
             if jeton in SEPARATEURS:
-                while mots and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", mots[0]) or mots[0] in PREFIXES):
+                while mots and (
+                    re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", mots[0]) or mots[0] in PREFIXES
+                ):
                     mots = mots[1:]
                 if mots or cibles:
                     resultat.append((mots or ["(redirection)"], cibles))
@@ -242,7 +279,9 @@ def verifier_git(role: str, mots: list[str]) -> None:
     sous, reste = args[0], args[1:]
     if sous in GIT_LECTURE:
         return
-    if sous == "branch" and all(a in ("--show-current", "--list", "-v", "-vv", "-a") for a in reste):
+    if sous == "branch" and all(
+        a in ("--show-current", "--list", "-v", "-vv", "-a") for a in reste
+    ):
         return
     if sous == "worktree" and reste[:1] == ["list"]:
         return
@@ -257,17 +296,42 @@ def verifier_git(role: str, mots: list[str]) -> None:
         return
     if role == "codeur" and sous == "commit":
         for a in reste:
-            if a in ("--amend", "-a", "--all", "-am", "--no-verify", "-n", "--fixup", "--squash") \
-                    or a.startswith(("--fixup", "--squash", "--author")):
-                raise Refus(f"git commit {a} interdit (un commit par palier, jamais de réécriture).")
+            if a in (
+                "--amend",
+                "-a",
+                "--all",
+                "-am",
+                "--no-verify",
+                "-n",
+                "--fixup",
+                "--squash",
+            ) or a.startswith(("--fixup", "--squash", "--author")):
+                raise Refus(
+                    f"git commit {a} interdit (un commit par palier, jamais de réécriture)."
+                )
         return
     if sous == "push":
         raise Refus("aucun agent ne pousse : beko seul pousse, ouvre la PR et fusionne.")
     raise Refus(
         f"git {sous} n'est pas permis au rôle {role}. "
-        + ("Le codeur committe en local ; tout le reste de git est à beko."
-           if role == "codeur" else "Ce rôle ne fait que lire git ; beko fait le reste.")
+        + (
+            "Le codeur committe en local ; tout le reste de git est à beko."
+            if role == "codeur"
+            else "Ce rôle ne fait que lire git ; beko fait le reste."
+        )
     )
+
+
+def ecrit_par_option(mots: list[str]) -> bool:
+    """Une commande de LECTURE qui écrit quand même : sed -i, sort -o, uniq ENTREE SORTIE."""
+    tete, args = mots[0], mots[1:]
+    if tete == "sed":
+        return any(a.startswith("-i") or a == "--in-place" for a in args)
+    if tete == "sort":
+        return any(a.startswith(("-o", "--output")) for a in args)
+    if tete == "uniq":
+        return len([a for a in args if not a.startswith("-")]) > 1
+    return False
 
 
 def verifier_bash(role: str, commande: str) -> None:
@@ -280,8 +344,12 @@ def verifier_bash(role: str, commande: str) -> None:
             if cache:
                 raise Refus(f"opération git « {cache.group(1)} » interdite aux agents.")
         if tete in SYSTEME:
-            raise Refus(f"« {tete} » touche au système : beko s'en charge (CLAUDE.md, « Système »).")
-        if tete == "env" and any(a.startswith(("-u", "--unset", "-i", "--ignore")) for a in mots[1:]):
+            raise Refus(
+                f"« {tete} » touche au système : beko s'en charge (CLAUDE.md, « Système »)."
+            )
+        if tete == "env" and any(
+            a.startswith(("-u", "--unset", "-i", "--ignore")) for a in mots[1:]
+        ):
             raise Refus("env -u / -i interdit devant une commande.")
         if tete == "unset" and any("CLAUDE" in a for a in mots[1:]):
             raise Refus("unset d'une variable CLAUDE* interdit.")
@@ -289,9 +357,13 @@ def verifier_bash(role: str, commande: str) -> None:
             verifier_git(role, mots)
             continue
         if tete == "gh":
-            if role == "iec" and mots[1:3] and (
-                (mots[1] == "pr" and mots[2] in ("view", "checks", "list", "diff"))
-                or (mots[1] == "run" and mots[2] in ("list", "view"))
+            if (
+                role == "iec"
+                and mots[1:3]
+                and (
+                    (mots[1] == "pr" and mots[2] in ("view", "checks", "list", "diff"))
+                    or (mots[1] == "run" and mots[2] in ("list", "view"))
+                )
             ):
                 continue
             raise Refus("gh est réservé à beko (PR, dépôt, CI).")
@@ -299,16 +371,14 @@ def verifier_bash(role: str, commande: str) -> None:
             continue
         ecrit_reserve = any(mentionne_reserve(c) for c in cibles)
         if not ecrit_reserve and any(
-            mots[: len(t)] == t and all(a.startswith("-") for a in mots[len(t):])
+            mots[: len(t)] == t and all(a.startswith("-") for a in mots[len(t) :])
             for t in TESTS_GARDE_FOUS
         ):
             continue
         # Codeur et relecteur : pas d'écriture shell vers un chemin réservé.
         if not ecrit_reserve and not any(mentionne_reserve(a) for a in mots[1:]):
             continue
-        lecture_pure = tete in LECTURE and not ecrit_reserve and not (
-            tete == "sed" and any(a.startswith("-i") or a == "--in-place" for a in mots)
-        )
+        lecture_pure = tete in LECTURE and not ecrit_reserve and not ecrit_par_option(mots)
         if not lecture_pure:
             raise Refus(
                 f"« {tete} » sur un chemin réservé à l'IeC : en lecture seulement "
@@ -352,8 +422,11 @@ def main() -> int:
     try:
         juger(appel, dossier)
     except Refus as refus:
-        print(f"garde-fou Pharmaflux : REFUS — {refus} "
-              "Si c'est nécessaire, signale-le à beko ; ne contourne pas.", file=sys.stderr)
+        print(
+            f"garde-fou Pharmaflux : REFUS — {refus} "
+            "Si c'est nécessaire, signale-le à beko ; ne contourne pas.",
+            file=sys.stderr,
+        )
         return 2
     return 0
 

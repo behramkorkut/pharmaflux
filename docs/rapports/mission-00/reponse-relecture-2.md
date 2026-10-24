@@ -23,7 +23,8 @@ bloquant, aucun point à corriger ; réponse aux remarques.
 4. **`addopts = "-q …"`** : corrigé dans ce commit, `pyproject.toml` ne
    garde que `--strict-markers`. La commande de `CLAUDE.md`
    (`uv run pytest -q 2>&1 | tail -25`) affiche désormais `66 passed in
-   4.67s`. La CI appelle `uv run pytest` sans option : inchangée.
+   4.67s`. La CI appelle `uv run pytest -q` : elle affiche désormais le
+   compte aussi, au lieu du mode `-qq`.
 5. **Journal, entrée de la relecture 1** : « 394 Mo pour un an » est
    approximatif, 122 640 lignes font environ 14 mois à 290 lignes par
    jour. Le journal s'écrit en ajout seul : la correction est portée dans

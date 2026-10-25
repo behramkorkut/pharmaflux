@@ -1,9 +1,9 @@
 # PRD — Plateforme temps réel de connaissance du médicament pour l'assurance santé
 
-**Projet :** Pharmaflux _(nom de travail, à valider — §10.2)_ — projet portfolio
+**Projet :** Pharmaflux — projet portfolio
 **Client :** client fictif — **direction santé d'une mutuelle** de taille moyenne (personas §3). Aucune donnée client : uniquement des données publiques réelles.
-**Version :** 0.1 _(première rédaction — base des points à trancher du Lot 0)_
-**Date :** 23 octobre 2026
+**Version :** 0.2 _(après la mission 00 : collecte en service, constats sur les sources, circuit de travail)_
+**Date :** 26 octobre 2026 _(v0.1 : 23 octobre 2026)_
 **Auteur :** Behram Korkut
 
 **Sources de données (publiques, réelles) :**
@@ -27,6 +27,7 @@
 | # | Évolution | Origine |
 |---|---|---|
 | 1 | Création du PRD v0.1 | Cadrage du 23/10/2026 : domaine santé × assurance, données publiques réelles, méthode Alamel |
+| 2 | PRD v0.2 : nom Pharmaflux retenu ; collecte **horaire** sur le VPS-1 de beko, partagé avec une pré-production jusqu'à mi-novembre 2026 ; pas de requête conditionnelle ; indicateur de fraîcheur découplé (§2.2) ; dates utiles de data.gouv (§6.1) ; constats sur les encodages et les formats (annexe A, avec le §0 de la mission 01) ; sens d'une ligne qui disparaît de la disponibilité (§6.3) ; points 5, 6 et 8 du §10.2 reportés à leur lot ; circuit local (annexe C) | Mission 00 (24-25/10/2026) : réponse au §0, addendum 2, 24 h de passages sur le VPS |
 
 ---
 
@@ -88,7 +89,7 @@ L'assistant ne répond **qu'à partir du flux et du corpus**, **cite chaque sour
 
 | Indicateur | Cible v1 |
 |---|---|
-| Délai entre la mise à jour d'un fichier source et la disponibilité du changement dans l'assistant (p95) | < 30 min _(dont l'intervalle de collecte ; à affiner au Lot 0)_ |
+| Délai de collecte : entre la mise à jour d'un fichier source et son archivage | ≤ 60 min **par construction** (un passage par heure, §6.1) ; mesuré depuis le manifeste |
 | Délai de traitement d'un événement, de sa détection à l'index vectoriel (p95) | < 60 s |
 | Événements perdus ou en double lors d'un rejeu complet depuis les fichiers bruts | 0 |
 | Reconstruction de l'état à une date passée, comparée au fichier archivé du même jour | identique (empreinte égale) |
@@ -136,8 +137,9 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 
 ### Lot 0 — Cadrage et exploration des données
 
-- Tranche les points du §10.2 (ADR pour chacun).
-- **Lance l'archivage quotidien des fichiers bruts dès le premier jour** : l'historique n'existe que si on commence à le collecter (§10.1).
+- Tranche les points du §10.2 qui en relèvent (ADR pour chacun).
+- **Lance l'archivage des fichiers bruts dès le premier jour** : l'historique n'existe que si on commence à le collecter (§10.1). _Fait par la mission 00 : collecte horaire en service depuis le 24/10/2026._
+- Contrats de schéma v0 de chaque fichier (encodage, colonnes, types, clé), vérifiés par la CI.
 - Profilage de chaque fichier : colonnes, encodage, formats de dates, clés, anomalies → `docs/donnees/`.
 - Constitution d'une première version du jeu de questions de référence (annexe B).
 
@@ -203,10 +205,12 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 
 ### 6.1 Collecte
 
-- Téléchargement planifié de chaque fichier de la BDPM, à un intervalle à fixer au Lot 0 (respect du service public : requêtes conditionnelles si le serveur les accepte, sinon intervalle raisonnable).
-- Empreinte (SHA-256) par fichier : pas de traitement si rien n'a changé.
+- Téléchargement de chaque fichier de la BDPM **toutes les heures, à `:17`**, en série, avec une pause de 2 s entre deux fichiers. Le serveur n'envoie ni `Last-Modified` ni `ETag` : pas de requête conditionnelle possible, d'où un intervalle d'une heure plutôt que plus court (mission 00, §0 C et D).
+- La page de téléchargement est lue à chaque passage : elle donne le lien et la date de chaque fichier. Un lien absent ou nouveau est une erreur visible, pas un silence.
+- Empreinte (SHA-256) par fichier, sur les octets bruts ; la décision « changé ou non » se prend sur une **empreinte de comparaison** propre à chaque fichier (lignes triées pour le fichier généré à la demande, couples lien-date pour la page).
 - Archivage brut **immuable** : un fichier n'est jamais réécrit. Il est la source de vérité du rejeu.
-- Open Medic : collecte à la publication d'une nouvelle base annuelle ou d'un correctif (la page data.gouv.fr indique les dates de mise à jour par fichier).
+- Un manifeste en ajout seul consigne chaque tentative, y compris en erreur : c'est la base des mesures de fraîcheur.
+- Open Medic : métadonnées du jeu collectées chaque jour ; les CSV au Lot 4, à la publication d'une nouvelle base annuelle ou d'un correctif. Les dates du robot de data.gouv ne sont pas utilisables : la date utile est le `created_at` de chaque ressource et le `last_modified` du jeu.
 
 ### 6.2 Normalisation
 
@@ -220,7 +224,8 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - Comparaison du snapshot normalisé avec le précédent, par clé métier (CIS, CIP13, couple CIS + substance…).
 - Trois types d'événements par entité : `creee`, `modifiee` (avec les champs modifiés), `supprimee`.
 - Chaque événement porte : identifiant déterministe (rejeu sans doublon), entité, clé, état avant, état après, date de la source, date d'observation, empreinte du fichier d'origine, version du schéma.
-- Une ligne qui disparaît du fichier de disponibilité = **fin de la situation** (remise à disposition probable) : sens exact à confirmer au Lot 0.
+- Fichier de disponibilité : la **remise à disposition est un statut explicite** (code 4, daté). Une ligne qui disparaît est une **fin de publication** de la fiche par l'ANSM (après une remise, un arrêt, ou un retrait), pas une remise probable ; son sens exact est en observation (ADR 0003, mission 01).
+- Trois fichiers n'ont pas de clé métier unique (disponibilité ; avis SMR et ASMR, un avis par indication) : leur comparaison se fait ligne à ligne, pas par clé.
 
 ### 6.4 Bus d'événements
 
@@ -333,7 +338,8 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 | Correspondance BDPM ↔ Open Medic incomplète | Moyen | Moyenne | Taux mesuré et affiché ; non-correspondances listées |
 | **Information de santé erronée produite par l'assistant** | Élevé | Moyenne | Réponses sourcées, abstention, refus médical, évaluation dans la CI |
 | Sur-ingénierie pour un projet portfolio | Moyen | Élevée | Lots fermés ; chaque brique justifiée par un ADR ; Lot 6 optionnel |
-| Charge du site source | Faible | Faible | Intervalle raisonnable, requêtes conditionnelles, identification du client HTTP |
+| Charge du site source | Faible | Faible | Un passage par heure, téléchargements en série avec pause, identification du client HTTP (`User-Agent` avec l'URL du dépôt) |
+| Gêne d'un autre service sur le VPS-1 partagé | Moyen | Faible | Compte dédié sans droits, unité systemd durcie (`ProtectHome=tmpfs`, plafonds mémoire et CPU, entrées-sorties en priorité basse) |
 | Projet qui s'étire et retarde la recherche d'emploi | Élevé | Moyenne | Lot 1 publiable seul ; README et démo à jour à chaque lot ; candidatures en parallèle |
 
 ---
@@ -343,39 +349,46 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 ### 10.1 Décisions par défaut actées (23/10/2026) — réversibles par ADR
 
 1. **Données publiques réelles uniquement** ; aucune donnée synthétique de patient.
-2. **Archivage quotidien des fichiers bruts lancé dès le Lot 0**, avant toute autre brique.
+2. **Archivage horaire des fichiers bruts lancé dès le Lot 0**, avant toute autre brique _(v0.1 : quotidien ; passé à horaire par la mission 00)_.
 3. **Stack par défaut** : Python 3.12 et uv, Redpanda, consommateurs Python, Iceberg + DuckDB, Qdrant, FastAPI, Streamlit, Docker Compose, Claude pour la génération.
 4. **Méthode Alamel** (annexe C) : une mission = une branche = une PR, paliers verts, relecture à contexte neuf.
 5. **Pas de Flink ni de Kubernetes en v1** (§8).
+6. **Collecte sur le VPS-1 de beko** _(26/10/2026)_. Le VPS-1 héberge aussi, jusqu'à mi-novembre 2026, une pré-production d'Alamel (non confidentielle) : la collecte tourne sous un compte dédié, dans une unité systemd qui ne voit pas le reste du système et ne peut pas le gêner. Les VPS d'Alamel, qui appartiennent au client, ne sont jamais utilisés. Une copie de l'archive est rapatriée chaque semaine sur le Mac de beko.
 
-### 10.2 Points restant à trancher (Lot 0)
+### 10.2 Points du Lot 0 — état au 26/10/2026
 
-1. **Nom du projet.**
-2. **Intervalle de collecte** et requêtes conditionnelles acceptées par le site de la BDPM. `[À VÉRIFIER]`
-3. **Colonnes et valeurs exactes de `CIS_CIP_Dispo_Spec.txt` et `CIS_MITM.txt`**, et sens d'une ligne qui disparaît. `[À VÉRIFIER]`
-4. **Lieu de l'archivage quotidien** : Mac (tâche planifiée), action GitHub planifiée, petit VPS ou stockage objet.
-5. **Qdrant ou pgvector** (pgvector simplifierait l'exploitation ; Qdrant est repris de `governed-omop-rag`).
-6. **Stockage des traces** : ClickHouse, ou DuckDB pour rester léger.
-7. **Corpus HAS** : pages web seulement ou aussi PDF ; volume et licence. `[À VÉRIFIER]`
-8. **Démo publique hébergée** ou démo locale seulement.
+| # | Point | État |
+|---|---|---|
+| 1 | Nom du projet | **Tranché** : Pharmaflux |
+| 2 | Intervalle de collecte, requêtes conditionnelles | **Tranché** (mission 00) : toutes les heures à `:17` ; pas de requête conditionnelle, le serveur ne les permet pas (§6.1). ADR à la mission 01 |
+| 3 | Colonnes et valeurs de `CIS_CIP_Dispo_Spec.txt` et `CIS_MITM.txt`, sens d'une ligne qui disparaît | **Mission 01** : profilage et ADR |
+| 4 | Lieu de l'archivage | **Tranché** (mission 00) : VPS-1, §10.1 point 6. ADR à la mission 01 |
+| 5 | Qdrant ou pgvector | **Reporté au Lot 3**, qui l'utilise |
+| 6 | Stockage des traces : ClickHouse ou DuckDB | **Reporté au Lot 5**, qui l'utilise |
+| 7 | Corpus HAS : pages web ou PDF, volume, licence | **Mission 01** : ADR |
+| 8 | Démo publique hébergée ou locale | **Reporté au Lot 6** |
 
 ---
 
 ## Annexe A — Inventaire des sources
 
-| Source | Fichier / jeu | Format | Rythme constaté | Licence | Défauts connus | Statut |
+Toutes les sources ci-dessous sont **archivées chaque heure depuis le 24/10/2026** (quotidiennement pour la documentation PDF et Open Medic). Date affichée par la page de téléchargement au 24/10/2026 ; encodages relevés par la mission 00 (§0 H.2). Profil détaillé : `docs/donnees/` (mission 01).
+
+| Source | Fichier / jeu | Format | Date affichée au 24/10 | Licence | Défauts connus | Statut |
 |---|---|---|---|---|---|---|
-| BDPM | `CIS_bdpm.txt` (spécialités) | TSV sans en-tête | variable par fichier | citation, sans altération | encodage, pas d'en-tête | vérifié 23/10/2026 |
-| BDPM | `CIS_CIP_bdpm.txt` (présentations, prix, taux) | TSV sans en-tête | variable | idem | — | à profiler |
-| BDPM | `CIS_COMPO_bdpm.txt` (compositions) | TSV sans en-tête | variable | idem | — | à profiler |
-| BDPM | `CIS_GENER_bdpm.txt` (groupes génériques) | TSV sans en-tête | variable | idem | — | à profiler |
-| BDPM | `CIS_CPD_bdpm.txt` (conditions de prescription) | TSV sans en-tête | variable | idem | — | à profiler |
-| BDPM | `CIS_HAS_SMR_bdpm.txt`, `CIS_HAS_ASMR_bdpm.txt` | TSV sans en-tête | variable | idem | — | à profiler |
-| BDPM | `HAS_LiensPageCT_bdpm.txt` | TSV sans en-tête | variable | idem | liens externes | à profiler |
-| BDPM | `CIS_CIP_Dispo_Spec.txt` (disponibilité) | TSV sans en-tête | variable | idem | lignes qui disparaissent | à profiler |
-| BDPM | `CIS_MITM.txt` | TSV sans en-tête | variable | idem | pas de dates | à profiler |
-| BDPM | `CIS_InfoImportantes.txt` | TSV, généré au téléchargement | à chaque téléchargement | idem | empreinte change toujours ? | à profiler |
-| Cnam | Open Medic | CSV annuels + doc xlsx | publications annuelles et correctifs | Licence Ouverte | annuel ; honoraires exclus ; correctif 2025 | vérifié 23/10/2026 |
+| BDPM | page de téléchargement | HTML | — | citation, sans altération | la date globale affichée (« Dernière mise à jour ») est celle de la base, pas des fichiers : seule la date dans chaque lien est utilisable | archivée quand ses couples lien-date changent ; preuve datée de ce que le site affichait |
+| BDPM | `CIS_bdpm.txt` (spécialités) | TSV sans en-tête, Windows-1252, CRLF | 29/09/2026 | idem | pas d'en-tête | à profiler (mission 01) |
+| BDPM | `CIS_CIP_bdpm.txt` (présentations, prix, taux) | TSV sans en-tête, **UTF-8, LF** | 24/10/2026 | idem | encodage différent des autres fichiers ; prix ≥ 1 000 € écrits avec une virgule des milliers (`1,003,48`) ; taux en plusieurs graphies (`65%`, `65 %`) ; dates de déclaration impossibles (1910-1949, 2924) | à profiler ; premier changement capté le 24/10 |
+| BDPM | `CIS_COMPO_bdpm.txt` (compositions) | TSV sans en-tête, Windows-1252, CRLF | 29/09/2026 | idem | — | à profiler |
+| BDPM | `CIS_GENER_bdpm.txt` (groupes génériques) | TSV sans en-tête, Windows-1252, CRLF | 29/09/2026 | idem | — | à profiler |
+| BDPM | `CIS_CPD_bdpm.txt` (conditions de prescription) | TSV sans en-tête, Windows-1252, CRLF | 29/09/2026 | idem | — | à profiler |
+| BDPM | `CIS_HAS_SMR_bdpm.txt`, `CIS_HAS_ASMR_bdpm.txt` | TSV sans en-tête, Windows-1252, CRLF | 29/09/2026 | idem | plusieurs avis par couple CIS + dossier (un par indication) : pas de clé unique | à profiler |
+| BDPM | `HAS_LiensPageCT_bdpm.txt` | TSV sans en-tête, ASCII, CRLF | 29/09/2026 | idem | liens externes | à profiler |
+| BDPM | `CIS_CIP_Dispo_Spec.txt` (disponibilité) | TSV sans en-tête, Windows-1252, CRLF | 21/10/2026 | idem | remise à disposition = statut 4 daté ; lignes qui disparaissent ; pas de clé unique, cinq lignes en doublon (24/10) | à profiler ; sens d'une disparition : ADR (mission 01) |
+| BDPM | `CIS_MITM.txt` | TSV sans en-tête, Windows-1252, CRLF | 13/10/2026 | idem | liste sans historique : un drapeau par CIS, date de publication de la liste seulement | à profiler |
+| BDPM | `CIS_InfoImportantes.txt` | TSV, **généré à chaque téléchargement**, UTF-8, LF | — | idem | seul le nom envoyé (`Content-Disposition`) porte l'heure de génération ; contenu identique à l'octet près entre deux requêtes espacées d'une heure (24/10/2026) ; comparaison sur les lignes triées par prudence | à profiler |
+| BDPM | documentation des formats (PDF, `v5`) | PDF | — | idem | nom de fichier versionné | archivée ; référence des contrats de schéma |
+| Cnam | Open Medic | CSV annuels + doc xlsx ; métadonnées JSON de data.gouv | publications annuelles et correctifs | Licence Ouverte | annuel ; honoraires exclus ; correctif 2025 ; dates du robot data.gouv inutilisables | métadonnées archivées chaque jour ; CSV au Lot 4 |
 
 ## Annexe B — Jeu de questions de référence (amorce)
 
@@ -392,16 +405,19 @@ Version 0.1 : une vingtaine de questions par catégorie au Lot 0, objectif 100 a
 | Hors périmètre | « Combien coûte ma mutuelle ? » | Abstention + orientation |
 | Médical | « Puis-je remplacer X par Y pour mon fils ? » | Refus + renvoi vers un professionnel |
 
-## Annexe C — Méthode de travail (reprise d'Alamel)
+## Annexe C — Méthode de travail (reprise d'Alamel, adaptée)
+
+Le circuit détaillé est dans `docs/agents/processus.md`.
 
 | Rôle | Qui | Responsabilités |
 |---|---|---|
-| Chef de projet | beko | Crée les branches de mission, tranche avec l'ingénieur en chef, fusionne, lance les démos |
-| Ingénieur en chef | Claude (session dédiée) | Rédige les ordres de mission et les addenda, revue finale |
-| Codeur | Claude Code | Code palier par palier sur la branche de mission, un commit par palier |
-| Relecteur | Claude, contexte neuf (`/relire-pr`) | Relit la PR contre l'ordre de mission, poste sa relecture |
+| Chef de projet | beko | Prépare les missions, tranche avec l'ingénieur en chef, **seul à pousser**, ouvre la PR, fusionne, installe sur le système |
+| Ingénieur en chef | Claude (session dédiée, `pharmaflux/`) | Rédige les ordres de mission et les addenda, contrôle chaque palier, revue finale |
+| Codeur | Claude Code (`pharmaflux-codeur/`) | Répond au §0, code palier par palier sur la branche de mission, un commit local par palier |
+| Relecteur | Claude, contexte neuf (`pharmaflux-relecteur/`, `/relire-mission`) | Relit le sommet de la branche contre l'ordre de mission, écrit sa relecture dans le dépôt |
 
-- **Points à trancher avant de coder** → un ADR par décision dans `docs/adr/`.
-- Une mission = une branche = une PR ; PR en brouillon pendant la relecture ; fusion par commit de fusion.
-- Garde-fous repris d'Alamel : permissions `deny`, crochet `pre-push`, trailer `Commis-par: codeur`.
+- **Points à trancher avant de coder** (§0) ; une décision d'architecture → un ADR dans `docs/adr/`.
+- Une mission = une branche = une PR. **Tout se vérifie en local** : contrôles et relectures se font avant le push ; la PR n'est ouverte qu'à la fin, avec une seule CI ; fusion par commit de fusion.
+- Échanges entre sessions par fichiers du dépôt (rapports, contrôles, relectures), qui restent dans l'historique.
+- Garde-fous : crochet Claude Code par rôle, crochets git (pas de push par un agent, pas de chemin réservé, trailer `Commis-par: codeur`), permissions `deny`.
 - Journal de développement tenu à chaque palier ; il alimente l'étude de cas publique.

@@ -290,6 +290,14 @@ beko met à disposition son VPS-1 (Ubuntu/Debian, accès SSH par clé,
 **libre** : aucun service ni aucune donnée d'Alamel ; la règle « pas
 d'usage des VPS d'Alamel » reste entière). Conséquences :
 
+> **Correction du 26/10/2026 (IeC).** « Libre » était inexact : le VPS-1
+> appartient bien à beko, mais il héberge aussi, jusqu'à mi-novembre 2026,
+> une pré-production d'Alamel (Docker, données non confidentielles).
+> Constaté le 24/10 au moment de l'installation ; l'unité a été durcie en
+> conséquence (`docs/relectures/mission-00/consigne-unite-vps.md`). La
+> règle « pas d'usage des VPS d'Alamel » ne change pas : ceux du client ne
+> sont jamais utilisés. Voir PRD v0.2, §10.1 point 6.
+
 - la question de la veille du Mac disparaît : le VPS tourne en continu ;
 - **deux copies de l'archive** : la principale sur le VPS, une copie
   rapatriée chaque semaine sur le Mac par beko (`rsync` en tirage, **jamais

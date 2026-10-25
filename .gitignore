@@ -1,0 +1,22 @@
+# Données : jamais dans le dépôt (archive sous PHARMAFLUX_DATA, hors dépôt).
+data/
+*.gz
+
+# Environnement et caches Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Secrets et réglages locaux
+.env
+.env.*
+.claude/settings.local.json
+
+# Système
+.DS_Store

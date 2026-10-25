@@ -1,0 +1,59 @@
+# CI de Pharmaflux : un seul job, les mêmes vérifications qu'en local,
+# plus les tests des garde-fous du circuit. Aucun appel réseau vers les
+# sources de données (les tests travaillent sur des fixtures).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer uv (avec cache)
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Installer les dépendances (verrouillées)
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      - name: Types
+        run: uv run mypy src
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: Crochets git
+        run: sh infra/git-hooks/test-crochets.sh
+
+      - name: Garde-fou Claude Code
+        run: python3 infra/agents/test_garde_fou.py
+
+      - name: Scripts de planification (shellcheck)
+        run: |
+          if ls infra/planification/*.sh >/dev/null 2>&1; then
+            # même version qu'en local (uv est installé plus haut) : un shellcheck
+            # différent signale d'autres avertissements, comme SC2015 sur la PR 1
+            uvx --from shellcheck-py==0.11.0.1 shellcheck infra/planification/*.sh
+          else
+            echo "aucun script dans infra/planification/ : rien à vérifier"
+          fi

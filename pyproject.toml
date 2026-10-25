@@ -1,0 +1,61 @@
+[project]
+name = "pharmaflux"
+version = "0.1.0"
+description = "Plateforme temps réel de connaissance du médicament pour l'assurance santé, sur données publiques (BDPM, Open Medic, HAS)."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Behram Korkut" }]
+dependencies = [
+    "httpx>=0.28",
+    "typer>=0.15",
+]
+
+[project.urls]
+Depot = "https://github.com/behramkorkut/pharmaflux"
+
+[project.scripts]
+pharmaflux = "pharmaflux.cli:application"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.16",
+    "pytest>=8.3",
+    "ruff>=0.12",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.11"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "N",        # pep8-naming
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "SIM",      # simplifications
+    "PTH",      # pathlib plutôt que os.path
+    "ARG",      # arguments inutilisés
+    "RUF",      # règles propres à ruff
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pharmaflux", "tests"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+strict = true
+warn_unreachable = true
+pretty = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"

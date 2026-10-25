@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -121,6 +122,19 @@ class GardeFou(unittest.TestCase):
         self.assertFalse(self.ecrit(self.codeur, self.principal / "src/x.py"))
         self.assertFalse(self.ecrit(self.codeur, Path.home() / ".zshrc"))
         self.assertFalse(self.ecrit(self.codeur, self.codeur / ".git"))
+
+    def test_codeur_ecrit_dans_son_dossier_temporaire(self) -> None:
+        """Mission 01, §0 H.9 : brouillons dans /tmp/claude-<uid>/<sa racine>/ seulement."""
+
+        def temporaire(racine: Path) -> Path:
+            nom = re.sub(r"[^A-Za-z0-9-]", "-", str(racine))
+            return Path("/tmp").resolve() / f"claude-{os.getuid()}" / nom
+
+        brouillon = temporaire(self.codeur) / "session/scratchpad/m01/profil.py"
+        self.assertTrue(self.ecrit(self.codeur, brouillon))
+        self.assertFalse(self.ecrit(self.codeur, temporaire(self.principal) / "s/x.py"))
+        self.assertFalse(self.ecrit(self.codeur, temporaire(self.codeur) / "../x.py"))
+        self.assertFalse(self.ecrit(self.codeur, Path("/tmp") / "x.py"))
 
     def test_codeur_git_permis(self) -> None:
         for commande in (

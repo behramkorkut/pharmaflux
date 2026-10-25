@@ -178,6 +178,13 @@ def mentionne_reserve(mot: str) -> bool:
     return False
 
 
+def dossier_temporaire(racine: Path) -> Path:
+    """Dossier temporaire des sessions Claude Code lancées dans `racine` :
+    /tmp/claude-<uid>/<chemin de la racine, tout sauf [A-Za-z0-9-] changé en ->."""
+    nom = re.sub(r"[^A-Za-z0-9-]", "-", str(racine))
+    return Path("/tmp").resolve() / f"claude-{os.getuid()}" / nom
+
+
 def verifier_ecriture(role: str, cible: Path, racine: Path, principal: Path) -> None:
     if role == "iec":
         return
@@ -191,6 +198,10 @@ def verifier_ecriture(role: str, cible: Path, racine: Path, principal: Path) -> 
         return
     relatif = chemin_relatif(cible, racine)
     if relatif is None:
+        # Brouillons jetables de ses propres sessions (mission 01, §0 H.9) ;
+        # un script dont les mesures sont citées dans un rapport va dans le dépôt.
+        if chemin_relatif(cible, dossier_temporaire(racine)) is not None:
+            return
         raise Refus(f"écriture hors du dossier du codeur ({racine}) : {cible}")
     if relatif == ".git" or relatif.startswith(".git/"):
         raise Refus("écriture dans .git interdite.")

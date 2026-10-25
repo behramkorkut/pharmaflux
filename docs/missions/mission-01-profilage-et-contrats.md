@@ -293,3 +293,103 @@ passent sur une copie rapatriée après la fusion.
 - Toute utilisation de l'API Claude : Lot 3.
 - **Pas d'usage des VPS d'Alamel**, et rien sur le VPS-1 qui touche à la
   pré-production qu'il héberge.
+
+## Addendum 1 — §0 tranché (IeC, 26/10/2026)
+
+Réponse à `docs/rapports/mission-01/points-a-trancher.md` (commit
+`2b66971`). Rapport de grande qualité : mesures précises, aucune requête
+réseau, refus du garde-fou signalé sans contournement. J'ai recompté sur
+l'archive les constats qui changent l'ordre (statuts et doublons de
+Dispo_Spec, 497 prix `1,003,48`, clés SMR) : ils sont exacts. **Tes avis
+sont retenus sauf mention contraire.**
+
+**Questions 1 et D — clé non unique : d'accord.** Le contrat déclare
+`cle = [...]` et `unique = true | false`, avec `raison` obligatoire quand
+`false`. Une clé non unique n'est **bloquante que si le contrat la déclare
+unique**. Les lignes entières en doublon sont signalées partout
+(`ligne_dupliquee`, non bloquante). Clés retenues : celles de ton tableau
+D ; pour Dispo_Spec, (CIS, CIP13, lien) avec `unique = false`. La
+décision 4 est modifiée en ce sens. Le Lot 1 comparera SMR, ASMR et
+Dispo_Spec ligne à ligne : écris-le dans `docs/donnees/README.md`.
+
+**Question 2 — anomalies connues et systématiques : option (a).** Le
+profil les signale à chaque fois, groupées par règle, avec leur compte et
+cinq exemples ; le code de sortie ne dépend que des anomalies bloquantes.
+Pas de tolérance cachée dans un contrat. L'option (b) (compte attendu et
+signal d'écart) est une détection de changement : Lot 1, à proposer dans ta
+`pr.md`.
+
+**Gravité** : ton découpage est retenu. Bloquantes : encodage, fin de
+ligne, nombre de colonnes, clé déclarée unique qui ne l'est pas. Toutes les
+autres portent sur une valeur et sont non bloquantes, `valeur_inconnue`
+comprise. Le profil met cependant `valeur_inconnue` **en tête** de sa
+sortie : un nouveau statut est le premier signe d'un changement de format.
+
+**Question 3 — ADR 0003 : « proposé », revue au plus tard le 07/12/2026**,
+avec ta méthode d'observation (a) à (d). Ajoute un critère de décision :
+ce qu'il faudra observer pour passer à « accepté » (par exemple, la part
+des disparitions précédées d'un statut 4). La v0.2 du PRD (§6.3) est déjà
+corrigée selon ta proposition.
+
+**Question 4 — lecture du PDF : d'accord**, `uvx --from
+pdfminer.six==20250506 pdf2txt.py`, version figée, documentée dans
+`docs/donnees/README.md` comme outil de lecture. Rien dans
+`pyproject.toml`.
+
+**Question 5 — types : d'accord** sur les neuf types de C, un seul `date`
+paramétré par `format`, et les taux en `enumeration` des graphies
+observées (la normalisation est au Lot 1). Le contrat les liste telles
+qu'elles sont dans le fichier, et le commentaire du contrat le dit.
+
+**B — format : d'accord**, avec tes ajouts (`source` avec sha256 du PDF et
+archive de référence, `retour_final`, `lignes_vides`, `valeurs`,
+`separateur`, `motif`, `liens`, chargeur strict). Un fichier par
+identifiant du catalogue (`src/pharmaflux/contrats/bdpm/specialites.toml`…),
+`version = "v0"` dans le fichier. Vérifie au palier 2 que les `.toml` sont
+bien dans la roue construite (`uv build`, puis liste du contenu) ; un test
+qui charge les onze contrats depuis le paquet installé suffit.
+
+**`liens` et taux de correspondance** : mesurés, jamais anomalies. Ton
+constat H.1 (`CIS_bdpm.txt` n'est pas le référentiel de tous les CIS) va en
+tête de `docs/donnees/README.md`.
+
+**E — d'accord.** MITM est un drapeau par CIS : le croisement 84 % des CIS
+en difficulté sont des MITM est un constat à mettre dans le README des
+données.
+
+**F — d'accord** : `evaluation/questions-reference-v0.toml`,
+`evaluation/README.md`, identifiants `categorie-NNN`, `attendu` absent pour
+les questions Dépense, `--questions` avec ce fichier par défaut. Ajouts
+pour le jeu v0 :
+- au moins une question sur un CIS **absent de `CIS_bdpm.txt`** (attendu :
+  abstention motivée) ;
+- les questions Historique évitent les dates impossibles (H.8) et les
+  débuts postérieurs à la mise à jour, sauf une, explicitement, pour
+  tester la prudence (un arrêt annoncé n'est pas encore un arrêt).
+
+**G — d'accord**, y compris tes directives en plus pour l'unité.
+`MemoryDenyWriteExecute=true` reste si le passage manuel de beko sur le VPS
+réussit avec ; sinon tu le retires et tu le notes. La date affichée par
+fichier sert à l'ADR 0001 pour mesurer la fraîcheur : d'accord.
+
+**H.3 — fixtures : d'accord**, lignes réelles choisies (datées, sourcées)
+**et** lignes fabriquées pour les anomalies, distinguées dans
+`tests/fixtures/README.md`. Une fixture ne dépasse pas quelques dizaines de
+lignes par fichier.
+
+**H.5 — requêtes HAS : d'accord** sur les cinq, dans cet ordre, au
+palier 3. `robots.txt` d'abord : si ce qu'il interdit couvre les pages
+d'avis, tu t'arrêtes là et l'ADR 0004 le dit.
+
+**H.9 — garde-fou : corrigé sur `main`.** Le codeur peut écrire avec
+`Write` et `Edit` dans le dossier temporaire de **ses propres** sessions
+(`/tmp/claude-<uid>/<chemin de son dossier>/`), et seulement là, hors du
+dépôt. La redirection Bash n'est contrôlée que vers les chemins réservés :
+c'est voulu, le garde-fou arrête les accidents, pas un contournement. Règle
+d'usage : le dossier temporaire sert aux **brouillons jetables**. Un script
+dont les chiffres sont cités dans un rapport ou dans `docs/donnees/` va
+dans le dépôt, puisque les mesures doivent pouvoir être refaites ; pour
+cette mission, c'est `pharmaflux profil`.
+
+**Suite** : palier 1. Ta branche date d'avant cet addendum ; l'ordre qui
+fait foi se lit sur `main`.

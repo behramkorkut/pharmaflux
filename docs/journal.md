@@ -142,3 +142,16 @@ l'IeC et le relecteur : `ruff format` compte aussi les fichiers Markdown,
 d'où un nombre qui grandit à chaque rapport. Réponse :
 `docs/rapports/mission-00/reponse-relecture-2.md`. `pr.md` attend les
 24 h de passages sur le VPS.
+
+## 2026-10-25 — Mission 00 : 24 h de passages, `pr.md`
+
+Relevé de l'IeC le 25/10 à 21:17 UTC : 24 passages planifiés en 24 h sur
+les douze entrées horaires, 1 sur les deux quotidiennes, 340 lignes de
+manifeste depuis l'installation (trois versions du collecteur : `a8aa07b`,
+`07c77a6`, `1ccc9c0`), 0 erreur. Premier changement réel capté :
+`CIS_CIP_bdpm.txt` (date source 2026-10-24) et la page, archivés le 24/10 à
+23:17Z. Sous l'unité durcie : pic mémoire 43 Mo (plafond 256 Mo), score
+d'exposition systemd 6,3. Le critère de clôture de l'ordre est atteint ;
+description de la PR : `docs/rapports/mission-00/pr.md` (livré,
+vérifications sur `0832dad`, résultat des 24 h, écarts, reports à la
+mission 01).

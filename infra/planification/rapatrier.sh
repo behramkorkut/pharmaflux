@@ -30,7 +30,9 @@ if [ "${1:-}" = "--simuler" ] || [ "${1:-}" = "-n" ]; then
     simulation="-n"
     shift
 fi
-[ $# -ge 1 ] && [ $# -le 2 ] || usage
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    usage
+fi
 
 hote="$1"
 case "$hote" in

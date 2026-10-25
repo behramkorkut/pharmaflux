@@ -51,7 +51,9 @@ jobs:
       - name: Scripts de planification (shellcheck)
         run: |
           if ls infra/planification/*.sh >/dev/null 2>&1; then
-            shellcheck infra/planification/*.sh
+            # même version qu'en local (uv est installé plus haut) : un shellcheck
+            # différent signale d'autres avertissements, comme SC2015 sur la PR 1
+            uvx --from shellcheck-py==0.11.0.1 shellcheck infra/planification/*.sh
           else
             echo "aucun script dans infra/planification/ : rien à vérifier"
           fi

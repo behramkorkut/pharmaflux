@@ -155,3 +155,13 @@ d'exposition systemd 6,3. Le critère de clôture de l'ordre est atteint ;
 description de la PR : `docs/rapports/mission-00/pr.md` (livré,
 vérifications sur `0832dad`, résultat des 24 h, écarts, reports à la
 mission 01).
+
+## 2026-10-25 — Mission 00 : CI rouge sur la PR 1, shellcheck
+
+Le shellcheck du runner GitHub (paquet apt, plus ancien que la 0.11.0 du
+poste de l'IeC) signale SC2015 sur `rapatrier.sh` (`A && B || C` pris pour
+un « si… sinon »). Le script était correct, la ligne est réécrite en `if`.
+La CI lance désormais `uvx --from shellcheck-py==0.11.0.1 shellcheck` :
+même version qu'en local, le décalage ne peut plus se reproduire. Vérifié
+ici avec la même commande : rien à signaler, `sh -n` ok, `usage` rendu
+avec le code 2 pour zéro ou trois arguments.

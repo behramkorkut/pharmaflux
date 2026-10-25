@@ -20,8 +20,10 @@ Actions (ruff, mypy, pytest, shellcheck, tests des garde-fous), `README.md`,
   la documentation PDF des formats une fois par jour ;
 - archive bronze immuable, compressée, sous
   `bronze/<source>/<fichier>/<AAAA-MM-JJ>/<horodatage>__<sha256, 12 car.>.<ext>.gz`,
-  écrite par fichier temporaire puis renommage : jamais de fichier partiel
-  visible, jamais de réécriture ;
+  écrite dans un fichier temporaire (`.<nom>.partiel-<pid>`, `fsync`) puis
+  publiée par **lien dur** (`os.link`), qui échoue si le nom existe déjà :
+  jamais de fichier partiel visible, et une réécriture est impossible, pas
+  seulement interdite ;
 - empreinte de comparaison par fichier (octets, ou projection de la page
   et du JSON data.gouv) : un contenu identique n'est pas réarchivé, un
   `304` est consigné sans téléchargement ;
@@ -97,8 +99,9 @@ clôture de l'ordre (au moins 24 h de passages planifiés visibles dans
 
 Tous consignés dans les rapports de palier et acceptés par les contrôles :
 
-1. `typer` plutôt qu'`argparse` ; `ruff` exclut `.claude/` et
-   `infra/agents/`, outils de l'IeC que je ne modifie pas.
+1. `typer` plutôt qu'`argparse`. Les fichiers de l'IeC (`.claude/`,
+   `infra/agents/`) suivent la configuration ruff du projet : l'exclusion
+   posée au palier 1 a été retirée au palier 2, à la demande du contrôle.
 2. Quatorzième entrée du catalogue : la documentation PDF des formats,
    douzième lien de la page, quotidienne ; URL figée en `v5`.
 3. `lien_absent` : le fichier est quand même archivé s'il est nouveau, la
@@ -114,7 +117,7 @@ Tous consignés dans les rapports de palier et acceptés par les contrôles :
    consigner) ; une erreur httpx hors transport n'est pas relancée.
 7. Les unités n'ont pas été exécutées sur le Mac ; elles le sont sur le
    VPS depuis le 24/10, voir ci-dessus.
-8. `main` a reçu depuis la branche deux lignes dans `.claude/hooks/garde_fou.py`
+8. Depuis la création de la branche, `main` a reçu deux lignes dans `.claude/hooks/garde_fou.py`
    et `infra/agents/test_garde_fou.py` (`git ls-tree` et `git check-ignore`
    permis) : la branche ne les touche pas, la fusion les conserve.
 

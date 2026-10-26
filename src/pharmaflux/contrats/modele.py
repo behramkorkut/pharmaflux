@@ -198,6 +198,11 @@ class Contrat:
     liens: tuple[Lien, ...] = ()
 
     @property
+    def dossier_bronze(self) -> str:
+        """« bronze/<source>/<fichier> », le dossier où la collecte archive ce fichier."""
+        return f"bronze/{self.identifiant.partition('.')[0]}/{self.fichier}"
+
+    @property
     def noms_colonnes(self) -> tuple[str, ...]:
         return tuple(colonne.nom for colonne in self.colonnes)
 

@@ -200,6 +200,28 @@ def _coherence(
         raise JeuInvalide(f"{contexte} : l'attendu d'une abstention ne contient aucune ligne")
 
 
+def _archive_du_contrat(table: _Table, archive: str, contrat: Contrat, jour: date) -> None:
+    """``archive`` est « <dossier bronze du contrat>/<jour de référence>/<nom>.gz », rien d'autre.
+
+    Le dossier lie l'archive au contrat nommé : une archive d'un autre fichier serait
+    lue avec les mauvaises colonnes (« archive non conforme » trompeur, ou comparaison
+    fausse quand des noms coïncident). La forme exclut aussi un « .. » dans le chemin.
+    """
+    parties = archive.split("/")
+    if parties[:3] != contrat.dossier_bronze.split("/"):
+        raise JeuInvalide(
+            f"{table.contexte} : « archive » est un chemin {contrat.dossier_bronze}/…, "
+            f"le dossier bronze de {contrat.identifiant}"
+        )
+    if len(parties) < 4 or parties[3] != jour.isoformat():
+        raise JeuInvalide(f"{table.contexte} : l'archive n'est pas du jour de référence {jour}")
+    if len(parties) != 5 or not parties[4].endswith(".gz"):
+        raise JeuInvalide(
+            f"{table.contexte} : « archive » finit par le nom du fichier archivé, "
+            "<horodatage>__<sha256 abrégé>.<ext>.gz"
+        )
+
+
 def _attendu(table: _Table, contrats: Mapping[str, Contrat]) -> Attendu:
     date_reference = table.date("date_reference", obligatoire=True)
     assert date_reference is not None
@@ -211,12 +233,7 @@ def _attendu(table: _Table, contrats: Mapping[str, Contrat]) -> Attendu:
         )
     contrat = contrats[fichier]
     archive = table.texte("archive")
-    if not archive.startswith("bronze/") or not archive.endswith(".gz"):
-        raise JeuInvalide(f"{table.contexte} : « archive » est un chemin bronze/…/*.gz")
-    if f"/{date_reference.isoformat()}/" not in archive:
-        raise JeuInvalide(
-            f"{table.contexte} : l'archive n'est pas du jour de référence {date_reference}"
-        )
+    _archive_du_contrat(table, archive, contrat, date_reference)
     sha256 = table.texte("sha256")
     if not MOTIF_SHA256.fullmatch(sha256):
         raise JeuInvalide(f"{table.contexte} : « sha256 » doit être un sha256 hexadécimal")

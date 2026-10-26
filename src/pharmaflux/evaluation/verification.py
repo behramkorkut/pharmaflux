@@ -79,7 +79,7 @@ class Bilan:
 
 def verifier_jeu(jeu: Jeu, racine: Path, contrats: Mapping[str, Contrat]) -> Bilan:
     """Rejoue chaque attendu sur ``racine`` ; chaque archive n'est lue et vérifiée qu'une fois."""
-    lectures: dict[str, Resultat | Lecture] = {}
+    lectures: dict[tuple[str, str], Resultat | Lecture] = {}  # (archive, contrat) → lecture
     bilan = Bilan()
     for question in jeu.questions:
         attendu = question.attendu
@@ -87,9 +87,10 @@ def verifier_jeu(jeu: Jeu, racine: Path, contrats: Mapping[str, Contrat]) -> Bil
             verdict = Verdict.NON_CALCULABLE if question.calculable_au else Verdict.SANS_ATTENDU
             bilan.resultats.append(Resultat(question, verdict, question.calculable_au or ""))
             continue
-        if attendu.archive not in lectures:
-            lectures[attendu.archive] = _lire(question, attendu, racine, contrats[attendu.fichier])
-        lecture = lectures[attendu.archive]
+        cle = (attendu.archive, attendu.fichier)
+        if cle not in lectures:
+            lectures[cle] = _lire(question, attendu, racine, contrats[attendu.fichier])
+        lecture = lectures[cle]
         if isinstance(lecture, Resultat):
             bilan.resultats.append(Resultat(question, lecture.verdict, lecture.detail))
         else:

@@ -4,9 +4,12 @@ Fichier à clé : ``creee``, ``supprimee``, ``modifiee`` avec les champs
 modifiés, sur les valeurs normalisées. Fichier ligne à ligne : multiensemble
 des lignes normalisées, une ligne qui change donne une ``supprimee`` puis une
 ``creee``, jamais de ``modifiee`` ; le rang distingue les occurrences d'une
-même ligne. Le premier snapshot d'un fichier donne une ``creee`` par entité,
-``etat_initial`` vrai (ADR 0006). ``appliquer`` est l'inverse : rejouer les
-événements sur un état redonne le snapshot retenu, ce que les tests vérifient.
+même ligne ; les ``supprimee`` d'une même ligne sortent du rang le plus haut
+au plus bas et les ``creee`` du plus bas au plus haut, pour qu'un consommateur
+qui suit le flux voie un compte toujours juste. Le premier snapshot d'un
+fichier donne une ``creee`` par entité, ``etat_initial`` vrai (ADR 0006).
+``appliquer`` est l'inverse : rejouer les événements sur un état redonne le
+snapshot retenu, ce que les tests vérifient.
 """
 
 from __future__ import annotations

@@ -22,7 +22,7 @@ from pharmaflux.collecte.archive import chemin_archive, ecrire_archive
 from pharmaflux.collecte.empreintes import empreinte_comparaison, sha256_hex
 from pharmaflux.collecte.manifeste import Enregistrement
 from pharmaflux.contrats.chargeur import charger_tous
-from pharmaflux.evenements import rejeu, snapshot
+from pharmaflux.evenements import rejeu, schema, snapshot
 from pharmaflux.evenements.comparaison import appliquer, etat_du_snapshot
 from pharmaflux.evenements.rejeu import ReprendreImpossible, executer, lire_evenements
 from tests.conftest import FIXTURES, entree
@@ -50,18 +50,28 @@ def _fixture(nom: str) -> bytes:
     return (FIXTURES / dossier / nom).read_bytes()
 
 
-# Toutes entités confondues, dans l'ordre du temps : présentations A, B, vide, A, B
+# Toutes entités confondues, dans l'ordre du temps. Présentations (clé) : A, B, vide, A, B
 # (oscillation), bloquant, perte confirmée par l'archive suivante, retour, perte écartée
-# par B, perte confirmée par un passage inchangé à la fin du bronze ; disponibilité A, B.
+# par B, perte confirmée par un passage inchangé, retour, puis deux pertes en attente qui se
+# suivent dans les deux sens (relecture 1) : la perte forte écartée par la perte, elle-même en
+# attente, puis la perte confirmée par la perte forte, elle-même en attente à la fin du bronze.
+# Disponibilité (ligne à ligne) : A (une ligne en double), B (en attente, écartée), la ligne en
+# triple, ramenée à une (en attente, confirmée par un passage inchangé), remontée à trois, puis
+# B en attente à la fin du bronze.
 SUITE: tuple[Collecte, ...] = (
     Collecte(PRESENTATIONS, 0, "presentations_a.txt", "2026-10-24"),
     Collecte(DISPO, 0.1, "dispo_a.txt"),
     Collecte(PRESENTATIONS, 1, "presentations_b.txt", "2026-10-24"),
     Collecte(DISPO, 1.1, "dispo_b.txt"),
     Collecte(PRESENTATIONS, 2, "presentations_vide.txt"),
+    Collecte(DISPO, 2.1, "dispo_triple.txt"),
     Collecte(PRESENTATIONS, 3, "presentations_a.txt", "2026-10-24"),
+    Collecte(DISPO, 3.1, "dispo_simple.txt"),
+    Collecte(DISPO, 3.6, None),  # inchangé : confirme la ligne en triple ramenée à une
     Collecte(PRESENTATIONS, 4, "presentations_b.txt", "2026-10-24"),
+    Collecte(DISPO, 4.1, "dispo_triple.txt"),
     Collecte(PRESENTATIONS, 5, "presentations_anomalies.txt"),
+    Collecte(DISPO, 5.1, "dispo_b.txt"),
     Collecte(PRESENTATIONS, 6, "presentations_perte.txt", "2026-10-24"),
     Collecte(PRESENTATIONS, 7, "presentations_perte.txt", "2026-10-24"),
     Collecte(PRESENTATIONS, 8, "presentations_a.txt", "2026-10-24"),
@@ -69,6 +79,10 @@ SUITE: tuple[Collecte, ...] = (
     Collecte(PRESENTATIONS, 10, "presentations_b.txt", "2026-10-25"),
     Collecte(PRESENTATIONS, 11, "presentations_perte.txt", "2026-10-25"),
     Collecte(PRESENTATIONS, 11.5, None),  # inchangé : confirme la perte de 11 h
+    Collecte(PRESENTATIONS, 12, "presentations_a.txt", "2026-10-25"),
+    Collecte(PRESENTATIONS, 13, "presentations_perte_forte.txt", "2026-10-25"),
+    Collecte(PRESENTATIONS, 14, "presentations_perte.txt", "2026-10-25"),  # écarte 13 h, attend
+    Collecte(PRESENTATIONS, 15, "presentations_perte_forte.txt", "2026-10-25"),  # confirme 14 h
 )
 ARCHIVES = [c for c in SUITE if c.nom is not None]
 
@@ -142,18 +156,22 @@ def test_rejeu_complet_ce_qu_il_produit(bronze_complet: Path, tmp_path: Path) ->
     sortie = tmp_path / "sortie"
     rapport = _executer(bronze_complet, sortie)
     (pres, dispo) = rapport.resumes
-    assert (pres.archives_lues, pres.retenues, pres.ecartees, pres.en_attente) == (12, 9, 3, 0)
+    assert (pres.archives_lues, pres.retenues, pres.ecartees, pres.en_attente) == (16, 11, 4, 1)
     # Comparaisons : A initiale (c17) ; A→B (s1 m1 c1) ; B→A ; A→B ; B→perte confirmée par
     # l'archive suivante (s10 m1 c1) ; perte→perte (rien) ; perte→A (c9) ; la perte de 9 h est
-    # écartée, A→B ; B→perte confirmée par le passage inchangé (s10 m1 c1).
-    assert dict(pres.evenements) == {"creee": 32, "modifiee": 6, "supprimee": 24}
-    # Disponibilité : B perd une ligne sur sept (14 %), rien ne la confirme : en attente.
-    assert (dispo.archives_lues, dispo.retenues, dispo.ecartees, dispo.en_attente) == (2, 1, 0, 1)
-    assert dict(dispo.evenements) == {"creee": 7}
+    # écartée, A→B ; B→perte confirmée par le passage inchangé (s10 m1 c1) ; perte→A (c9) ; la
+    # perte forte de 13 h est écartée par la perte de 14 h, elle-même en attente, que la perte
+    # forte de 15 h confirme (A→perte : s9) ; celle de 15 h reste en attente.
+    assert dict(pres.evenements) == {"creee": 41, "modifiee": 6, "supprimee": 33}
+    # Disponibilité : B perd une ligne sur sept (14 %), le triple l'écarte (c1, rang 3) ; la ligne
+    # ramenée à une est en attente, confirmée par le passage inchangé (s3, s2) ; remontée à trois
+    # (c2, c3) ; B en attente à la fin du bronze.
+    assert (dispo.archives_lues, dispo.retenues, dispo.ecartees, dispo.en_attente) == (6, 4, 1, 1)
+    assert dict(dispo.evenements) == {"creee": 10, "supprimee": 2}
     arbre = _arbre(sortie)
     evenements = sorted(c for c in arbre if c.startswith("evenements/"))
     bilans = sorted(c for c in arbre if c.startswith("bilans/"))
-    assert len(evenements) == 9 + 1 and len(bilans) == 12 + 2 and "etat.json" in arbre
+    assert len(evenements) == 11 + 4 and len(bilans) == 16 + 6 and "etat.json" in arbre
     decisions = {
         c.removeprefix("bilans/bdpm.presentations/")[:16]: json.loads(arbre[c])["decision"]
         for c in bilans
@@ -162,24 +180,26 @@ def test_rejeu_complet_ce_qu_il_produit(bronze_complet: Path, tmp_path: Path) ->
     attendues = [
         "retenu", "retenu", "ecarte", "retenu", "retenu", "ecarte",
         "confirme", "retenu", "retenu", "ecarte", "retenu", "confirme",
+        "retenu", "ecarte", "confirme", "en_attente",
     ]  # fmt: skip
     assert [
-        decisions[f"{(T0 + timedelta(hours=h)):%Y%m%dT%H%M%S}Z"] for h in range(12)
+        decisions[f"{(T0 + timedelta(hours=h)):%Y%m%dT%H%M%S}Z"] for h in range(16)
     ] == attendues, "le bilan d'une archive en attente est réécrit : confirmé ou écarté"
     etat = json.loads(arbre["etat.json"])
     assert etat["version"] == 1 and set(etat["entites"]) == {PRESENTATIONS, DISPO}
     dispo_etat = etat["entites"][DISPO]
-    assert dispo_etat["en_attente"] is not None and "T152300Z__" in dispo_etat["en_attente"]
+    assert dispo_etat["en_attente"] is not None and "T192300Z__" in dispo_etat["en_attente"]
     assert dispo_etat["dernier_retenu"] == dispo_etat["derniere_archive_traitee"]
-    assert "T142300Z__" in dispo_etat["dernier_retenu"], "l'état reste avant l'archive en attente"
-    attente = next(c for c in bilans if "T152300Z" in c)
+    assert "T182300Z__" in dispo_etat["dernier_retenu"], "l'état reste avant l'archive en attente"
+    attente = next(c for c in bilans if "T192300Z" in c)
     assert json.loads(arbre[attente])["decision"] == "en_attente"
     pres_etat = etat["entites"][PRESENTATIONS]
-    assert pres_etat["en_attente"] is None and pres_etat["version_contrat"] == "v1"
+    assert pres_etat["version_contrat"] == "v1" and "20261025T051700Z__" in pres_etat["en_attente"]
     assert pres_etat["dernier_retenu"] == pres_etat["derniere_archive_traitee"]
     assert pres_etat["dernier_retenu"].startswith(
-        "bronze/bdpm/CIS_CIP_bdpm.txt/2026-10-25/20261025T011700Z__"
-    )
+        "bronze/bdpm/CIS_CIP_bdpm.txt/2026-10-25/20261025T041700Z__"
+    ), "la dernière traitée est la perte confirmée par l'archive en attente, pas celle d'avant"
+    assert arbre[next(c for c in evenements if "20261025T041700Z" in c)].count(b"supprimee") == 9
     vide = next(c for c in bilans if "20261024T161700Z" in c)
     assert json.loads(arbre[vide])["motif"] == "vide : aucune ligne bien formée"
     assert not any("20261024T161700Z" in c for c in evenements), "écarté : pas d'événements"
@@ -242,7 +262,12 @@ def test_aucun_identifiant_en_double_et_appliquer_sur_la_sortie_relue(
         )
         dernier = snapshot.lire(contrats[identifiant], archive, bronze_complet)
         assert appliquer({}, evenements) == etat_du_snapshot(dernier), identifiant
-    assert len(identifiants) == len(set(identifiants)) == 62 + 7
+    assert len(identifiants) == len(set(identifiants)) == 80 + 12
+    fichier = next((sortie / "evenements" / DISPO).glob("20261024T172300Z__*.jsonl"))
+    relus = [schema.deserialiser(li) for li in fichier.read_text(encoding="utf-8").splitlines()]
+    assert [(e.type.value, e.rang) for e in relus] == [("supprimee", 3), ("supprimee", 2)], (
+        "la ligne en triple ramenée à une : du rang le plus haut au plus bas, relu du disque"
+    )
 
 
 def test_reprendre_refuse_si_le_contrat_a_change(bronze_complet: Path, tmp_path: Path) -> None:
@@ -316,10 +341,10 @@ def test_commande_evenements(bronze_complet: Path, tmp_path: Path) -> None:
     assert resultat.exit_code == 0, resultat.output
     assert (
         "bdpm.presentations" in resultat.output
-        and "12 archive(s) lue(s), 9 retenue(s), 3 écartée(s)" in resultat.output
+        and "16 archive(s) lue(s), 11 retenue(s), 4 écartée(s), 1 en attente" in resultat.output
     )
     assert (
-        "creee 32, modifiee 6, supprimee 24" in resultat.output
+        "creee 41, modifiee 6, supprimee 33" in resultat.output
         and "bdpm.disponibilite" not in resultat.output
     )
     assert (sortie / "evenements" / PRESENTATIONS).is_dir() and not (
@@ -331,7 +356,7 @@ def test_commande_evenements(bronze_complet: Path, tmp_path: Path) -> None:
     )
     assert reprise.exit_code == 0 and "bdpm.disponibilite" in reprise.output
     assert "bdpm.presentations           0 archive(s) lue(s)" in reprise.output
-    assert "bdpm.disponibilite           2 archive(s) lue(s)" in reprise.output, "rejeu complet"
+    assert "bdpm.disponibilite           6 archive(s) lue(s)" in reprise.output, "rejeu complet"
     sous_racine = lanceur.invoke(
         application,
         [
@@ -362,7 +387,7 @@ def test_rejeu_complet_interrompu_puis_reprise(
     assert not (sortie / "evenements" / PRESENTATIONS).exists()
     premiere.write_bytes(octets)
     rapport = _executer(bronze_complet, sortie, reprendre=True)
-    assert rapport.code_sortie == 0 and rapport.resumes[0].archives_lues == 12
+    assert rapport.code_sortie == 0 and rapport.resumes[0].archives_lues == 16
     assert _arbre(sortie) == reference, "la reprise redonne la sortie du rejeu complet"
 
 

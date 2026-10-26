@@ -15,9 +15,11 @@ archive lue laisse sur le disque :
 Le flux d'une source est la concaténation de ses fichiers d'événements dans
 l'ordre des noms. La reprise lit l'état, recalcule le dernier snapshot retenu
 (et celui en attente) **depuis leur archive**, et ne traite que les archives
-postérieures à la dernière traitée ; un snapshot en attente n'est pas
-« traité », l'état garde la dernière archive avant lui. Rien ne vient de
-l'horloge : les dates viennent des noms d'archive et du manifeste.
+postérieures à la dernière traitée : la dernière dont le verdict est
+définitif (retenue, confirmée ou écartée), ce qui peut être l'archive en
+attente que la dernière archive lue a tranchée, quand celle-ci est à son tour
+en attente. Rien ne vient de l'horloge : les dates viennent des noms
+d'archive et du manifeste.
 """
 
 from __future__ import annotations
@@ -178,8 +180,12 @@ def _traiter_entite(
         )
         for resultat in resultats:
             _ecrire_resultat(sortie, resultat, resume, dire)
-        if resultats[-1].verdict.decision is not Decision.EN_ATTENTE:
-            derniere_traitee = relatif
+            # Chaque verdict définitif avance la dernière archive traitée : celui de l'archive en
+            # attente que cette archive tranche, puis le sien s'il ne la met pas elle-même en
+            # attente. Ne regarder que le dernier résultat laisserait la reprise relire une archive
+            # déjà traitée, et effacer ses événements (relecture 1).
+            if resultat.verdict.decision is not Decision.EN_ATTENTE:
+                derniere_traitee = resultat.snapshot.archive
         _ecrire_etat(sortie, identifiant, contrat, suivi, derniere_traitee)
     if suivi.en_attente is not None and resume.erreur is None:
         inchange_revu = manifeste_.inchange_revu(

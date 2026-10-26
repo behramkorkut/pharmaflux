@@ -75,8 +75,15 @@ class Evenement:
         return identite_de_ligne(self.identite, self.cle, self.empreinte_ligne, self.rang)
 
     def cle_de_tri(self) -> tuple[tuple[str, ...], int, str, int]:
-        """Clé normalisée, puis supprimee < modifiee < creee, puis empreinte, puis rang."""
-        return (valeurs_de_cle(self.cle), ORDRE_TYPES[self.type], self.empreinte_ligne, self.rang)
+        """Clé normalisée, puis supprimee < modifiee < creee, puis empreinte, puis rang.
+
+        Le rang est décroissant pour les ``supprimee`` et croissant pour les
+        ``creee`` : supprimer le rang r ramène les occurrences à r - 1, créer le
+        rang r les porte à r. Un consommateur qui suit le flux dans l'ordre, comme
+        ``appliquer``, voit ainsi un compte toujours juste (relecture 1).
+        """
+        rang = -self.rang if self.type is TypeEvenement.SUPPRIMEE else self.rang
+        return (valeurs_de_cle(self.cle), ORDRE_TYPES[self.type], self.empreinte_ligne, rang)
 
 
 def valeurs_de_cle(cle: Mapping[str, str]) -> tuple[str, ...]:
@@ -168,11 +175,8 @@ def deserialiser(ligne: str) -> Evenement:
             rang=_entier(brut["rang"]),
             avant=None if brut["avant"] is None else _chaines(brut["avant"]),
             apres=None if brut["apres"] is None else _chaines(brut["apres"]),
-            champs_modifies=tuple(_texte(c) for c in brut["champs_modifies"]),
-            anomalies=tuple(
-                (None if a["colonne"] is None else _texte(a["colonne"]), Regle(a["regle"]))
-                for a in brut["anomalies"]
-            ),
+            champs_modifies=tuple(_texte(c) for c in _liste(brut["champs_modifies"])),
+            anomalies=tuple(_anomalie(a) for a in _liste(brut["anomalies"])),
             date_source=None if brut["date_source"] is None else _texte(brut["date_source"]),
             date_observation=_texte(brut["date_observation"]),
             archive=_texte(brut["archive"]),
@@ -206,6 +210,19 @@ def _entier(valeur: object) -> int:
     if isinstance(valeur, bool) or not isinstance(valeur, int):
         raise TypeError(f"entier attendu, reçu {type(valeur).__name__}")
     return valeur
+
+
+def _liste(valeur: object) -> list[object]:
+    if not isinstance(valeur, list):
+        raise TypeError(f"liste attendue, reçu {type(valeur).__name__}")
+    return valeur
+
+
+def _anomalie(valeur: object) -> tuple[str | None, Regle]:
+    if not isinstance(valeur, dict):
+        raise TypeError("objet attendu")
+    colonne = valeur["colonne"]
+    return (None if colonne is None else _texte(colonne), Regle(_texte(valeur["regle"])))
 
 
 def _chaines(valeur: object) -> dict[str, str]:

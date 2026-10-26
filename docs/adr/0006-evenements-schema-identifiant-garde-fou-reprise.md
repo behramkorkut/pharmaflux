@@ -65,8 +65,12 @@ une `supprimee` puis une `creee`, jamais de `modifiee` ; le `rang` distingue
 les occurrences ; `cle` porte les colonnes de la clé déclarée non unique,
 pour que le Lot 2 rapproche une `supprimee` et une `creee` de même clé sans
 que l'événement l'affirme. Ordre : clé, puis `supprimee` < `modifiee` <
-`creee`, puis empreinte, puis rang. Une graphie seule (`65 %`), une espace,
-un format de date ne produisent rien.
+`creee`, puis empreinte, puis rang, **décroissant pour les `supprimee`**
+(supprimer le rang r ramène les occurrences à r − 1) et croissant pour les
+`creee` (créer le rang r les porte à r) : un consommateur qui suit le flux
+dans l'ordre, comme `appliquer`, voit un compte toujours juste, même quand
+une ligne perd plusieurs occurrences d'un coup. Une graphie seule (`65 %`),
+une espace, un format de date ne produisent rien.
 
 **Premier snapshot.** Une `creee` par entité, `etat_initial = true`, sans
 compression : le Lot 2 n'a qu'un chemin, appliquer des événements, et la
@@ -110,9 +114,13 @@ puis renommé. Le flux d'une source est la concaténation de ses fichiers
 dans l'ordre des noms. L'état garde par entité la version du contrat, la
 dernière archive traitée, le dernier retenu et le snapshot en attente, par
 leurs chemins : **les snapshots ne sont jamais sérialisés**, la reprise les
-recalcule depuis leur archive. Un snapshot en attente n'est pas « traité »
-(la dernière archive traitée reste avant lui) ; quand une exécution
-ultérieure le tranche, elle réécrit son bilan et écrit ses événements s'il
+recalcule depuis leur archive. Un snapshot en attente n'est pas « traité » :
+**la dernière archive traitée est la dernière dont le verdict est
+définitif** (retenue, confirmée ou écartée), ce qui peut être l'archive en
+attente que la dernière archive lue vient de trancher, quand celle-ci passe
+à son tour en attente ; sinon la reprise relirait une archive déjà traitée
+et effacerait ses événements. Quand une exécution ultérieure tranche un
+snapshot en attente, elle réécrit son bilan et écrit ses événements s'il
 est confirmé, pour que la sortie égale celle d'un rejeu complet. Un rejeu
 complet recalcule tout et repart de zéro pour l'entité : il **retire
 d'abord l'entité de `etat.json`** (réécriture atomique), puis efface ses
@@ -125,10 +133,13 @@ constat, pas une panne. Le dossier de sortie n'est jamais sous la racine de
 l'archive.
 
 **Exactitude** (PRD §7.1), en tests : deux rejeux complets identiques à
-l'octet ; une reprise après **chaque** point d'arrêt d'une suite de treize
-archives fabriquées (dont une archive en attente tranchée dans les deux
-sens, une confirmée par un passage inchangé à la fin du bronze, le retour
+l'octet ; une reprise après **chaque** point d'arrêt d'une suite de
+vingt-deux archives fabriquées (dont une archive en attente tranchée dans
+les deux sens, une confirmée par un passage inchangé, deux pertes en attente
+qui se suivent, tranchées dans les deux sens par une archive elle-même en
+attente, une ligne en triple ramenée à une puis remontée à trois, le retour
 A → B → A, l'oscillation, le vide, le bloquant) égale au rejeu complet ;
+`--reprendre` sans rien de nouveau ne change pas un octet ;
 `etat.json` supprimé puis `--reprendre` ; un rejeu complet interrompu par
 une archive illisible en tête, après l'effacement de la sortie, puis
 `--reprendre` une fois l'archive lisible ; aucun identifiant en double ;

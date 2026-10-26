@@ -171,6 +171,32 @@ def test_comparaison_ligne_a_ligne_doublon_et_rangs() -> None:
     assert all(e.champs_modifies == () for e in evenements)
 
 
+def test_ligne_en_triple_ramenee_a_une_les_supprimee_du_rang_le_plus_haut_au_plus_bas() -> None:
+    """Relecture 1, bloquant 2 : un consommateur qui suit le flux voit un compte toujours juste."""
+    triple = _snap("bdpm.disponibilite", "dispo_triple.txt", "2026-10-24", "1417")
+    une = _snap("bdpm.disponibilite", "dispo_simple.txt", "2026-10-24", "1517")
+    perdues = comparer(triple, une)
+    assert [(e.type, e.rang) for e in perdues] == [
+        (TypeEvenement.SUPPRIMEE, 3),
+        (TypeEvenement.SUPPRIMEE, 2),
+    ]
+    retrouvees = comparer(une, triple)
+    assert [(e.type, e.rang) for e in retrouvees] == [
+        (TypeEvenement.CREEE, 2),
+        (TypeEvenement.CREEE, 3),
+    ]
+    etat = appliquer(appliquer({}, comparer(None, triple)), perdues)
+    assert etat == etat_du_snapshot(une)
+    assert appliquer(etat, retrouvees) == etat_du_snapshot(triple)
+    relues = sorted(
+        (schema.deserialiser(schema.serialiser(e)) for e in reversed(perdues)),
+        key=Evenement.cle_de_tri,
+    )
+    assert [e.rang for e in relues] == [3, 2], "même ordre après relecture et tri"
+    with pytest.raises(ValueError, match="mauvais rang"):
+        appliquer(appliquer({}, comparer(None, triple)), list(reversed(perdues)))
+
+
 def test_appliquer_les_evenements_redonne_le_snapshot() -> None:
     a, b = _pres("presentations_a.txt"), _pres("presentations_b.txt", heure="1517")
     etat = appliquer({}, comparer(None, a))
@@ -259,10 +285,14 @@ def test_aller_retour_json_sur_une_cle_a_plusieurs_colonnes() -> None:
         ('"rang":1', '"rang":true'),
         ('"rang":1', '"rang":2.7'),
         ('"id":"', '"id":1,"autre":"'),
+        ('"champs_modifies":[]', '"champs_modifies":"abc"'),
+        ('"champs_modifies":[]', '"champs_modifies":{}'),
+        ('"anomalies":[]', '"anomalies":"abc"'),
     ],
 )
 def test_deserialiser_exige_les_vrais_types_json(ancien: str, nouveau: str) -> None:
-    """Contrôle du palier 2, point 2 : un vrai booléen, un vrai entier, pas une conversion."""
+    """Contrôle du palier 2, point 2, et relecture 1 : un vrai booléen, un vrai entier, une vraie
+    liste (une chaîne se lirait caractère par caractère), pas une conversion."""
     (e, *_) = comparer(None, _pres("presentations_a.txt"))
     ligne = schema.serialiser(e)
     assert ancien in ligne

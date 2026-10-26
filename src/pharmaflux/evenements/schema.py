@@ -10,6 +10,15 @@ L'identifiant est le sha256 de ``entite``, ``archive``, ``archive_precedente``,
 ``type`` et ``identite_de_ligne``, joints par ``\\x1f`` : les deux archives y
 entrent par leur chemin relatif, pour qu'une oscillation A → B → A → B donne
 des identifiants distincts à chaque comparaison.
+
+**Rien ne dépend de l'ordre d'un objet JSON** (contrôle du palier 2) :
+``cle``, ``avant`` et ``apres`` sont des objets colonne → valeur, et tout ce
+qui en dérive (identité de ligne, ordre de tri, état rejoué) prend les
+colonnes dans l'ordre alphabétique de leur nom, qui est aussi l'ordre écrit
+par ``serialiser`` (clés triées à tous les niveaux). Un événement relu est
+égal à l'événement écrit, et un consommateur qui veut l'ordre des colonnes
+du fichier le trouve dans le contrat que ``entite`` et ``version_contrat``
+désignent.
 """
 
 from __future__ import annotations
@@ -63,19 +72,22 @@ class Evenement:
 
     @property
     def identite_de_ligne(self) -> str:
-        return identite_de_ligne(
-            self.identite, tuple(self.cle.values()), self.empreinte_ligne, self.rang
-        )
+        return identite_de_ligne(self.identite, self.cle, self.empreinte_ligne, self.rang)
 
     def cle_de_tri(self) -> tuple[tuple[str, ...], int, str, int]:
         """Clé normalisée, puis supprimee < modifiee < creee, puis empreinte, puis rang."""
-        return (tuple(self.cle.values()), ORDRE_TYPES[self.type], self.empreinte_ligne, self.rang)
+        return (valeurs_de_cle(self.cle), ORDRE_TYPES[self.type], self.empreinte_ligne, self.rang)
 
 
-def identite_de_ligne(identite: Identite, cle: tuple[str, ...], empreinte: str, rang: int) -> str:
+def valeurs_de_cle(cle: Mapping[str, str]) -> tuple[str, ...]:
+    """Les valeurs de la clé dans l'ordre alphabétique des colonnes : jamais celui de l'objet."""
+    return tuple(cle[nom] for nom in sorted(cle))
+
+
+def identite_de_ligne(identite: Identite, cle: Mapping[str, str], empreinte: str, rang: int) -> str:
     """Ce qui distingue une ligne dans l'identifiant : la clé, ou l'empreinte et le rang."""
     if identite is Identite.CLE:
-        return SEPARATEUR_EMPREINTE.join(cle)
+        return SEPARATEUR_EMPREINTE.join(valeurs_de_cle(cle))
     return f"{empreinte}{SEPARATEUR_EMPREINTE}{rang}"
 
 
@@ -149,11 +161,11 @@ def deserialiser(ligne: str) -> Evenement:
             fichier=_texte(brut["fichier"]),
             version_contrat=_texte(brut["version_contrat"]),
             type=TypeEvenement(_texte(brut["type"])),
-            etat_initial=bool(brut["etat_initial"]),
+            etat_initial=_booleen(brut["etat_initial"]),
             identite=Identite(_texte(brut["identite"])),
             cle=_chaines(brut["cle"]),
             empreinte_ligne=_texte(brut["empreinte_ligne"]),
-            rang=int(brut["rang"]),
+            rang=_entier(brut["rang"]),
             avant=None if brut["avant"] is None else _chaines(brut["avant"]),
             apres=None if brut["apres"] is None else _chaines(brut["apres"]),
             champs_modifies=tuple(_texte(c) for c in brut["champs_modifies"]),
@@ -181,6 +193,18 @@ def deserialiser(ligne: str) -> Evenement:
 def _texte(valeur: object) -> str:
     if not isinstance(valeur, str):
         raise TypeError(f"chaîne attendue, reçu {type(valeur).__name__}")
+    return valeur
+
+
+def _booleen(valeur: object) -> bool:
+    if not isinstance(valeur, bool):
+        raise TypeError(f"booléen attendu, reçu {type(valeur).__name__}")
+    return valeur
+
+
+def _entier(valeur: object) -> int:
+    if isinstance(valeur, bool) or not isinstance(valeur, int):
+        raise TypeError(f"entier attendu, reçu {type(valeur).__name__}")
     return valeur
 
 

@@ -11,7 +11,7 @@ même ligne. Le premier snapshot d'un fichier donne une ``creee`` par entité,
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from pharmaflux.evenements import schema
@@ -81,7 +81,7 @@ class _Fabrique:
                 self.nouveau.archive,
                 archive_precedente,
                 type_,
-                schema.identite_de_ligne(identite, tuple(cle.values()), empreinte, rang),
+                schema.identite_de_ligne(identite, cle, empreinte, rang),
             ),
             entite=self.nouveau.contrat.identifiant,
             fichier=self.nouveau.contrat.fichier,
@@ -134,8 +134,9 @@ def _par_ligne(
             yield fabrique.evenement(TypeEvenement.SUPPRIMEE, ligne, None, rang)
 
 
-# Un état reconstruit par ``appliquer`` : identité de ligne → (valeurs normalisées, occurrences).
-Etat = dict[str, tuple[tuple[str, ...], int]]
+# Un état reconstruit par ``appliquer`` : identité de ligne → (colonne → valeur normalisée,
+# occurrences). Des dictionnaires, comparés sans égard à l'ordre des colonnes.
+Etat = dict[str, tuple[Mapping[str, str], int]]
 
 
 def appliquer(etat: Etat, evenements: Iterable[Evenement]) -> Etat:
@@ -149,9 +150,7 @@ def appliquer(etat: Etat, evenements: Iterable[Evenement]) -> Etat:
     suivant = dict(etat)
     for evenement in evenements:
         if evenement.identite is Identite.CLE:
-            identite = schema.identite_de_ligne(
-                Identite.CLE, tuple(evenement.cle.values()), evenement.empreinte_ligne, 1
-            )
+            identite = schema.identite_de_ligne(Identite.CLE, evenement.cle, "", 1)
         else:
             identite = evenement.empreinte_ligne
         present = suivant.get(identite)
@@ -168,7 +167,7 @@ def appliquer(etat: Etat, evenements: Iterable[Evenement]) -> Etat:
                 suivant[identite] = (present[0], present[1] - 1)
             continue
         assert evenement.apres is not None
-        valeurs = tuple(evenement.apres.values())
+        valeurs = dict(evenement.apres)
         if evenement.type is TypeEvenement.MODIFIEE:
             if present is None:
                 raise ValueError(f"{evenement.id} : modification d'une ligne absente")
@@ -189,11 +188,17 @@ def appliquer(etat: Etat, evenements: Iterable[Evenement]) -> Etat:
 
 def etat_du_snapshot(snapshot: Snapshot) -> Etat:
     """L'état qu'``appliquer`` doit redonner pour ``snapshot``."""
+    noms = snapshot.contrat.noms_colonnes
+    colonnes_cle = snapshot.contrat.cle.colonnes
+
+    def valeurs(ligne: Ligne) -> dict[str, str]:
+        return dict(zip(noms, ligne.normalisees, strict=True))
+
     if snapshot.identite is Identite.CLE:
         return {
-            schema.identite_de_ligne(Identite.CLE, cle, "", 1): (ligne.normalisees, 1)
+            schema.identite_de_ligne(
+                Identite.CLE, dict(zip(colonnes_cle, cle, strict=True)), "", 1
+            ): (valeurs(ligne), 1)
             for cle, ligne in snapshot.par_cle.items()
         }
-    return {
-        empreinte: (ligne.normalisees, n) for empreinte, (ligne, n) in snapshot.par_ligne.items()
-    }
+    return {empreinte: (valeurs(ligne), n) for empreinte, (ligne, n) in snapshot.par_ligne.items()}

@@ -217,6 +217,59 @@ def test_identifiant_et_serialisation() -> None:
         schema.deserialiser(ligne.replace('"rang":1', '"rang":"un"'))
 
 
+def test_aller_retour_json_sur_une_cle_a_plusieurs_colonnes() -> None:
+    """Contrôle du palier 2, point 1 : rien ne dépend de l'ordre d'un objet JSON.
+
+    ``bdpm.compositions`` a une clé à cinq colonnes dont l'ordre dans le contrat
+    (``code_cis, designation_element, code_substance, …``) n'est pas l'ordre
+    alphabétique que ``serialiser`` écrit.
+    """
+    contrat = charger_identifiant("bdpm.compositions")
+    assert list(contrat.cle.colonnes) != sorted(contrat.cle.colonnes)
+    octets = (FIXTURES / "bdpm" / "CIS_COMPO_bdpm.txt").read_bytes()
+    horodatage = datetime(2026, 10, 24, 14, 17, tzinfo=UTC)
+    s = snapshot.construire(contrat, octets, "bronze/bdpm/CIS_COMPO_bdpm.txt/a.txt.gz", horodatage)
+    ecrits = comparer(None, s)
+    assert len(ecrits) == 40 and list(ecrits[0].cle) == list(contrat.cle.colonnes)
+    relus = [schema.deserialiser(schema.serialiser(e)) for e in ecrits]
+    assert relus == ecrits, "un événement relu est égal à l'événement écrit"
+    assert list(relus[0].cle) == sorted(contrat.cle.colonnes) and list(relus[0].cle) != list(
+        ecrits[0].cle
+    ), "l'objet JSON est relu dans l'ordre alphabétique"
+    for ecrit, relu in zip(ecrits, relus, strict=True):
+        assert relu.identite_de_ligne == ecrit.identite_de_ligne
+        recalcule = schema.identifiant(
+            relu.entite, relu.archive, relu.archive_precedente, relu.type, relu.identite_de_ligne
+        )
+        assert recalcule == relu.id == ecrit.id
+        assert relu.cle_de_tri() == ecrit.cle_de_tri()
+    melanges = sorted(reversed(relus), key=Evenement.cle_de_tri)
+    assert [e.id for e in melanges] == [e.id for e in ecrits], "même tri après relecture"
+    assert appliquer({}, relus) == appliquer({}, ecrits) == etat_du_snapshot(s)
+    assert [schema.serialiser(e) for e in relus] == [schema.serialiser(e) for e in ecrits]
+
+
+@pytest.mark.parametrize(
+    ("ancien", "nouveau"),
+    [
+        ('"etat_initial":true', '"etat_initial":"false"'),
+        ('"etat_initial":true', '"etat_initial":1'),
+        ('"rang":1', '"rang":"1"'),
+        ('"rang":1', '"rang":1.0'),
+        ('"rang":1', '"rang":true'),
+        ('"rang":1', '"rang":2.7'),
+        ('"id":"', '"id":1,"autre":"'),
+    ],
+)
+def test_deserialiser_exige_les_vrais_types_json(ancien: str, nouveau: str) -> None:
+    """Contrôle du palier 2, point 2 : un vrai booléen, un vrai entier, pas une conversion."""
+    (e, *_) = comparer(None, _pres("presentations_a.txt"))
+    ligne = schema.serialiser(e)
+    assert ancien in ligne
+    with pytest.raises(EvenementInvalide, match="mal formé"):
+        schema.deserialiser(ligne.replace(ancien, nouveau, 1))
+
+
 def test_comparer_refuse_deux_fichiers_ou_sans_horodatage() -> None:
     a = _pres("presentations_a.txt")
     with pytest.raises(ValueError, match="même fichier"):

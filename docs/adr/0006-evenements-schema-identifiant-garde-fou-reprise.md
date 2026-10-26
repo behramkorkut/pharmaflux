@@ -1,6 +1,7 @@
 # ADR-0006 — Événements : schéma v1, identifiant par chemins d'archive, comparaison ligne à ligne, garde-fou de volume, premier snapshot, reprise
 
-**Statut :** accepté · **Date :** 2026-10-26 · **Mission :** 02
+**Statut :** accepté · **Date :** 2026-10-26 · **Mission :** 02 ·
+**Mis à jour :** 2026-10-27, écriture en flux (mission 03, palier 1)
 **Remplace / remplacé par :** — · s'appuie sur l'ADR 0005 (normalisation)
 
 ## Contexte
@@ -156,17 +157,66 @@ retenu.
   versionnée par `version_schema`, `id` sert à l'idempotence des
   consommateurs, l'état de reprise devient un décalage de consommation. Rien
   dans l'événement n'a à changer.
-- Coût : 172 Mo d'état initial sur disque, hors dépôt (`data/`), une fois ;
-  474 Mo de mémoire résidente au pic (les événements d'une comparaison sont
-  construits en mémoire avant d'être écrits, 32 439 pour les compositions) ;
-  près de deux fois au-dessus des 256 Mo de l'unité du VPS : la chaîne n'y
-  tourne pas avant d'être réécrite en flux, ce que la mission 03 décidera.
+- Coût : 172 Mo d'état initial sur disque, hors dépôt (`data/`), une fois.
+  Mémoire résidente au pic du rejeu complet : 474 Mo à la mission 02 (les
+  événements d'une comparaison étaient construits puis sérialisés en mémoire
+  avant d'être écrits, 32 439 pour les compositions), près de deux fois les
+  256 Mo de l'unité du VPS ; **118 à 143 Mo** depuis la mise à jour du
+  27/10/2026 ci-dessous.
 - À surveiller : un `inchange` du manifeste ne confirme une archive en
   attente que dans la fenêtre entre son archivage et l'archive suivante ; au
   delà, il compare à l'archive suivante. Un changement de version de contrat
   impose un rejeu complet ; le choix d'une version de contrat par archive
   reste hors périmètre (ADR 0005). La révision du seuil (1 %) se ferait par
   cet ADR, sur mesure.
+
+## Mise à jour du 27/10/2026 — écriture en flux (mission 03, palier 1)
+
+**Décision.** La chaîne n'a plus de structure dont la taille dépend du
+nombre d'événements.
+
+- `comparer` rend un **itérateur**. Il construit un squelette par
+  événement (type, ligne avant, ligne après, rang, empreinte) avec sa clé
+  de tri, la même que `Evenement.cle_de_tri` calculée sur les mêmes
+  valeurs ; il trie les squelettes, puis fabrique chaque événement quand
+  l'itérateur avance. L'ordre et chaque octet écrit sont ceux d'avant **par
+  construction**, et aucun événement n'existe avant d'être écrit ni ne
+  survit après.
+- `rejeu` sérialise et écrit chaque événement dès qu'il est produit, dans le
+  même `.<nom>.jsonl.partiel` renommé à la fin ; un `Resultat` ne porte plus
+  ses événements (`evenements()` rappelle la comparaison à la demande), les
+  comptes par type sont faits à l'écriture et passés au bilan, et `Suivi` ne
+  garde rien de ce qu'il a produit. Chaque archive est traitée dans une
+  fonction dont tout meurt au retour : à la lecture de l'archive suivante,
+  seuls le dernier retenu et le snapshot en attente sont en mémoire.
+- La `Lecture` et le snapshot **partagent les valeurs qui se répètent**
+  d'une ligne à l'autre (un statut, un taux, une date, un prix) : un objet
+  chaîne par valeur distincte, brute ou normalisée ; le texte décodé meurt
+  dès qu'il est découpé en lignes. Le poids d'un snapshot est divisé par
+  près de deux (presentations : 26,6 → 14,7 Mo tracés ; compositions : 23,8
+  → 12,5).
+
+**Ce qui ne change pas.** Le schéma v1, l'identifiant, l'ordre de tri, la
+reprise, `appliquer`, et la sortie : le rejeu complet des onze fichiers de
+la copie du Mac donne un `diff -r` vide contre celle du code de la
+mission 02 (30 fichiers, 173 Mo).
+
+**Mesures** (copie du Mac, `/usr/bin/time -l`, trois exécutions) : rejeu
+complet **474 → 118, 134 et 143 Mo** résidents (7,9 s inchangées) ;
+`--reprendre` sans rien à faire 121 → 109 Mo ; `--version` 37 Mo. Le pic
+est désormais la lecture de la troisième archive de `bdpm.presentations`,
+quand le dernier retenu et le nouveau snapshot coexistent, pas plus la
+sérialisation des compositions. Le surplus de mémoire tracée pendant
+l'écriture de 20 000 `modifiee` passe de 146 à 6 Mo. `tests/test_memoire.py`
+garde la **structure** : sur deux snapshots fabriqués, le surplus pendant
+l'écriture reste sous la moitié de leur poids (près de trois fois avant).
+
+**Écartées** : fusionner deux snapshots triés par clé ou émettre clé par
+clé (même ordre, mais à démontrer : clé triée par nom de colonne, rangs
+décroissants des `supprimee`) ; un tri externe (fichier intermédiaire pour
+gagner quelques mégaoctets) ; un seuil absolu en mégaoctets résidents dans
+un test (dépend de la machine, de Python et de l'allocateur : les trois
+exécutions ci-dessus varient de 25 Mo).
 
 ## Options écartées
 
@@ -187,4 +237,5 @@ retenu.
 PRD v0.3 §6.3, §7.1 · ordre de mission 02 (§0 C à I ; décisions 3 à 8 ;
 addendum 1) · `docs/rapports/mission-02/points-a-trancher.md`, `palier-2.md`,
 `palier-3.md` · contrôles des paliers 1 et 2 · ADR 0002, 0003, 0005 ·
-`src/pharmaflux/evenements/`.
+`src/pharmaflux/evenements/` · mission 03 : §0 (A, B), addendum 1
+(décision 1), `docs/rapports/mission-03/palier-1.md`.

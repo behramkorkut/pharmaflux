@@ -10,11 +10,20 @@ qui suit le flux voie un compte toujours juste. Le premier snapshot d'un
 fichier donne une ``creee`` par entité, ``etat_initial`` vrai (ADR 0006).
 ``appliquer`` est l'inverse : rejouer les événements sur un état redonne le
 snapshot retenu, ce que les tests vérifient.
+
+**En flux** (mission 03, palier 1) : ``comparer`` rend un itérateur. Il
+construit d'abord un **squelette** par événement (type, ligne avant, ligne
+après, rang, empreinte) avec sa clé de tri, calculée sur les mêmes valeurs
+que ``Evenement.cle_de_tri`` ; il trie ces squelettes, puis fabrique et cède
+chaque événement au moment où il est demandé. L'ordre et chaque octet écrit
+sont ceux d'avant par construction, et aucun événement n'existe avant d'être
+écrit ni ne survit après : 32 439 squelettes pèsent quelques mégaoctets là
+où les événements sérialisés en pesaient plus de deux cents.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 
 from pharmaflux.evenements import schema
@@ -24,24 +33,38 @@ from pharmaflux.evenements.snapshot import Identite, Ligne, Snapshot, empreinte_
 
 def comparer(
     precedent: Snapshot | None, nouveau: Snapshot, *, date_source: str | None = None
-) -> list[Evenement]:
+) -> Iterator[Evenement]:
     """Les événements de ``precedent`` (dernier retenu, ou None au début) vers ``nouveau``.
 
     Les deux snapshots sont lus avec le même contrat (ADR 0005, point I).
     ``date_source`` est la date affichée par la source pour l'archive de
-    ``nouveau`` (manifeste), ou None quand la page ne la donne pas.
+    ``nouveau`` (manifeste), ou None quand la page ne la donne pas. Les
+    vérifications sont faites à l'appel ; les événements sont fabriqués un à
+    un, dans l'ordre de ``Evenement.cle_de_tri``, quand l'itérateur avance.
     """
     if precedent is not None and precedent.contrat.identifiant != nouveau.contrat.identifiant:
         raise ValueError("deux snapshots d'un même fichier sont attendus")
     if nouveau.horodatage is None:
         raise ValueError(f"{nouveau.archive} : horodatage inconnu, date_observation impossible")
-    fabrique = _Fabrique(precedent, nouveau, date_source)
+    return _emettre(_Fabrique(precedent, nouveau, date_source))
+
+
+def _emettre(fabrique: _Fabrique) -> Iterator[Evenement]:
+    precedent, nouveau = fabrique.precedent, fabrique.nouveau
     if nouveau.identite is Identite.CLE:
-        evenements = list(_par_cle(fabrique, precedent, nouveau))
+        squelettes = list(_par_cle(fabrique, precedent, nouveau))
     else:
-        evenements = list(_par_ligne(fabrique, precedent, nouveau))
-    evenements.sort(key=Evenement.cle_de_tri)
-    return evenements
+        squelettes = list(_par_ligne(fabrique, precedent, nouveau))
+    squelettes.sort(key=lambda squelette: squelette[0])
+    for _, type_, avant, apres, rang, empreinte in squelettes:
+        yield fabrique.evenement(type_, avant, apres, rang, empreinte)
+
+
+# Un événement avant d'exister : sa clé de tri (celle d'``Evenement.cle_de_tri``), son type,
+# la ligne avant, la ligne après, son rang et l'empreinte de la ligne qui le porte.
+_Squelette = tuple[
+    tuple[tuple[str, ...], int, str, int], TypeEvenement, Ligne | None, Ligne | None, int, str
+]
 
 
 @dataclass(slots=True)
@@ -53,19 +76,39 @@ class _Fabrique:
     date_source: str | None
     noms: tuple[str, ...] = field(init=False)
     index_cle: list[int] = field(init=False)
+    index_tri: list[int] = field(init=False)  # les colonnes de la clé, par ordre de leur nom
 
     def __post_init__(self) -> None:
         contrat = self.nouveau.contrat
         self.noms = contrat.noms_colonnes
         self.index_cle = [contrat.index(nom) for nom in contrat.cle.colonnes]
+        self.index_tri = [contrat.index(nom) for nom in sorted(contrat.cle.colonnes)]
+
+    def squelette(
+        self, type_: TypeEvenement, avant: Ligne | None, apres: Ligne | None, rang: int = 1
+    ) -> _Squelette:
+        """La clé de tri est celle que ``Evenement.cle_de_tri`` donnerait : mêmes valeurs."""
+        ligne = apres if apres is not None else avant
+        assert ligne is not None
+        empreinte = empreinte_ligne(ligne.normalisees)
+        rang_signe = -rang if type_ is TypeEvenement.SUPPRIMEE else rang
+        valeurs = tuple(ligne.normalisees[i] for i in self.index_tri)
+        cle_de_tri = (valeurs, schema.ORDRE_TYPES[type_], empreinte, rang_signe)
+        return (cle_de_tri, type_, avant, apres, rang, empreinte)
 
     def evenement(
-        self, type_: TypeEvenement, avant: Ligne | None, apres: Ligne | None, rang: int = 1
+        self,
+        type_: TypeEvenement,
+        avant: Ligne | None,
+        apres: Ligne | None,
+        rang: int = 1,
+        empreinte: str | None = None,
     ) -> Evenement:
         ligne = apres if apres is not None else avant
         assert ligne is not None
         cle = {self.noms[i]: ligne.normalisees[i] for i in self.index_cle}
-        empreinte = empreinte_ligne(ligne.normalisees)
+        if empreinte is None:
+            empreinte = empreinte_ligne(ligne.normalisees)
         identite = self.nouveau.identite
         archive_precedente = None if self.precedent is None else self.precedent.archive
         horodatage = self.nouveau.horodatage
@@ -110,31 +153,31 @@ class _Fabrique:
 
 def _par_cle(
     fabrique: _Fabrique, precedent: Snapshot | None, nouveau: Snapshot
-) -> Iterable[Evenement]:
+) -> Iterable[_Squelette]:
     avant = {} if precedent is None else precedent.par_cle
     for cle, ligne in nouveau.par_cle.items():
         ancienne = avant.get(cle)
         if ancienne is None:
-            yield fabrique.evenement(TypeEvenement.CREEE, None, ligne)
+            yield fabrique.squelette(TypeEvenement.CREEE, None, ligne)
         elif ancienne.normalisees != ligne.normalisees:
-            yield fabrique.evenement(TypeEvenement.MODIFIEE, ancienne, ligne)
+            yield fabrique.squelette(TypeEvenement.MODIFIEE, ancienne, ligne)
     for cle, ancienne in avant.items():
         if cle not in nouveau.par_cle:
-            yield fabrique.evenement(TypeEvenement.SUPPRIMEE, ancienne, None)
+            yield fabrique.squelette(TypeEvenement.SUPPRIMEE, ancienne, None)
 
 
 def _par_ligne(
     fabrique: _Fabrique, precedent: Snapshot | None, nouveau: Snapshot
-) -> Iterable[Evenement]:
+) -> Iterable[_Squelette]:
     avant = {} if precedent is None else precedent.par_ligne
     for empreinte, (ligne, apres_n) in nouveau.par_ligne.items():
         avant_n = avant[empreinte][1] if empreinte in avant else 0
         for rang in range(avant_n + 1, apres_n + 1):
-            yield fabrique.evenement(TypeEvenement.CREEE, None, ligne, rang)
+            yield fabrique.squelette(TypeEvenement.CREEE, None, ligne, rang)
     for empreinte, (ligne, avant_n) in avant.items():
         apres_n = nouveau.par_ligne[empreinte][1] if empreinte in nouveau.par_ligne else 0
         for rang in range(apres_n + 1, avant_n + 1):
-            yield fabrique.evenement(TypeEvenement.SUPPRIMEE, ligne, None, rang)
+            yield fabrique.squelette(TypeEvenement.SUPPRIMEE, ligne, None, rang)
 
 
 # Un état reconstruit par ``appliquer`` : identité de ligne → (colonne → valeur normalisée,

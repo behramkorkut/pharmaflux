@@ -6,6 +6,7 @@ altérées, voir le README des fixtures), archivées sous des noms fixés.
 
 import hashlib
 import json
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
 import pytest
@@ -44,7 +45,7 @@ def _pres(nom: str, jour: str = "2026-10-24", heure: str = "1417") -> Snapshot:
     return _snap("bdpm.presentations", nom, jour, heure)
 
 
-def _types(evenements: list[Evenement] | tuple[Evenement, ...]) -> dict[str, int]:
+def _types(evenements: Iterable[Evenement]) -> dict[str, int]:
     comptes: dict[str, int] = {}
     for e in evenements:
         comptes[e.type.value] = comptes.get(e.type.value, 0) + 1
@@ -53,7 +54,7 @@ def _types(evenements: list[Evenement] | tuple[Evenement, ...]) -> dict[str, int
 
 def test_premier_snapshot_une_creee_par_entite() -> None:
     a = _pres("presentations_a.txt")
-    evenements = comparer(None, a, date_source="2026-10-24")
+    evenements = list(comparer(None, a, date_source="2026-10-24"))
     assert len(evenements) == 17 and {e.type for e in evenements} == {TypeEvenement.CREEE}
     assert all(e.etat_initial and e.avant is None and e.apres is not None for e in evenements)
     assert all(
@@ -87,7 +88,7 @@ def test_premier_snapshot_une_creee_par_entite() -> None:
 
 def test_comparaison_a_cle_creee_modifiee_supprimee() -> None:
     a, b = _pres("presentations_a.txt"), _pres("presentations_b.txt", heure="1517")
-    evenements = comparer(a, b)
+    evenements = list(comparer(a, b))
     assert _types(evenements) == {"supprimee": 1, "modifiee": 1, "creee": 1}
     assert all(not e.etat_initial for e in evenements)
     par_type = {e.type: e for e in evenements}
@@ -149,13 +150,13 @@ def test_comparaison_ligne_a_ligne_doublon_et_rangs() -> None:
     a = _snap("bdpm.disponibilite", "dispo_a.txt", "2026-10-24", "1417")
     b = _snap("bdpm.disponibilite", "dispo_b.txt", "2026-10-24", "1517")
     assert a.identite is Identite.LIGNE and a.bilan.entites == 6
-    initiales = comparer(None, a)
+    initiales = list(comparer(None, a))
     assert len(initiales) == 7 and {e.identite for e in initiales} == {Identite.LIGNE}
     rangs = sorted((e.empreinte_ligne, e.rang) for e in initiales)
     doublon = [r for r in rangs if r[1] == 2]
     assert len(doublon) == 1 and (doublon[0][0], 1) in rangs
     assert set(initiales[0].cle) == {"code_cis", "code_cip13", "lien_ansm"}
-    evenements = comparer(a, b)
+    evenements = list(comparer(a, b))
     assert _types(evenements) == {"supprimee": 2, "creee": 1}
     (rang_2,) = [e for e in evenements if e.rang == 2]
     assert rang_2.type is TypeEvenement.SUPPRIMEE and rang_2.empreinte_ligne == doublon[0][0]
@@ -175,12 +176,12 @@ def test_ligne_en_triple_ramenee_a_une_les_supprimee_du_rang_le_plus_haut_au_plu
     """Relecture 1, bloquant 2 : un consommateur qui suit le flux voit un compte toujours juste."""
     triple = _snap("bdpm.disponibilite", "dispo_triple.txt", "2026-10-24", "1417")
     une = _snap("bdpm.disponibilite", "dispo_simple.txt", "2026-10-24", "1517")
-    perdues = comparer(triple, une)
+    perdues = list(comparer(triple, une))
     assert [(e.type, e.rang) for e in perdues] == [
         (TypeEvenement.SUPPRIMEE, 3),
         (TypeEvenement.SUPPRIMEE, 2),
     ]
-    retrouvees = comparer(une, triple)
+    retrouvees = list(comparer(une, triple))
     assert [(e.type, e.rang) for e in retrouvees] == [
         (TypeEvenement.CREEE, 2),
         (TypeEvenement.CREEE, 3),
@@ -255,7 +256,7 @@ def test_aller_retour_json_sur_une_cle_a_plusieurs_colonnes() -> None:
     octets = (FIXTURES / "bdpm" / "CIS_COMPO_bdpm.txt").read_bytes()
     horodatage = datetime(2026, 10, 24, 14, 17, tzinfo=UTC)
     s = snapshot.construire(contrat, octets, "bronze/bdpm/CIS_COMPO_bdpm.txt/a.txt.gz", horodatage)
-    ecrits = comparer(None, s)
+    ecrits = list(comparer(None, s))
     assert len(ecrits) == 40 and list(ecrits[0].cle) == list(contrat.cle.colonnes)
     relus = [schema.deserialiser(schema.serialiser(e)) for e in ecrits]
     assert relus == ecrits, "un événement relu est égal à l'événement écrit"
@@ -328,7 +329,7 @@ def test_garde_fou_cas_du_26_10() -> None:
         Decision.ECARTE,
         Decision.RETENU,
     ]
-    assert [len(r.evenements) for r in resultats] == [17, 0, 0]
+    assert [len(list(r.evenements())) for r in resultats] == [17, 0, 0]
     assert resultats[1].verdict.motif == "vide : aucune ligne bien formée"
     assert resultats[2].verdict.motif == f"identique au dernier retenu ({a.archive})"
     assert suivi.retenu is meme and suivi.en_attente is None
@@ -358,28 +359,30 @@ def test_perte_confirmee_par_l_archive_suivante() -> None:
     perte = _pres("presentations_perte.txt", "2026-10-24", "1517")
     encore = _pres("presentations_perte.txt", "2026-10-24", "1617")
     suivi = Suivi()
-    suivi.traiter(a)
+    (r_a,) = suivi.traiter(a)
     (r_perte,) = suivi.traiter(perte)
     assert r_perte.verdict == volume.Verdict(
         Decision.EN_ATTENTE, "8 lignes au lieu de 17, perte de 52,9 %, en attente de confirmation"
     )
-    assert r_perte.evenements == () and suivi.en_attente is perte and suivi.retenu is a
+    assert list(r_perte.evenements()) == [] and suivi.en_attente is perte and suivi.retenu is a
     tranche, r_encore = suivi.traiter(encore)
     assert tranche.snapshot is perte and tranche.verdict.decision is Decision.CONFIRME
     assert tranche.verdict.motif == (
         "8 lignes au lieu de 17, perte de 52,9 %, confirmée par l'archive suivante (8 lignes)"
     )
-    assert _types(tranche.evenements) == {"supprimee": 9}
+    assert _types(tranche.evenements()) == {"supprimee": 9}
     assert all(
-        e.archive == perte.archive and e.archive_precedente == a.archive for e in tranche.evenements
+        e.archive == perte.archive and e.archive_precedente == a.archive
+        for e in tranche.evenements()
     )
-    assert r_encore.verdict.decision is Decision.RETENU and r_encore.evenements == ()
+    assert r_encore.verdict.decision is Decision.RETENU and list(r_encore.evenements()) == []
     assert r_encore.verdict.motif == f"identique au dernier retenu ({perte.archive})"
     assert suivi.retenu is encore and suivi.en_attente is None
-    assert [r.snapshot for r in suivi.resultats] == [a, perte, perte, encore], (
+    resultats = [r_a, r_perte, tranche, r_encore]
+    assert [r.snapshot for r in resultats] == [a, perte, perte, encore], (
         "l'archive en attente a deux résultats : en attente, puis tranchée (bilan réécrit)"
     )
-    assert [r.verdict.decision for r in suivi.resultats] == [
+    assert [r.verdict.decision for r in resultats] == [
         Decision.RETENU,
         Decision.EN_ATTENTE,
         Decision.CONFIRME,
@@ -392,22 +395,21 @@ def test_perte_jamais_confirmee_la_comparaison_porte_le_cumul() -> None:
     perte = _pres("presentations_perte.txt", "2026-10-24", "1517")
     b = _pres("presentations_b.txt", "2026-10-24", "1617")
     suivi = Suivi()
-    _derouler(suivi, a, perte)
+    r_a, _ = _derouler(suivi, a, perte)
     tranche, r_b = suivi.traiter(b)
     assert tranche.snapshot is perte and tranche.verdict.decision is Decision.ECARTE
     assert tranche.verdict.motif == (
         "8 lignes au lieu de 17, perte de 52,9 %, jamais confirmée (archive suivante : 17 lignes)"
     )
-    assert tranche.evenements == ()
-    assert r_b.verdict.decision is Decision.RETENU and _types(r_b.evenements) == {
+    assert list(tranche.evenements()) == []
+    assert r_b.verdict.decision is Decision.RETENU and _types(r_b.evenements()) == {
         "supprimee": 1,
         "modifiee": 1,
         "creee": 1,
     }
-    assert all(e.archive_precedente == a.archive for e in r_b.evenements), "du dernier retenu"
-    assert appliquer(
-        appliquer({}, suivi.resultats[0].evenements), r_b.evenements
-    ) == etat_du_snapshot(b)
+    assert all(e.archive_precedente == a.archive for e in r_b.evenements()), "du dernier retenu"
+    assert appliquer(appliquer({}, r_a.evenements()), r_b.evenements()) == etat_du_snapshot(b)
+    assert _types(r_b.evenements()) == _types(r_b.evenements()), "recalculés à chaque demande"
 
 
 def test_perte_en_attente_a_la_fin_du_bronze_puis_confirmee_par_un_inchange() -> None:
@@ -416,21 +418,21 @@ def test_perte_en_attente_a_la_fin_du_bronze_puis_confirmee_par_un_inchange() ->
     suivi = Suivi()
     _derouler(suivi, a, perte)
     (attente,) = suivi.clore()
-    assert attente.verdict.decision is Decision.EN_ATTENTE and attente.evenements == ()
+    assert attente.verdict.decision is Decision.EN_ATTENTE and list(attente.evenements()) == []
     assert suivi.en_attente is perte and suivi.retenu is a, "rien n'est tranché sans archive après"
     (confirme,) = suivi.clore(inchange_revu=True)
     assert confirme.verdict == volume.Verdict(
         Decision.CONFIRME,
         "8 lignes au lieu de 17, perte de 52,9 %, confirmée par un passage inchangé",
     )
-    assert _types(confirme.evenements) == {"supprimee": 9} and suivi.retenu is perte
+    assert _types(confirme.evenements()) == {"supprimee": 9} and suivi.retenu is perte
     assert suivi.clore() == []
     # Même chose quand l'inchangé est vu au moment où l'archive suivante arrive.
     suivi2 = Suivi()
     _derouler(suivi2, a, perte)
     tranche, r_b = suivi2.traiter(_pres("presentations_b.txt", heure="1617"), inchange_revu=True)
     assert tranche.verdict.decision is Decision.CONFIRME and r_b.verdict.decision is Decision.RETENU
-    assert all(e.archive_precedente == perte.archive for e in r_b.evenements)
+    assert all(e.archive_precedente == perte.archive for e in r_b.evenements())
 
 
 def test_perte_suivie_d_un_vide_est_ecartee() -> None:
@@ -524,7 +526,7 @@ def test_suppression_retenue_a_travers_le_garde_fou_avec_un_seuil_large() -> Non
     perte = _pres("presentations_perte.txt", heure="1517")
     suivi = Suivi(seuil=0.6)
     _, r_perte = _derouler(suivi, a, perte)
-    assert r_perte.verdict.decision is Decision.RETENU and _types(r_perte.evenements) == {
+    assert r_perte.verdict.decision is Decision.RETENU and _types(r_perte.evenements()) == {
         "supprimee": 9
     }
     assert suivi.retenu is perte and suivi.en_attente is None

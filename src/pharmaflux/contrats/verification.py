@@ -63,8 +63,8 @@ def verifier(contrat: Contrat, octets: bytes, *, fichier: str | None = None) -> 
     contrat ; le profil y met le chemin de l'archive).
     """
     lecture = Lecture(contrat, fichier or contrat.fichier)
-    texte = _decoder(lecture, octets)
-    _decouper(lecture, texte)
+    # Le texte entier n'existe que le temps d'être découpé : il n'est plus référencé ensuite.
+    _decouper(lecture, _decoder(lecture, octets).split("\n"))
     if lecture.nombre_lignes == 0:
         # Non bloquant : le contrat décrit la forme, un fichier vide la respecte ; c'est au
         # garde-fou de volume (mission 02) de décider d'écarter un snapshot vide.
@@ -136,10 +136,16 @@ def _se_decode_en_utf8(octets: bytes) -> bool:
     return True
 
 
-def _decouper(lecture: Lecture, texte: str) -> None:
-    """Fins de ligne, retour final, lignes vides, nombre de colonnes."""
+def _decouper(lecture: Lecture, morceaux: list[str]) -> None:
+    """Fins de ligne, retour final, lignes vides, nombre de colonnes.
+
+    ``morceaux`` est le texte découpé sur ``\n``. Une valeur qui se répète
+    d'une ligne à l'autre (un statut, un taux, une date, un prix) n'est gardée
+    qu'une fois : les lignes partagent le même objet chaîne, ce qui divise par
+    deux le poids d'un fichier en mémoire sans rien changer à ce qu'il contient
+    (mission 03, palier 1).
+    """
     format_ = lecture.contrat.format
-    morceaux = texte.split("\n")
     dernier = morceaux.pop()  # ce qui suit le dernier ``\n`` : vide si le fichier finit bien
     sans_retour: int | None = None
     if dernier != "":
@@ -151,6 +157,7 @@ def _decouper(lecture: Lecture, texte: str) -> None:
             )
     crlf_attendu = format_.fin_de_ligne is FinDeLigne.CRLF
     nombre_colonnes = len(lecture.contrat.colonnes)
+    partagees: dict[str, str] = {}  # valeur → le premier objet chaîne vu pour cette valeur
     for numero, brut in enumerate(morceaux, 1):
         termine_par_cr = brut.endswith("\r")
         if numero != sans_retour and termine_par_cr != crlf_attendu:
@@ -175,7 +182,7 @@ def _decouper(lecture: Lecture, texte: str) -> None:
             constat = f"{len(valeurs)} colonnes au lieu de {nombre_colonnes} : {contenu}"
             _signaler(lecture, numero, None, Regle.NOMBRE_COLONNES, constat)
             continue
-        lecture.lignes.append((numero, tuple(valeurs)))
+        lecture.lignes.append((numero, tuple(partagees.setdefault(v, v) for v in valeurs)))
 
 
 def _verifier_valeurs(lecture: Lecture) -> None:

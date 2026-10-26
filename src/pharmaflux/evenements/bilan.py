@@ -10,6 +10,7 @@ qui dépende de l'horloge.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from pharmaflux.contrats.modele import Regle
@@ -36,28 +37,33 @@ class BilanArchive:
     ecart: Ecart | None
 
 
-def etablir(resultat: Resultat) -> BilanArchive:
-    """Le bilan d'un résultat du garde-fou."""
+def etablir(resultat: Resultat, comptes: Mapping[str, int] | None = None) -> BilanArchive:
+    """Le bilan d'un résultat du garde-fou.
+
+    ``comptes`` : les événements par type, comptés par celui qui les a écrits
+    (``rejeu``) ; sans lui, ils sont recomptés en rappelant la comparaison.
+    """
     ecart = None
     if resultat.retenu_precedent is not None:
-        ecart = _ecart(resultat.retenu_precedent, resultat.snapshot, resultat)
+        if comptes is None:
+            comptes = Counter(evenement.type.value for evenement in resultat.evenements())
+        ecart = _ecart(resultat.retenu_precedent, resultat.snapshot, comptes)
     return BilanArchive(resultat.snapshot.bilan, resultat.verdict, ecart)
 
 
-def _ecart(retenu: Snapshot, nouveau: Snapshot, resultat: Resultat) -> Ecart:
+def _ecart(retenu: Snapshot, nouveau: Snapshot, comptes: Mapping[str, int]) -> Ecart:
     avant, apres = dict(retenu.bilan.anomalies), dict(nouveau.bilan.anomalies)
     regles = tuple(
         (regle, avant.get(regle, 0), apres.get(regle, 0))
         for regle in Regle
         if avant.get(regle, 0) != apres.get(regle, 0)
     )
-    types = Counter(evenement.type.value for evenement in resultat.evenements)
     return Ecart(
         archive_retenue=retenu.archive,
         lignes=nouveau.bilan.lignes_bien_formees - retenu.bilan.lignes_bien_formees,
         entites=nouveau.bilan.entites - retenu.bilan.entites,
         anomalies=regles,
-        evenements=tuple(sorted(types.items())),
+        evenements=tuple(sorted((type_, n) for type_, n in comptes.items() if n)),
     )
 
 

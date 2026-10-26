@@ -11,12 +11,15 @@ il est **confirmé** si un passage ultérieur du manifeste revoit son empreinte
 n'y a rien après lui. Un snapshot écarté ou en attente ne produit jamais
 d'événement ; la comparaison suivante repart du dernier retenu et porte le
 cumul. ``Suivi`` déroule cette règle sur une suite de snapshots ; la lecture
-du bronze et du manifeste, l'écriture et la reprise sont dans ``rejeu``.
+du bronze et du manifeste, l'écriture et la reprise sont dans ``rejeu``. Un
+``Resultat`` ne garde pas ses événements : il les recalcule à la demande, et
+``Suivi`` ne garde rien de ce qu'il a produit (mission 03, palier 1).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Iterator
+from dataclasses import dataclass
 from enum import StrEnum
 
 from pharmaflux.evenements.comparaison import comparer
@@ -102,12 +105,22 @@ def _perte(lignes: int, reference: int) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Resultat:
-    """Ce qu'une archive produit : son verdict et ses événements (vides sauf retenu ou confirmé)."""
+    """Ce qu'une archive produit : son verdict, et de quoi redonner ses événements."""
 
     snapshot: Snapshot
     verdict: Verdict
     retenu_precedent: Snapshot | None  # le dernier retenu au moment de la comparaison
-    evenements: tuple[Evenement, ...]
+    date_source: str | None
+
+    def evenements(self) -> Iterator[Evenement]:
+        """Les événements, recalculés à chaque appel : aucun quand le snapshot n'est pas comparé.
+
+        Rien n'est gardé : celui qui les écrit les consomme une fois, et un
+        test peut les redemander.
+        """
+        if not self.verdict.compare:
+            return iter(())
+        return comparer(self.retenu_precedent, self.snapshot, date_source=self.date_source)
 
 
 @dataclass(slots=True)
@@ -124,7 +137,6 @@ class Suivi:
     en_attente: Snapshot | None = None
     date_source_en_attente: str | None = None
     seuil: float = SEUIL_PERTE
-    resultats: list[Resultat] = field(default_factory=list)
 
     def traiter(
         self, nouveau: Snapshot, *, date_source: str | None = None, inchange_revu: bool = False
@@ -135,16 +147,13 @@ class Suivi:
             produits.append(self._trancher(nouveau, inchange_revu))
         verdict = evaluer(nouveau, self.retenu, self.seuil)
         produits.append(self._appliquer(nouveau, verdict, date_source))
-        self.resultats.extend(produits)
         return produits
 
     def clore(self, *, inchange_revu: bool = False) -> list[Resultat]:
         """Fin du bronze : le snapshot en attente est confirmé par un ``inchange`` ou le reste."""
         if self.en_attente is None:
             return []
-        produit = self._trancher(None, inchange_revu)
-        self.resultats.append(produit)
-        return [produit]
+        return [self._trancher(None, inchange_revu)]
 
     def _trancher(self, suivant: Snapshot | None, inchange_revu: bool) -> Resultat:
         assert self.en_attente is not None
@@ -158,10 +167,8 @@ class Suivi:
 
     def _appliquer(self, snapshot: Snapshot, verdict: Verdict, date_source: str | None) -> Resultat:
         retenu_precedent = self.retenu
-        evenements: tuple[Evenement, ...] = ()
         if verdict.compare:
-            evenements = tuple(comparer(self.retenu, snapshot, date_source=date_source))
             self.retenu = snapshot
         elif verdict.decision is Decision.EN_ATTENTE and self.en_attente is None:
             self.en_attente, self.date_source_en_attente = snapshot, date_source
-        return Resultat(snapshot, verdict, retenu_precedent, evenements)
+        return Resultat(snapshot, verdict, retenu_precedent, date_source)

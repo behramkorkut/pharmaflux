@@ -10,7 +10,10 @@ archive lue laisse sur le disque :
 - ``<sortie>/bilans/<entite>/<horodatage>__<sha12>.json`` toujours, réécrit
   quand une archive en attente est tranchée ;
 - ``<sortie>/etat.json`` après les fichiers de l'archive, dans l'ordre
-  événements, bilan, état, chaque fichier écrit entier puis renommé.
+  événements, bilan, état, chaque fichier écrit sous un nom temporaire puis
+  renommé ; les événements y sont écrits **ligne à ligne**, au fil de la
+  comparaison, sans jamais tenir en mémoire plus d'un événement à la fois
+  (mission 03, palier 1).
 
 Le flux d'une source est la concaténation de ses fichiers d'événements dans
 l'ordre des noms. La reprise lit l'état, recalcule le dernier snapshot retenu
@@ -28,7 +31,7 @@ import gzip
 import json
 import shutil
 from collections import Counter
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -164,29 +167,11 @@ def _traiter_entite(
         relatif = archive.relatif(racine)
         if suivi.en_attente is not None and relatif == suivi.en_attente.archive:
             continue  # déjà lue, en attente : c'est l'archive suivante qui la tranche
-        try:
-            octets = archive.lire()
-        except (OSError, EOFError, gzip.BadGzipFile) as exc:
-            resume.erreur = f"{relatif} : archive illisible ({exc})"
-            dire(resume.erreur)
+        derniere_traitee = _traiter_archive(
+            sortie, contrat, suivi, archive, relatif, manifeste_, resume, derniere_traitee, dire
+        )
+        if resume.erreur is not None:
             break
-        nouveau = snapshot.construire(contrat, octets, relatif, archive.horodatage)
-        resume.archives_lues += 1
-        inchange_revu = suivi.en_attente is not None and manifeste_.inchange_revu(
-            identifiant, suivi.en_attente.archive, suivi.en_attente.horodatage, archive.horodatage
-        )
-        resultats = suivi.traiter(
-            nouveau, date_source=manifeste_.date_source(relatif), inchange_revu=inchange_revu
-        )
-        for resultat in resultats:
-            _ecrire_resultat(sortie, resultat, resume, dire)
-            # Chaque verdict définitif avance la dernière archive traitée : celui de l'archive en
-            # attente que cette archive tranche, puis le sien s'il ne la met pas elle-même en
-            # attente. Ne regarder que le dernier résultat laisserait la reprise relire une archive
-            # déjà traitée, et effacer ses événements (relecture 1).
-            if resultat.verdict.decision is not Decision.EN_ATTENTE:
-                derniere_traitee = resultat.snapshot.archive
-        _ecrire_etat(sortie, identifiant, contrat, suivi, derniere_traitee)
     if suivi.en_attente is not None and resume.erreur is None:
         inchange_revu = manifeste_.inchange_revu(
             identifiant, suivi.en_attente.archive, suivi.en_attente.horodatage, None
@@ -198,6 +183,54 @@ def _traiter_entite(
         _ecrire_etat(sortie, identifiant, contrat, suivi, derniere_traitee)
     resume.en_attente = 1 if suivi.en_attente is not None else 0
     return resume
+
+
+def _traiter_archive(
+    sortie: Path,
+    contrat: Contrat,
+    suivi: Suivi,
+    archive: bronze.Archive,
+    relatif: str,
+    manifeste_: _Manifeste,
+    resume: ResumeEntite,
+    derniere_traitee: str | None,
+    dire: Journal,
+) -> str | None:
+    """Une archive : lue, passée au garde-fou, ses résultats et l'état écrits.
+
+    Rend la dernière archive traitée. Tout ce qui est lu ou produit ici meurt
+    au retour : quand l'archive suivante est lue, seuls le dernier retenu et
+    le snapshot en attente sont encore en mémoire (mission 03, palier 1).
+    """
+    identifiant = contrat.identifiant
+    try:
+        nouveau = _lire_snapshot(contrat, archive, relatif)
+    except (OSError, EOFError, gzip.BadGzipFile) as exc:
+        resume.erreur = f"{relatif} : archive illisible ({exc})"
+        dire(resume.erreur)
+        return derniere_traitee
+    resume.archives_lues += 1
+    inchange_revu = suivi.en_attente is not None and manifeste_.inchange_revu(
+        identifiant, suivi.en_attente.archive, suivi.en_attente.horodatage, archive.horodatage
+    )
+    resultats = suivi.traiter(
+        nouveau, date_source=manifeste_.date_source(relatif), inchange_revu=inchange_revu
+    )
+    for resultat in resultats:
+        _ecrire_resultat(sortie, resultat, resume, dire)
+        # Chaque verdict définitif avance la dernière archive traitée : celui de l'archive en
+        # attente que cette archive tranche, puis le sien s'il ne la met pas elle-même en
+        # attente. Ne regarder que le dernier résultat laisserait la reprise relire une archive
+        # déjà traitée, et effacer ses événements (relecture 1).
+        if resultat.verdict.decision is not Decision.EN_ATTENTE:
+            derniere_traitee = resultat.snapshot.archive
+    _ecrire_etat(sortie, identifiant, contrat, suivi, derniere_traitee)
+    return derniere_traitee
+
+
+def _lire_snapshot(contrat: Contrat, archive: bronze.Archive, relatif: str) -> Snapshot:
+    """Lit et construit dans la même fonction : les octets et la lecture meurent au retour."""
+    return snapshot.construire(contrat, archive.lire(), relatif, archive.horodatage)
 
 
 def _recalculer(
@@ -216,27 +249,45 @@ def _recalculer(
 
 
 def _ecrire_resultat(sortie: Path, resultat: Resultat, resume: ResumeEntite, dire: Journal) -> None:
-    """Les événements (si comparé) puis le bilan d'une archive, chacun écrit entier puis renommé."""
+    """Les événements (si comparé) puis le bilan d'une archive, chacun écrit puis renommé."""
     s = resultat.snapshot
     nom = Path(s.archive).name.removesuffix(".gz")
     nom = nom[: nom.index(".")] if "." in nom else nom  # <horodatage>__<sha12>
     entite = s.contrat.identifiant
     decision = resultat.verdict.decision
+    comptes: Counter[str] = Counter()
     if resultat.verdict.compare:
-        lignes = "".join(schema.serialiser(evenement) for evenement in resultat.evenements)
-        _ecrire(sortie / DOSSIER_EVENEMENTS / entite / f"{nom}.jsonl", lignes)
+        chemin = sortie / DOSSIER_EVENEMENTS / entite / f"{nom}.jsonl"
+        comptes = _ecrire_evenements(chemin, resultat.evenements())
         resume.retenues += 1
-        resume.evenements.update(evenement.type.value for evenement in resultat.evenements)
+        resume.evenements.update(comptes)
     elif decision is Decision.ECARTE:
         resume.ecartees += 1
-    contenu = json.dumps(
-        bilans.en_dict(bilans.etablir(resultat)), sort_keys=True, ensure_ascii=False, indent=2
-    )
+    bilan = bilans.en_dict(bilans.etablir(resultat, comptes))
+    contenu = json.dumps(bilan, sort_keys=True, ensure_ascii=False, indent=2)
     _ecrire(sortie / DOSSIER_BILANS / entite / f"{nom}.json", contenu + "\n")
-    comptes = Counter(e.type.value for e in resultat.evenements)
     types = ", ".join(f"{t} {n}" for t, n in sorted(comptes.items()))
     suffixe = f" ; {types}" if types else ""
     dire(f"{entite} {nom} : {decision.value} ({resultat.verdict.motif}){suffixe}")
+
+
+def _ecrire_evenements(chemin: Path, evenements: Iterable[Evenement]) -> Counter[str]:
+    """Écrit les événements ligne à ligne sous un nom temporaire, puis renomme ; rend les comptes.
+
+    Chaque événement est sérialisé et écrit dès qu'il est produit, puis
+    oublié : la mémoire ne dépend pas du nombre d'événements. Le fichier
+    existe même vide (une comparaison sans changement), et une coupure laisse
+    un ``.partiel`` que ``lire_evenements`` ignore.
+    """
+    comptes: Counter[str] = Counter()
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    temporaire = chemin.parent / f".{chemin.name}.partiel"
+    with temporaire.open("w", encoding="utf-8") as flux:
+        for evenement in evenements:
+            flux.write(schema.serialiser(evenement))
+            comptes[evenement.type.value] += 1
+    temporaire.replace(chemin)
+    return comptes
 
 
 def _ecrire(chemin: Path, contenu: str) -> None:

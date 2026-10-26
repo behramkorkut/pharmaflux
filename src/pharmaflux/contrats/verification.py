@@ -190,6 +190,7 @@ def verifier_valeur(type_: TypeValeur, valeur: str) -> Regle | None:
                 virgule
                 and _entier(partie_entiere)
                 and decimales.isdigit()
+                and decimales.isascii()  # « ²³ » passe isdigit, comme pour _entier
                 and len(decimales) == type_.decimales
             ):
                 return None

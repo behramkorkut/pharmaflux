@@ -1,15 +1,17 @@
 """Mission 01, décision 3 : une archive contre son contrat, des anomalies, jamais une correction."""
 
+import re
 from datetime import date
 
 import pytest
 
 from pharmaflux.contrats.chargeur import charger_identifiant, charger_tous
-from pharmaflux.contrats.modele import Regle, TypeNom, TypeValeur
+from pharmaflux.contrats.modele import REGLES_BLOQUANTES, Regle, TypeNom, TypeValeur
 from pharmaflux.contrats.verification import FICHIER_ENTIER, verifier, verifier_valeur
 from tests.conftest import FIXTURES, contenu_fixture, entrees_bdpm_txt
 
 FABRIQUEES = FIXTURES / "contrats"
+CODE_CIS = re.compile(r"\d{8}")
 
 # Anomalies non bloquantes attendues sur les fixtures réelles (lignes réelles choisies,
 # voir tests/fixtures/README.md) : règle → nombre. Rien d'autre que ces règles.
@@ -234,6 +236,8 @@ ENUM_TAUX = _type(TypeNom.ENUMERATION, valeurs=("65%", "65 %", "100%"))
         (_type(TypeNom.DECIMAL), "1,003,48", Regle.DECIMAL_ILLISIBLE),
         (_type(TypeNom.DECIMAL), "24.34", Regle.DECIMAL_ILLISIBLE),
         (_type(TypeNom.DECIMAL), "24,3", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL), "1,²³", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL), "1,٢٣", Regle.DECIMAL_ILLISIBLE),
         (_type(TypeNom.DECIMAL, decimales=3), "24,345", None),
         (_type(TypeNom.DATE, format="JJ/MM/AAAA"), "12/03/1998", None),
         (_type(TypeNom.DATE, format="JJ/MM/AAAA"), "31/02/1998", Regle.DATE_ILLISIBLE),
@@ -256,17 +260,9 @@ ENUM_TAUX = _type(TypeNom.ENUMERATION, valeurs=("65%", "65 %", "100%"))
         (_type(TypeNom.BOOLEEN, vrai="Oui", faux="Non"), "oui", Regle.BOOLEEN_INCONNU),
         (ENUM_TAUX, "65 %", None),
         (ENUM_TAUX, "65", Regle.VALEUR_INCONNUE),
-        (_type(TypeNom.CODE, motif=__import__("re").compile(r"\d{8}")), "61266250", None),
-        (
-            _type(TypeNom.CODE, motif=__import__("re").compile(r"\d{8}")),
-            "6126625",
-            Regle.CODE_ILLISIBLE,
-        ),
-        (
-            _type(TypeNom.CODE, motif=__import__("re").compile(r"\d{8}")),
-            "61266250 ",
-            Regle.CODE_ILLISIBLE,
-        ),
+        (_type(TypeNom.CODE, motif=CODE_CIS), "61266250", None),
+        (_type(TypeNom.CODE, motif=CODE_CIS), "6126625", Regle.CODE_ILLISIBLE),
+        (_type(TypeNom.CODE, motif=CODE_CIS), "61266250 ", Regle.CODE_ILLISIBLE),
         (_type(TypeNom.URL), "https://www.has-sante.fr/jcms/p_4461003", None),
         (_type(TypeNom.URL), "www.has-sante.fr/jcms/p_4461003", Regle.URL_ILLISIBLE),
         (_type(TypeNom.URL), "ftp://www.has-sante.fr/x", Regle.URL_ILLISIBLE),
@@ -291,22 +287,15 @@ def test_verifier_valeur(type_: TypeValeur, valeur: str, attendu: Regle | None) 
 
 
 def test_regles_bloquantes_sont_les_quatre_de_l_addendum() -> None:
-    bloquantes = {
-        regle
-        for regle in Regle
-        if any(
-            regle is r
-            for r in __import__(
-                "pharmaflux.contrats.modele", fromlist=["REGLES_BLOQUANTES"]
-            ).REGLES_BLOQUANTES
-        )
-    }
-    assert bloquantes == {
+    assert {
         Regle.ENCODAGE,
         Regle.FIN_DE_LIGNE,
         Regle.NOMBRE_COLONNES,
         Regle.CLE_NON_UNIQUE,
-    }
-    assert all(
-        not contrat.cle.unique or contrat.cle.raison == "" for contrat in charger_tous().values()
-    )
+    } == REGLES_BLOQUANTES
+
+
+def test_une_cle_unique_n_a_pas_de_raison() -> None:
+    """La « raison » d'une clé dit pourquoi elle n'est pas unique ; une clé unique n'en a pas."""
+    for contrat in charger_tous().values():
+        assert not contrat.cle.unique or contrat.cle.raison == "", contrat.identifiant

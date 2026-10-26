@@ -1,0 +1,136 @@
+# Contrat de schéma v0 (mission 01). On constate, on ne corrige pas (PRD §6.2).
+# Un « motif » doit couvrir toute la valeur. Les énumérations listent les
+# graphies telles qu'elles sont dans le fichier : la normalisation est au Lot 1.
+# Les plages de dates servent à signaler une date manifestement fausse
+# (date_hors_plage, non bloquante), jamais à la corriger.
+version = "v0"
+identifiant = "bdpm.specialites"
+fichier = "CIS_bdpm.txt"
+description = "Spécialités : médicaments commercialisés ou en arrêt de commercialisation depuis moins de deux ans"
+
+[source]
+documentation = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf"
+documentation_sha256 = "db10d5a62bc640c227405bcb11cef5db9ad2a2d9a6b4b547198ee19978b6bc8b"
+section = "3.1"
+date_verification = 2026-10-26
+archive_reference = "bronze/bdpm/CIS_bdpm.txt/2026-10-24/20261024T194143Z__332b95926f76.txt.gz"
+archive_sha256 = "332b95926f76f1a2ab3d70cdf64205397fc13e74b7cc9afad9b625fbb6961640"
+
+[format]
+encodage = "cp1252"
+fin_de_ligne = "CRLF"
+separateur = "\t"
+
+[[colonnes]]
+nom = "code_cis"
+type = "code"
+motif = '\d{8}'
+obligatoire = true
+description = "Code Identifiant de Spécialité"
+
+[[colonnes]]
+nom = "denomination"
+type = "texte"
+obligatoire = true
+description = "Dénomination du médicament"
+
+[[colonnes]]
+nom = "forme_pharmaceutique"
+type = "texte"
+obligatoire = true
+description = "Forme pharmaceutique ; espace de tête ou de fin sur 1 133 lignes le 24/10 (espace_parasite)"
+
+[[colonnes]]
+nom = "voies_administration"
+type = "liste"
+separateur = ";"
+de = { type = "texte" }
+obligatoire = true
+description = "Voies d'administration, plusieurs valeurs séparées par « ; »"
+
+[[colonnes]]
+nom = "statut_amm"
+type = "enumeration"
+valeurs = [
+  "Autorisation active",
+  "Autorisation abrogée",
+  "Autorisation archivée",
+  "Autorisation retirée",
+  "Autorisation suspendue",
+]
+obligatoire = true
+description = "Statut administratif de l'autorisation de mise sur le marché"
+
+[[colonnes]]
+nom = "type_procedure_amm"
+type = "enumeration"
+valeurs = [
+  "Procédure nationale",
+  "Procédure décentralisée",
+  "Procédure centralisée",
+  "Procédure de reconnaissance mutuelle",
+  "Enreg homéo (Proc. Nat.)",
+  "Enreg phyto (Proc. Nat.)",
+  "Enreg phyto (Proc. Dec.)",
+  "Autorisation d'importation parallèle",
+]
+obligatoire = true
+description = "Type de procédure d'autorisation de mise sur le marché"
+
+[[colonnes]]
+nom = "etat_commercialisation"
+type = "enumeration"
+valeurs = ["Commercialisée", "Non commercialisée"]
+obligatoire = true
+description = "État de commercialisation"
+
+[[colonnes]]
+nom = "date_amm"
+type = "date"
+format = "JJ/MM/AAAA"
+plage_min = 1950-01-01
+plage_max = 2030-12-31
+obligatoire = true
+description = "Date d'AMM ; de 1974 à 2026 le 24/10"
+
+[[colonnes]]
+nom = "statut_bdm"
+type = "enumeration"
+valeurs = ["Alerte", "Warning disponibilité"]
+obligatoire = false
+description = "StatutBdm : « Alerte » (icône rouge) ou « Warning disponibilité » (icône grise) ; vide sinon"
+
+[[colonnes]]
+nom = "numero_autorisation_europeenne"
+type = "code"
+motif = 'EU/\d/\d{2}/\d+'
+obligatoire = false
+description = "Numéro de l'autorisation européenne (procédure centralisée) ; une valeur avec « / » final le 24/10"
+
+[[colonnes]]
+nom = "titulaires"
+type = "liste"
+separateur = ";"
+de = { type = "texte" }
+obligatoire = true
+description = "Titulaire(s), séparés par « ; » ; précédé d'une espace sur toutes les lignes le 24/10 (espace_parasite)"
+
+[[colonnes]]
+nom = "surveillance_renforcee"
+type = "booleen"
+vrai = "Oui"
+faux = "Non"
+obligatoire = true
+description = "Surveillance renforcée (triangle noir)"
+
+[cle]
+colonnes = ["code_cis"]
+unique = true
+
+# Mesure inverse : les spécialités sans aucune présentation (1 263 contre
+# l'archive CIS_CIP de 23:17 UTC le 24/10, 1 261 contre celle de 19:41 UTC),
+# pas une référence.
+[[liens]]
+colonne = "code_cis"
+vers = "bdpm.presentations"
+colonne_cible = "code_cis"

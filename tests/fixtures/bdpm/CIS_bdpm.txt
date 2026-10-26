@@ -38,3 +38,8 @@
 61954108	ABIRATERONE ACETATE ZYDUS 500 mg, comprimé pelliculé	comprimé pelliculé	orale	Autorisation active	Procédure décentralisée	Commercialisée	24/08/2021			 ZYDUS FRANCE	Non
 65731907	ABIRATERONE ARROW 500 mg, comprimé pelliculé	comprimé pelliculé	orale	Autorisation active	Procédure décentralisée	Commercialisée	20/04/2022			 EUGIA PHARMA (MALTA) (MALTE)	Non
 65412934	ABIRATERONE BIOGARAN 500 mg, comprimé pelliculé	comprimé pelliculé	orale	Autorisation active	Procédure de reconnaissance mutuelle	Commercialisée	17/11/2021			 BIOGARAN	Non
+64955489	ACTIVOX RHUME PELARGONIUM, solution buvable	solution buvable	orale	Autorisation active	Enreg phyto (Proc. Nat.)	Commercialisée	19/05/2015			 ARKOMEDICA	Non
+62004984	ADAKVEO 10 mg/mL, solution à diluer pour perfusion	solution à diluer pour perfusion	intraveineuse	Autorisation retirée	Procédure centralisée	Non commercialisée	28/10/2020	Alerte	EU/1/20/1476	 NOVARTIS EUROPHARM (IRLANDE)	Oui
+64133700	ANASTROZOLE MYLAN 1 mg, comprimé pelliculé	comprimé pelliculé	orale	Autorisation abrogée	Autorisation d'importation parallèle	Non commercialisée	17/09/2020	Warning disponibilité		 BB FARMA (ITALIE)	Non
+68241755	ANXEMIL 200 mg, comprimé enrobé	comprimé enrobé	orale	Autorisation active	Enreg phyto (Proc. Dec.)	Commercialisée	05/08/2014			 TILMAN (BELGIQUE)	Non
+67491478	EFAVIRENZ/EMTRICITABINE/TENOFOVIR DISOPROXIL BIOGARAN 600 mg/200 mg/245 mg, comprimé pelliculé	comprimé pelliculé	orale	Autorisation suspendue	Procédure nationale	Non commercialisée	06/10/2017	Alerte		 BIOGARAN	Non

@@ -38,3 +38,4 @@
 14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	69335481	1	9
 14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	67995040	1	10
 14	OMEPRAZOLE 20 mg - MOPRAL 20 mg, gélule gastro-résistante - ZOLTUM 20 mg, gélule gastro-résistante	61193553	1	11
+422	ALFUZOSINE (CHLORHYDRATE D') 10 mg - XATRAL LP 10 mg, comprimé à libération prolongée.	64848430	4	7

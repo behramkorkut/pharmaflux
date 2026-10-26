@@ -165,3 +165,99 @@ La CI lance désormais `uvx --from shellcheck-py==0.11.0.1 shellcheck` :
 même version qu'en local, le décalage ne peut plus se reproduire. Vérifié
 ici avec la même commande : rien à signaler, `sh -n` ok, `usage` rendu
 avec le code 2 pour zéro ou trois arguments.
+
+## 2026-10-26 — Mission 01 : §0 tranché, palier 1 (reliquats)
+
+Addendum 1 de l'IeC sur `main` : mes avis du §0 sont retenus (clé
+déclarée non unique avec raison, anomalies connues signalées à chaque
+profil et jamais masquées, neuf types avec `date` paramétré, ADR 0003
+« proposé » revu au plus tard le 07/12/2026, `robots.txt` d'abord pour la
+HAS) ; le garde-fou accepte désormais les brouillons du codeur dans le
+dossier temporaire de ses propres sessions. Palier 1 : `bronze.py` est la
+seule lecture de `bronze/` (ordre chronologique, octets bruts, tout nom
+commençant par un point ignoré) ; le collecteur archive même si l'empreinte
+de comparaison lève une exception imprévue, consigne les liens nouveaux
+sous le filet, et prend l'URL de la documentation PDF dans la page (un
+`_v6.pdf` est archivé sous son nom et signalé `lien_change`) ; journal en
+UTC ; `etat` lit le manifeste en flux, affiche l'identifiant et les
+fichiers `.partiel-*` orphelins ; unité systemd durcie (capacités vides,
+filtre d'appels système, `UMask=0027` pour garder la lecture du groupe),
+score visé sous 3, mesuré par beko sur le VPS depuis la branche. 80 tests.
+Rapport : `docs/rapports/mission-01/palier-1.md`.
+
+## 2026-10-26 — Mission 01 : contrôle du palier 1, correctif C1, palier 2 (contrats)
+
+Palier 1 accepté par l'IeC ; l'unité durcie est mesurée par beko sur le VPS
+à 1,3 au score d'exposition (6,3 avant), passage manuel sans erreur,
+`MemoryDenyWriteExecute` conservé. Le VPS tourne sur la branche de mission
+jusqu'à la fusion. **C1** : une entrée quotidienne archivée sous
+`lien_change` ou `lien_absent` était retéléchargée à chaque passage ; les
+motifs d'erreur sont maintenant définis une seule fois dans `manifeste`
+(`MOTIFS_SIGNALEMENT`, liste fermée) et `Enregistrement.vaut_collecte` dit
+ce qu'une ligne vaut. **Palier 2** : onze contrats TOML v0 dans
+`src/pharmaflux/contrats/bdpm/` (encodage, fin de ligne, colonnes typées
+parmi neuf types, clé avec `unique` et `raison`, liens, source avec sha256
+du PDF et archive de référence), chargeur strict (`tomllib`, toute clé
+inconnue refusée), vérification d'une archive en anomalies jamais
+corrigées (quatre règles bloquantes : encodage, fin de ligne, nombre de
+colonnes, clé déclarée unique). Les onze archives du 24/10 passent sans
+anomalie bloquante ; les constats du §0 ressortent tels quels (17 016
+espaces parasites dans `CIS_bdpm.txt`, 995 prix à virgule des milliers, 52
+dates hors plage, 5 lignes en doublon dans Dispo_Spec). Fixtures étendues
+de lignes réelles choisies, anomalies fabriquées à part dans
+`tests/fixtures/contrats/`. 190 tests. Rapport :
+`docs/rapports/mission-01/palier-2.md`.
+
+## 2026-10-26 — Mission 01 : palier 3 (profil, docs/donnees, ADR 0001 à 0004)
+
+Palier 2 accepté sans correctif ; l'IeC et le codeur se parlent désormais
+directement pour la routine (messages d'une ligne entre sessions), beko
+gardant push, PR, fusion, VPS et toute décision hors de l'ordre. Palier 3 :
+`pharmaflux profil` mesure n'importe quelle archive contre son contrat
+(conformité groupée par règle avec `valeur_inconnue` en tête, clé,
+colonnes, répartitions, bornes, ordre des dates, liens) et écrit un
+Markdown par source ; `docs/donnees/` contient les onze profils de
+l'archive du 24/10 (0 anomalie bloquante) et un README qui ouvre sur le
+constat que `CIS_bdpm.txt` n'est pas le référentiel de tous les CIS. ADR
+0001 (collecte horaire sur le VPS-1, consignée), 0002 (contrats TOML, neuf
+types, bornes hautes relevées par nouvelle version), 0003 (disponibilité,
+« proposé », revue au plus tard le 07/12/2026 avec critère de passage) et
+0004 (corpus HAS : pages d'avis d'abord, PDF en second). Les cinq requêtes
+HAS permises ont été faites : `robots.txt` n'interdit pas les pages
+d'avis, le document d'avis est servi derrière une redirection de mesure
+d'audience (non suivie), les mentions légales autorisent la réutilisation
+avec source et date. 198 tests.
+
+## 2026-10-26 — Mission 01 : palier 4 (questions de référence)
+
+Palier 3 accepté sans correctif (profils régénérés identiques à
+`docs/donnees/`, ADR 0004 validé). Palier 4 : `evaluation/questions-reference-v0.toml`,
+quarante questions, cinq par catégorie de l'annexe B du PRD, chacune avec
+son comportement attendu (réponse, abstention, refus médical) et, pour une
+réponse, l'archive du 24/10 (chemin et sha256), le contrat, la clé, les
+colonnes et les lignes attendues, brutes. Deux questions visent un CIS
+absent de `CIS_bdpm.txt` (abstention motivée) ; une seule question
+Historique porte un début futur, voulu, pour tester la prudence. Les
+questions Dépense attendent Open Medic (`calculable_au = "lot4"`).
+`uv run pharmaflux questions verifier` relit chaque archive citée, vérifie
+son sha256 et son contrat, recalcule les lignes et signale tout écart :
+25 conformes, 5 non calculables, 10 sans attendu sur la copie du Mac. La
+lecture stricte des TOML est partagée (`tomlstrict.py`) entre contrats et
+questions. Docs : `CONTEXTE.md` (contrats, bronze, « on constate, on ne
+corrige pas »), `README.md`. 229 tests.
+
+## 2026-10-26 — Mission 01 : relecture 1 CONFORME, quatre correctifs
+
+Relecture à contexte neuf sur `7c5d10e` : CONFORME, aucun bloquant, quatre
+points non bloquants, tous corrigés par un commit chacun. Les bornes
+numériques du profil ne prennent plus que des valeurs conformes au type
+(`Decimal()` lisait « NaN », qui faisait planter le tri, et « 1e9 ») ; le
+type `decimal` exige des chiffres ASCII après la virgule comme avant ;
+l'archive citée par une question doit être dans le dossier bronze du
+contrat qu'elle nomme, en cinq segments exacts (`Contrat.dossier_bronze`),
+et le cache du rejeu est indexé par (archive, contrat) ; le test des règles
+bloquantes importe ce qu'il teste. Remarques : aide de `--questions`
+(chemin relatif au dossier courant), ADR 0002 (une ligne de blancs est une
+ligne vide, voulu), §0 (le script jetable cité est remplacé par
+`pharmaflux profil`). `docs/donnees/` régénéré identique ; 237 tests.
+Réponse : `docs/rapports/mission-01/reponse-relecture-1.md`.

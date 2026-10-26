@@ -38,3 +38,10 @@
 63954135		2	Tension d'approvisionnement	11/09/2026	09/10/2026		https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments/duloxetine-30-mg-et-60-mg-gelules-gastro-resistantes-duloxetine-chlorhydrate-de
 66299891		2	Tension d'approvisionnement	10/09/2026	09/10/2026		https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments/duloxetine-30-mg-et-60-mg-gelules-gastro-resistantes-duloxetine-chlorhydrate-de
 63301789		2	Tension d'approvisionnement	09/09/2026	09/10/2026		https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments/duloxetine-30-mg-et-60-mg-gelules-gastro-resistantes-duloxetine-chlorhydrate-de
+65999556		1	Rupture de stock	25/06/2026	08/10/2026		https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments/lariam-250-mg-comprime-secable-mefloquine
+64590923	3400955090250	1	Rupture de stock	08/11/2023	14/10/2026		https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments/fluorouracile-pfizer-50-mg-ml-solution-a-diluer-pour-perfusion-flacon-de-100-ml-fluorouracile
+67250203		3	Arrêt de commercialisation	31/05/2022	22/09/2026		https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments/ancotil-1-pour-cent-solution-pour-perfusion-flucytosine
+66890524		3	Arrêt de commercialisation	01/07/2027	07/08/2026		https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments/nevirapine-teva-lp-400-mg-comprime-a-liberation-prolongee-nevirapine
+63877443		1	Rupture de stock	11/12/2013	17/06/2026		https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments/alkonatrem-150-mg-gelule-chlorhydrate-de-demeclocycline
+67122698		2	Tension d'approvisionnement	27/11/2025	17/06/2026		https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments/specialites-a-base-de-propranolol-40-mg-comprime-chlorhydrate-de-propranolol
+67122698		2	Tension d'approvisionnement	27/11/2025	17/06/2026		https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments/specialites-a-base-de-propranolol-40-mg-comprime-chlorhydrate-de-propranolol

@@ -141,5 +141,10 @@ def lancer(racine: Path, serveur: ServeurSimule, horloge: Horloge) -> Lanceur:
     return _lancer
 
 
+def entrees_bdpm_txt() -> list[Entree]:
+    """Les onze fichiers TSV de la BDPM, ceux qui ont un contrat de schéma."""
+    return [e for e in CATALOGUE if e.source == "bdpm" and e.extension == ".txt"]
+
+
 def entree(identifiant: str) -> Entree:
     return next(e for e in CATALOGUE if e.identifiant == identifiant)

@@ -1,0 +1,129 @@
+# Contrat de schéma v0 (mission 01). On constate, on ne corrige pas (PRD §6.2).
+# Un « motif » doit couvrir toute la valeur. Les énumérations listent les
+# graphies telles qu'elles sont dans le fichier : la normalisation est au Lot 1.
+# Les plages de dates servent à signaler une date manifestement fausse
+# (date_hors_plage, non bloquante), jamais à la corriger.
+version = "v0"
+identifiant = "bdpm.presentations"
+fichier = "CIS_CIP_bdpm.txt"
+description = "Présentations (boîtes), prix et taux de remboursement des spécialités"
+
+[source]
+documentation = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf"
+documentation_sha256 = "db10d5a62bc640c227405bcb11cef5db9ad2a2d9a6b4b547198ee19978b6bc8b"
+section = "3.2"
+date_verification = 2026-10-26
+archive_reference = "bronze/bdpm/CIS_CIP_bdpm.txt/2026-10-24/20261024T231712Z__a6da566e8036.txt.gz"
+archive_sha256 = "a6da566e803671a14e403c19a6983c79ce284ecadf947742dafd66a5d72bb0b2"
+
+# Seul fichier avec CIS_InfoImportantes.txt à être en UTF-8 et LF.
+[format]
+encodage = "utf-8"
+fin_de_ligne = "LF"
+separateur = "\t"
+
+[[colonnes]]
+nom = "code_cis"
+type = "code"
+motif = '\d{8}'
+obligatoire = true
+description = "Code Identifiant de Spécialité"
+
+[[colonnes]]
+nom = "code_cip7"
+type = "code"
+motif = '\d{7}'
+obligatoire = true
+description = "Code Identifiant de Présentation à 7 chiffres"
+
+[[colonnes]]
+nom = "libelle_presentation"
+type = "texte"
+obligatoire = true
+description = "Libellé de la présentation"
+
+[[colonnes]]
+nom = "statut_administratif"
+type = "enumeration"
+valeurs = ["Présentation active", "Présentation abrogée"]
+obligatoire = true
+description = "Statut administratif de la présentation"
+
+[[colonnes]]
+nom = "etat_commercialisation"
+type = "enumeration"
+valeurs = [
+  "Déclaration de commercialisation",
+  "Déclaration d'arrêt de commercialisation",
+  "Déclaration de suspension de commercialisation",
+  "Arrêt de commercialisation (le médicament n'a plus d'autorisation)",
+]
+obligatoire = true
+description = "État de commercialisation déclaré par le titulaire de l'AMM"
+
+[[colonnes]]
+nom = "date_declaration_commercialisation"
+type = "date"
+format = "JJ/MM/AAAA"
+plage_min = 1950-01-01
+plage_max = 2030-12-31
+obligatoire = true
+description = "Date de la déclaration ; 51 dates de 1910 à 1949 et une en 2924 le 24/10 (date_hors_plage)"
+
+[[colonnes]]
+nom = "code_cip13"
+type = "code"
+motif = '34009\d{8}'
+obligatoire = true
+description = "Code Identifiant de Présentation à 13 chiffres : 34009 + CIP7 + clé"
+
+[[colonnes]]
+nom = "agrement_collectivites"
+type = "enumeration"
+valeurs = ["oui", "non", "inconnu"]
+obligatoire = true
+description = "Agrément aux collectivités ; « inconnu » est documenté mais absent le 24/10"
+
+[[colonnes]]
+nom = "taux_remboursement"
+type = "liste"
+separateur = ";"
+de = { type = "enumeration", valeurs = ["65%", "65 %", "100%", "100 %", "30%", "30 %", "15%", "15 %", "35%"] }
+obligatoire = false
+description = "Taux de remboursement, plusieurs valeurs séparées par « ; » ; neuf graphies observées, avec ou sans espace"
+
+[[colonnes]]
+nom = "prix_medicament"
+type = "decimal"
+decimales = 2
+obligatoire = false
+description = "Prix du médicament en euro ; au-delà de 1 000 € le fichier écrit « 1,003,48 » (497 lignes le 24/10, decimal_illisible)"
+
+[[colonnes]]
+nom = "prix_public"
+type = "decimal"
+decimales = 2
+obligatoire = false
+description = "Prix public France en euro, honoraires compris ; même graphie des milliers"
+
+[[colonnes]]
+nom = "honoraires_dispensation"
+type = "decimal"
+decimales = 2
+obligatoire = false
+description = "Honoraires de dispensation en euro"
+
+[[colonnes]]
+nom = "indications_remboursement"
+type = "texte"
+obligatoire = false
+description = "Indications ouvrant droit au remboursement quand il y a plusieurs taux"
+
+[cle]
+colonnes = ["code_cip13"]
+unique = true
+
+[[liens]]
+colonne = "code_cis"
+vers = "bdpm.specialites"
+colonne_cible = "code_cis"

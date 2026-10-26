@@ -33,10 +33,10 @@ SyslogIdentifier=pharmaflux-collecte
 TimeoutStartSec=55min
 
 # Ressources : le VPS est partagé, un passage ne doit jamais gêner le reste.
-# Mesuré au premier passage : pic mémoire 47 Mo, 2,35 s de CPU.
+# Mesuré sous l'unité durcie (mission 00) : pic mémoire 43 Mo, 2,35 s de CPU.
 # Nice=10 : priorité CPU basse, l'ordonnanceur sert d'abord les autres.
 Nice=10
-# MemoryMax : cinq fois le pic mesuré ; au-delà, le passage est tué (puis
+# MemoryMax : six fois le pic mesuré ; au-delà, le passage est tué (puis
 # relancé à l'heure suivante) plutôt que de pousser la machine en swap.
 MemoryMax=256M
 # CPUQuota : la moitié d'un cœur, soit un quart des deux cœurs du VPS ;
@@ -47,6 +47,7 @@ CPUQuota=50%
 IOSchedulingClass=idle
 
 # Durcissement : rien d'écrit en dehors de l'archive, aucun privilège.
+# Objectif : score d'exposition « systemd-analyze security » sous 3 (mission 01).
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
@@ -59,10 +60,45 @@ ProtectHome=tmpfs
 BindReadOnlyPaths=/home/pharmaflux/pharmaflux /home/pharmaflux/.local/share/uv/python
 # En écriture : la seule archive.
 BindPaths=/home/pharmaflux/pharmaflux-data
+# UMask=0027 : ce que le passage crée (archives, manifeste) reste lisible par
+# le groupe pharmaflux, dont le compte SSH qui rapatrie la copie, et par
+# personne d'autre. (0077 casserait le rapatriement.)
+UMask=0027
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
+# ProtectKernelLogs : aucun accès au journal du noyau (dmesg).
+ProtectKernelLogs=true
+# ProtectClock : l'horloge système n'est jamais modifiée ; le passage la lit.
+ProtectClock=true
+# ProtectHostname : le nom d'hôte ne sert à rien au collecteur.
+ProtectHostname=true
+# ProtectProc=invisible + ProcSubset=pid : dans /proc, le service ne voit que
+# ses propres processus, ni ceux des autres applications ni /proc/sys.
+ProtectProc=invisible
+ProcSubset=pid
 RestrictSUIDSGID=true
 RestrictRealtime=true
+# RestrictNamespaces : aucun espace de noms créé (conteneurs, montages, réseau).
+RestrictNamespaces=true
 LockPersonality=true
+# MemoryDenyWriteExecute : aucune page mémoire à la fois écrite et exécutée ;
+# CPython 3.12 sans JIT n'en a pas besoin. À retirer si le passage manuel
+# échoue avec (vérification de beko sur le VPS, mission 01, palier 1).
+MemoryDenyWriteExecute=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# CapabilityBoundingSet vide : aucune capacité, même si un binaire en portait.
+CapabilityBoundingSet=
+AmbientCapabilities=
+# SystemCallArchitectures=native : pas d'appels système d'une autre
+# architecture (32 bits sur un noyau 64 bits).
+SystemCallArchitectures=native
+# SystemCallFilter : les appels d'un service ordinaire, moins ceux qui sont
+# privilégiés ou touchent aux limites de ressources (le collecteur lit,
+# écrit des fichiers et parle HTTPS, rien d'autre). Un appel refusé échoue
+# avec EPERM, visible dans le journal, plutôt que de tuer le processus net.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+# RemoveIPC : aucun objet IPC System V ou POSIX ne survit au passage.
+RemoveIPC=true

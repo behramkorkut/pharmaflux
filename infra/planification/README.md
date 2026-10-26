@@ -133,12 +133,19 @@ systemctl status pharmaflux-collecte.service --no-pager | grep -E 'Mem peak|CPU:
 systemd-analyze security pharmaflux-collecte.service --no-pager | tail -1
 ```
 
-`Mem peak` doit rester loin sous le plafond `MemoryMax=256M` (47 Mo
-mesurés au premier passage). Le score d'exposition va de 0 (le plus
-fermé) à 10 ; l'unité est classée au moins `OK`. Si un passage est tué
-pour dépassement mémoire, `systemctl status` le dit (`oom-kill`), et le
-minuteur relance à l'heure suivante : à signaler à l'IeC avant de toucher
-au plafond.
+`Mem peak` doit rester loin sous le plafond `MemoryMax=256M` (43 Mo
+mesurés sous l'unité durcie de la mission 00). Le score d'exposition va de
+0 (le plus fermé) à 10 ; l'unité de la mission 01 vise **moins de 3**
+(6,3 avant son durcissement). Si un passage est tué pour dépassement
+mémoire, `systemctl status` le dit (`oom-kill`), et le minuteur relance à
+l'heure suivante : à signaler à l'IeC avant de toucher au plafond.
+
+Si le passage manuel échoue avec la nouvelle unité (code de sortie autre
+que 0 ou 1, `SIGSYS`, `Operation not permitted` dans le journal), la
+directive en cause se lit dans `journalctl` ; la première à suspecter est
+`MemoryDenyWriteExecute=true`, que l'ordre de la mission 01 prévoit de
+retirer si Python ne la supporte pas sur le VPS. Le signaler au codeur
+avec la ligne du journal, ne pas modifier l'unité à la main.
 
 ## 6. Vérifier
 
@@ -149,9 +156,11 @@ sudo journalctl -u pharmaflux-collecte --since "24 hours ago" --no-pager
 sudo -u pharmaflux -H env PHARMAFLUX_DATA=/home/pharmaflux/pharmaflux-data /home/pharmaflux/pharmaflux/.venv/bin/pharmaflux etat
 ```
 
-Lecture de `pharmaflux etat` : une ligne par fichier, avec la dernière
-archive, le dernier changement, la date affichée par la source, le nombre
-de passages des 24 dernières heures et la dernière erreur. **La mission 00
+Lecture de `pharmaflux etat` : une ligne par fichier, avec l'identifiant
+du catalogue, la dernière archive, le dernier changement, la date affichée
+par la source, le nombre de passages des 24 dernières heures et la dernière
+erreur ; en dessous, les fichiers temporaires `.partiel-*` qu'un passage tué
+net aurait laissés sous `bronze/` (normalement aucun). **La mission 00
 est close quand la colonne « 24 h » affiche 24 pour les fichiers horaires**
 (1 pour les deux entrées quotidiennes : documentation PDF et métadonnées
 Open Medic).
@@ -191,9 +200,20 @@ sudo -u pharmaflux -H git -C /home/pharmaflux/pharmaflux pull --ff-only
 sudo -u pharmaflux -H /home/pharmaflux/.local/bin/uv sync --directory /home/pharmaflux/pharmaflux --frozen --no-dev
 ```
 
-(La première fois, après la fusion de la PR de la mission 00, faire
-d'abord le `git switch main` de l'étape 4.) Si
-`infra/planification/*.service` ou `*.timer` ont changé, réinstaller les
+**Déployer une branche de mission pour la tester** (la mission 01 le
+demande au palier 1 : mesurer le score de l'unité durcie avant la fusion) :
+même fenêtre entre deux passages, mais la branche remplace `main` jusqu'à
+la fusion, puis on revient sur `main` (`switch main` et `pull --ff-only`,
+mêmes commandes qu'à l'étape 4) :
+
+```bash
+sudo -u pharmaflux -H git -C /home/pharmaflux/pharmaflux fetch origin
+sudo -u pharmaflux -H git -C /home/pharmaflux/pharmaflux switch mission-01-profilage-et-contrats
+sudo -u pharmaflux -H git -C /home/pharmaflux/pharmaflux pull --ff-only
+sudo -u pharmaflux -H /home/pharmaflux/.local/bin/uv sync --directory /home/pharmaflux/pharmaflux --frozen --no-dev
+```
+
+Si `infra/planification/*.service` ou `*.timer` ont changé, réinstaller les
 unités, puis un passage manuel pour valider la nouvelle unité avant que le
 minuteur ne la déclenche :
 
@@ -208,9 +228,10 @@ systemd-analyze security pharmaflux-collecte.service --no-pager | tail -1
 ```
 
 Le passage manuel doit afficher `0 erreur(s)` et des entrées `inchangé`
-(rien n'a changé à la source entre deux passages). Le passage suivant
-consigne la nouvelle version dans la colonne `version_collecteur` du
-manifeste (`0.1.0+<commit>`, étape 6).
+(rien n'a changé à la source entre deux passages), et le score affiché par
+`systemd-analyze security` est celui à reporter dans le contrôle du palier.
+Le passage suivant consigne la nouvelle version dans la colonne
+`version_collecteur` du manifeste (`0.1.0+<commit>`, étape 6).
 
 ## 8. Rapatrier la copie sur le Mac (chaque semaine)
 
@@ -264,10 +285,16 @@ vérifiée (`pharmaflux etat` sur la copie).
   mesuré), `CPUQuota=50%` (la moitié d'un cœur, un quart de la machine),
   `Nice=10` et `IOSchedulingClass=idle` (CPU et disque servis après tout
   le monde).
-- **Unité durcie** : `NoNewPrivileges`, `ProtectSystem=strict`,
-  `PrivateTmp`, `PrivateDevices`, `ProtectKernel*`, familles d'adresses
-  limitées à IP et Unix. Un passage qui dépasse 55 min est coupé pour ne
-  jamais chevaucher le suivant.
+- **Unité durcie** (chaque directive est justifiée d'une ligne dans
+  `pharmaflux-collecte.service`) : `NoNewPrivileges`, `ProtectSystem=strict`,
+  `PrivateTmp`, `PrivateDevices`, `ProtectKernel*`, `ProtectClock`,
+  `ProtectProc=invisible`, aucune capacité (`CapabilityBoundingSet=`),
+  appels système limités à `@system-service` sans `@privileged` ni
+  `@resources`, aucun espace de noms, familles d'adresses limitées à IP et
+  Unix, `UMask=0027` (lisible par le groupe, par personne d'autre). Score
+  d'exposition visé : sous 3, mesuré par beko à chaque changement d'unité
+  (étape 7). Un passage qui dépasse 55 min est coupé pour ne jamais
+  chevaucher le suivant.
 - Les données collectées sont publiques ; le manifeste ne contient que des
   URL publiques, des empreintes et des en-têtes HTTP sans cookie.
 - Les mises à jour du code sont **manuelles** (étape 7) : rien ne tire

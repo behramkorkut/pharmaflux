@@ -5,7 +5,8 @@ empreintes, décision « nouveau » ou « inchangé » contre la dernière
 empreinte connue du manifeste, archivage si nouveau, et dans tous les cas
 une ligne dans le manifeste. Une erreur sur un fichier n'arrête pas les
 autres. La page de téléchargement, lue en premier, fournit la date et la
-taille affichées des fichiers BDPM et révèle un lien absent ou nouveau.
+taille affichées des fichiers BDPM, révèle un lien absent ou nouveau, et
+donne l'URL du jour des entrées qui la suivent (la documentation PDF).
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import logging
 import subprocess
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from importlib.metadata import version as version_du_paquet
 from pathlib import Path
@@ -26,9 +27,22 @@ from pharmaflux.collecte.catalogue import (
     Entree,
     ModeEmpreinte,
     entrees_bdpm_par_url,
+    entrees_suivies_par_la_page,
 )
 from pharmaflux.collecte.empreintes import empreinte_comparaison, sha256_hex
-from pharmaflux.collecte.manifeste import Enregistrement, Statut
+from pharmaflux.collecte.manifeste import (
+    MOTIF_ANALYSE_IMPOSSIBLE,
+    MOTIF_ARCHIVE_EXISTANTE,
+    MOTIF_ECRITURE,
+    MOTIF_EMPREINTE_IMPOSSIBLE,
+    MOTIF_INATTENDUE,
+    MOTIF_LIEN_ABSENT,
+    MOTIF_LIEN_CHANGE,
+    MOTIF_LIEN_NOUVEAU,
+    SEPARATEUR_MOTIFS,
+    Enregistrement,
+    Statut,
+)
 from pharmaflux.collecte.page import AnalyseImpossible, LienTelechargement, analyser_page
 from pharmaflux.collecte.telechargement import ErreurTelechargement, Telechargeur
 
@@ -36,11 +50,8 @@ journal = logging.getLogger("pharmaflux.collecte")
 
 PAUSE_SECONDES = 2.0
 FORMAT_PASSAGE_ID = "%Y%m%dT%H%M%SZ"
-
-MOTIF_LIEN_ABSENT = "lien_absent"
-MOTIF_LIEN_NOUVEAU = "lien_nouveau"
-MOTIF_ARCHIVE_EXISTANTE = "archive_existante"
-MOTIF_INATTENDUE = "inattendue"
+# Les motifs d'erreur (MOTIF_*) sont définis dans ``manifeste`` : c'est lui qui
+# décide ce qu'une ligne en erreur vaut (``Enregistrement.vaut_collecte``).
 
 
 def maintenant_utc() -> datetime:
@@ -129,6 +140,7 @@ def executer_passage(
     journal.info("début du passage %s vers %s", contexte.passage_id, racine)
 
     liens_page: dict[str, LienTelechargement] | None = None
+    entree_page: Entree | None = None
     premier = True
     for entree in entrees:
         if entree.cadence is Cadence.QUOTIDIENNE and entree.identifiant in connu.collectes_du_jour:
@@ -142,19 +154,22 @@ def executer_passage(
 
         enregistrement: Enregistrement | None = None
         try:
-            enregistrement, contenu = _collecter(contexte, entree)
+            entree_du_jour, changement = _suivre_lien_page(entree, liens_page)
+            enregistrement, contenu = _collecter(contexte, entree_du_jour)
             if entree.empreinte is ModeEmpreinte.PAGE_BDPM and contenu is not None:
                 liens_page = _liens_par_url(contenu)
+                entree_page = entree
             elif entree.source == "bdpm" and liens_page is not None:
-                _appliquer_page(enregistrement, liens_page.get(entree.url))
+                _appliquer_page(enregistrement, liens_page.get(entree_du_jour.url))
+            if changement:
+                _signaler(enregistrement, changement)
         except Exception as exc:  # filet (décision 6) : une entrée n'arrête pas les autres
             journal.exception("%s : erreur inattendue", entree.identifiant)
             enregistrement = _marquer_inattendue(contexte, entree, enregistrement, exc)
         _consigner(contexte, bilan, enregistrement)
 
-    if liens_page is not None:
-        for lien in _liens_nouveaux(liens_page):
-            _consigner(contexte, bilan, _enregistrement_lien_nouveau(contexte, lien))
+    if liens_page is not None and entree_page is not None:
+        _consigner_liens_nouveaux(contexte, bilan, entree_page, liens_page)
 
     journal.info(bilan.resume())
     return bilan
@@ -201,7 +216,13 @@ def _collecter(contexte: _Contexte, entree: Entree) -> tuple[Enregistrement, byt
         # Forme inattendue : on archive quand même (l'archive est irremplaçable),
         # mais la ligne est en erreur pour que quelqu'un regarde. L'empreinte
         # retombe sur les octets : un contenu identique n'est pas réarchivé.
-        enregistrement.erreur = f"analyse_impossible: {exc}"
+        enregistrement.erreur = f"{MOTIF_ANALYSE_IMPOSSIBLE}: {exc}"
+        empreinte = sha256
+    except Exception as exc:
+        # Défaut du collecteur lui-même (cas imprévu) : même traitement, car
+        # l'archive passe avant tout ; la trace est dans le journal.
+        journal.exception("%s : empreinte de comparaison impossible", entree.identifiant)
+        enregistrement.erreur = f"{MOTIF_EMPREINTE_IMPOSSIBLE}: {type(exc).__name__}: {exc}"
         empreinte = sha256
     enregistrement.empreinte_comparaison = empreinte
     if contexte.empreintes_connues.get(entree.identifiant) == empreinte:
@@ -215,7 +236,7 @@ def _collecter(contexte: _Contexte, entree: Entree) -> tuple[Enregistrement, byt
     except ArchiveExistante:
         enregistrement.erreur = MOTIF_ARCHIVE_EXISTANTE
     except OSError as exc:
-        enregistrement.erreur = f"ecriture: {exc}"
+        enregistrement.erreur = f"{MOTIF_ECRITURE}: {exc}"
     else:
         enregistrement.chemin_archive = chemin.relative_to(contexte.racine).as_posix()
         if enregistrement.erreur is None:
@@ -226,6 +247,17 @@ def _collecter(contexte: _Contexte, entree: Entree) -> tuple[Enregistrement, byt
 def _terminer(contexte: _Contexte, enregistrement: Enregistrement) -> Enregistrement:
     enregistrement.fin = contexte.maintenant().isoformat()
     return enregistrement
+
+
+def _signaler(enregistrement: Enregistrement, motif: str) -> None:
+    """Passe la ligne en erreur sans rien perdre : archive écrite, motif déjà présent.
+
+    Les motifs s'enchaînent (``HTTP 404 ; lien_absent``) au lieu de s'écraser.
+    Si tous sont des signalements (``manifeste.MOTIFS_SIGNALEMENT``), la ligne
+    vaut encore collecte du jour : une entrée quotidienne ne repasse pas.
+    """
+    enregistrement.statut = Statut.ERREUR
+    enregistrement.erreur = SEPARATEUR_MOTIFS.join(filter(None, (enregistrement.erreur, motif)))
 
 
 def _marquer_inattendue(
@@ -251,8 +283,7 @@ def _marquer_inattendue(
             statut=Statut.ERREUR,
             version_collecteur=contexte.version,
         )
-    enregistrement.statut = Statut.ERREUR
-    enregistrement.erreur = " ; ".join(filter(None, (enregistrement.erreur, motif)))
+    _signaler(enregistrement, motif)
     return _terminer(contexte, enregistrement)
 
 
@@ -270,6 +301,34 @@ def _liens_par_url(contenu: bytes) -> dict[str, LienTelechargement] | None:
         return None
 
 
+def _suivre_lien_page(
+    entree: Entree, liens_page: dict[str, LienTelechargement] | None
+) -> tuple[Entree, str | None]:
+    """L'entrée telle que la page la lie aujourd'hui, et le motif si le lien a changé.
+
+    Ne concerne que les entrées à ``lien_page`` (la documentation PDF). Si la
+    page lie encore l'URL connue, rien ne change. Sinon, le premier lien dont
+    le nom porte le préfixe et l'extension attendus (``_v6.pdf`` après
+    ``_v5.pdf``) est suivi : l'URL et le nom de fichier de la ligne du
+    manifeste et de l'archive sont ceux de la page, et la ligne est signalée
+    ``lien_change`` jusqu'à ce que le catalogue soit mis à jour. Sans page
+    lisible, ou sans lien au préfixe, l'entrée est collectée telle que le
+    catalogue la connaît (``lien_absent`` le signale alors).
+    """
+    if entree.lien_page is None or not liens_page or entree.url in liens_page:
+        return entree, None
+    candidats = [
+        lien
+        for lien in liens_page.values()
+        if lien.nom.startswith(entree.lien_page) and lien.nom.endswith(entree.extension)
+    ]
+    if not candidats:
+        return entree, None
+    lien = candidats[0]
+    motif = f"{MOTIF_LIEN_CHANGE}: {lien.nom} (catalogue : {entree.fichier})"
+    return replace(entree, url=lien.url, fichier=lien.nom), motif
+
+
 def _appliquer_page(enregistrement: Enregistrement, lien: LienTelechargement | None) -> None:
     """Reporte la date et la taille affichées ; signale un lien que la page n'a plus.
 
@@ -277,20 +336,39 @@ def _appliquer_page(enregistrement: Enregistrement, lien: LienTelechargement | N
     s'enchaînent (``HTTP 404 ; lien_absent``).
     """
     if lien is None:
-        enregistrement.statut = Statut.ERREUR
-        enregistrement.erreur = " ; ".join(filter(None, (enregistrement.erreur, MOTIF_LIEN_ABSENT)))
+        _signaler(enregistrement, MOTIF_LIEN_ABSENT)
         return
     enregistrement.date_source_affichee = lien.date_affichee
     enregistrement.taille_affichee_ko = lien.taille_affichee_ko
 
 
+def _consigner_liens_nouveaux(
+    contexte: _Contexte, bilan: Bilan, page: Entree, liens_page: dict[str, LienTelechargement]
+) -> None:
+    """Une ligne par lien que la page offre et que le catalogue ignore, sous le filet.
+
+    Si la recherche elle-même lève une exception imprévue, une ligne en erreur
+    est ajoutée pour la page, et le passage finit normalement : son résumé et
+    son code de sortie ne sont jamais perdus.
+    """
+    try:
+        lignes = [
+            _enregistrement_lien_nouveau(contexte, lien) for lien in _liens_nouveaux(liens_page)
+        ]
+    except Exception as exc:  # filet, comme pour une entrée
+        journal.exception("%s : liens nouveaux, erreur inattendue", page.identifiant)
+        lignes = [_marquer_inattendue(contexte, page, None, exc)]
+    for ligne in lignes:
+        _consigner(contexte, bilan, ligne)
+
+
 def _liens_nouveaux(liens_page: dict[str, LienTelechargement]) -> list[LienTelechargement]:
-    connus = entrees_bdpm_par_url()
-    return [
-        lien
-        for url, lien in liens_page.items()
-        if url not in connus and lien.est_fichier_de_donnees
-    ]
+    connus = set(entrees_bdpm_par_url())
+    # Le lien que la page donne aujourd'hui à une entrée suivie est connu, lui aussi.
+    connus.update(
+        _suivre_lien_page(entree, liens_page)[0].url for entree in entrees_suivies_par_la_page()
+    )
+    return [lien for url, lien in liens_page.items() if url not in connus and lien.est_suivi]
 
 
 def _enregistrement_lien_nouveau(contexte: _Contexte, lien: LienTelechargement) -> Enregistrement:

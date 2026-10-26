@@ -1,0 +1,47 @@
+# Contrat de schéma v0 (mission 01). On constate, on ne corrige pas (PRD §6.2).
+# Un « motif » doit couvrir toute la valeur. Les énumérations listent les
+# graphies telles qu'elles sont dans le fichier : la normalisation est au Lot 1.
+# Les plages de dates servent à signaler une date manifestement fausse
+# (date_hors_plage, non bloquante), jamais à la corriger.
+version = "v0"
+identifiant = "bdpm.conditions_prescription"
+fichier = "CIS_CPD_bdpm.txt"
+description = "Conditions de prescription et de délivrance associées à un médicament"
+
+[source]
+documentation = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf"
+documentation_sha256 = "db10d5a62bc640c227405bcb11cef5db9ad2a2d9a6b4b547198ee19978b6bc8b"
+section = "3.8"
+date_verification = 2026-10-26
+archive_reference = "bronze/bdpm/CIS_CPD_bdpm.txt/2026-10-24/20261024T194159Z__e92ca48f83f5.txt.gz"
+archive_sha256 = "e92ca48f83f54f6e2bca7248d3e8c24d7399402fd6b5b9058c41ad730529c237"
+
+# Trois lignes vides (« \r\r\n ») au milieu du fichier le 24/10 : signalées
+# ligne_vide, non bloquantes, ignorées pour les colonnes et la clé.
+[format]
+encodage = "cp1252"
+fin_de_ligne = "CRLF"
+separateur = "\t"
+lignes_vides = "anomalie"
+
+[[colonnes]]
+nom = "code_cis"
+type = "code"
+motif = '\d{8}'
+obligatoire = true
+description = "Code Identifiant de Spécialité"
+
+[[colonnes]]
+nom = "condition"
+type = "texte"
+obligatoire = true
+description = "Condition de prescription ou de délivrance ; 164 libellés distincts le 24/10"
+
+[cle]
+colonnes = ["code_cis", "condition"]
+unique = true
+
+[[liens]]
+colonne = "code_cis"
+vers = "bdpm.specialites"
+colonne_cible = "code_cis"

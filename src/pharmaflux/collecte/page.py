@@ -42,6 +42,15 @@ class LienTelechargement:
         """Les fichiers de données sont des ``.txt`` ; la page offre aussi un PDF (format v5)."""
         return self.nom.endswith(".txt")
 
+    @property
+    def est_suivi(self) -> bool:
+        """Un lien que le catalogue doit connaître : données (``.txt``) ou documentation (``.pdf``).
+
+        Un tel lien absent du catalogue est un ``lien_nouveau`` ; les autres
+        liens ``/download/`` de la page (aucun aujourd'hui) sont ignorés.
+        """
+        return self.nom.endswith((".txt", ".pdf"))
+
 
 class _AnalyseurLiens(HTMLParser):
     def __init__(self) -> None:

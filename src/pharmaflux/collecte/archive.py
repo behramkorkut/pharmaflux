@@ -1,5 +1,7 @@
 """Archive bronze : écriture immuable des octets reçus, compressés.
 
+La lecture est dans ``pharmaflux.bronze`` : ici, on n'écrit que.
+
 Chemin : ``<racine>/bronze/<source>/<fichier>/<AAAA-MM-JJ>/``
 ``<horodatage UTC>__<sha256 12 car.><ext>.gz``.
 Le contenu est écrit dans un fichier temporaire du même dossier, puis lié
@@ -52,9 +54,3 @@ def ecrire_archive(chemin: Path, contenu: bytes, horodatage: datetime) -> None:
             raise ArchiveExistante(str(chemin)) from exc
     finally:
         temporaire.unlink(missing_ok=True)
-
-
-def lire_archive(chemin: Path) -> bytes:
-    """Les octets bruts d'une archive (décompression seulement)."""
-    with gzip.open(chemin, "rb") as fichier:
-        return fichier.read()

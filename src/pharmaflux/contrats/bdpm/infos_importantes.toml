@@ -1,0 +1,63 @@
+# Contrat de schéma v0 (mission 01). On constate, on ne corrige pas (PRD §6.2).
+# Un « motif » doit couvrir toute la valeur. Les énumérations listent les
+# graphies telles qu'elles sont dans le fichier : la normalisation est au Lot 1.
+# Les plages de dates servent à signaler une date manifestement fausse
+# (date_hors_plage, non bloquante), jamais à la corriger.
+version = "v0"
+identifiant = "bdpm.infos_importantes"
+fichier = "CIS_InfoImportantes.txt"
+description = "Informations importantes de sécurité en cours, générées à la demande"
+
+[source]
+documentation = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf"
+documentation_sha256 = "db10d5a62bc640c227405bcb11cef5db9ad2a2d9a6b4b547198ee19978b6bc8b"
+section = "3.9"
+date_verification = 2026-10-26
+archive_reference = "bronze/bdpm/CIS_InfoImportantes.txt/2026-10-24/20261024T194206Z__a27b30e12c83.txt.gz"
+archive_sha256 = "a27b30e12c837fd709906513fb0fe8e8c16bd008d3d0fab2fd0dea8de46a39ff"
+
+[format]
+encodage = "utf-8"
+fin_de_ligne = "LF"
+separateur = "\t"
+
+[[colonnes]]
+nom = "code_cis"
+type = "code"
+motif = '\d{8}'
+obligatoire = true
+description = "Code Identifiant de Spécialité ; 1 138 CIS absents de CIS_bdpm.txt le 24/10 (mesuré, pas une anomalie)"
+
+[[colonnes]]
+nom = "date_debut"
+type = "date"
+format = "AAAA-MM-JJ"
+plage_min = 2000-01-01
+plage_max = 2030-12-31
+obligatoire = true
+description = "Début de l'information de sécurité ; la documentation annonce JJ/MM/AAAA, le fichier écrit AAAA-MM-JJ"
+
+[[colonnes]]
+nom = "date_fin"
+type = "date"
+format = "AAAA-MM-JJ"
+plage_min = 2000-01-01
+plage_max = 2035-12-31
+obligatoire = true
+description = "Fin de l'information ; toujours future le 24/10 (le fichier ne garde que l'actif), jusqu'en 2028"
+
+[[colonnes]]
+nom = "texte_et_lien"
+type = "code"
+motif = '<a .+</a>'
+obligatoire = true
+description = "Balise <a …> complète : texte à afficher et lien vers le site de l'ANSM"
+
+[cle]
+colonnes = ["code_cis", "date_debut", "date_fin", "texte_et_lien"]
+unique = true
+
+[[liens]]
+colonne = "code_cis"
+vers = "bdpm.specialites"
+colonne_cible = "code_cis"

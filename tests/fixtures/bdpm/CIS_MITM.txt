@@ -38,3 +38,6 @@
 68538895	A02BC02	PANTOPRAZOLE EG 40 mg, comprimé gastro-résistant	EG LABO - Laboratoires EuroGenerics	EG LABO - LABORATOIRES EUROGENERICS - ISSY LES MOULINEAUX	18/12/2024	http://base-donnees-publique.medicaments.gouv.fr/extrait.php?specid=68538895
 60065294	A02BC02	PANTOPRAZOLE ZF 20 mg, comprimé gastro-résistant	ZYDUS FRANCE	ZYDUS FRANCE - NANTERRE	05/10/2026	http://base-donnees-publique.medicaments.gouv.fr/extrait.php?specid=60065294
 68203174	A02BC02	PANTOPRAZOLE EVOLUGEN 40 mg, comprimé gastro-résistant	EVOLUPHARM	EVOLUPHARM - AUNEUIL	18/12/2024	http://base-donnees-publique.medicaments.gouv.fr/extrait.php?specid=68203174
+63064710	A02BC05	ESOMEPRAZOLE ARROW LAB 20 mg, gélule gastro-résistante	ARROW GENERIQUES	ARROW GENERIQUES - LYON	13/03/2026	http://base-donnees-publique.medicaments.gouv.fr/extrait.php?specid=63064710
+65677893	A10BX02	REPAGLINIDE TEVA 2 mg, comprimé	TEVA BV		18/12/2024	http://base-donnees-publique.medicaments.gouv.fr/extrait.php?specid=65677893
+60823764	V10XX04	LUTATHERA 370 MBq/ml, solution pour perfusion	ADVANCED ACCELERATOR APPLICATIONS	NOVARTIS PHARMA SAS - RUEIL MALMAISON	18/12/2024	http://base-donnees-publique.medicaments.gouv.fr/extrait.php?specid=60823764

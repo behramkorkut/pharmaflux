@@ -1,5 +1,7 @@
 """La ligne de commande : aide, version, collecte et état sur le serveur simulé."""
 
+import logging
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -15,7 +17,8 @@ lanceur = CliRunner()
 def test_aide_liste_les_commandes() -> None:
     resultat = lanceur.invoke(application, ["--help"])
     assert resultat.exit_code == 0
-    assert "collecte" in resultat.output and "etat" in resultat.output
+    for commande in ("collecte", "etat", "profil", "catalogue", "questions"):
+        assert commande in resultat.output
 
 
 def test_sans_argument_affiche_l_aide() -> None:
@@ -55,8 +58,37 @@ def test_collecte_puis_etat(
     assert (racine / "manifeste" / "collecte.jsonl").exists()
 
     etat = lanceur.invoke(application, ["etat", "--racine", str(racine)])
-    assert etat.exit_code == 0
-    assert "bdpm/CIS_bdpm.txt" in etat.output and "2 lignes de manifeste" in etat.output
+    assert etat.exit_code == 0, etat.output
+    assert "bdpm.specialites" in etat.output and "CIS_bdpm.txt" in etat.output
+    assert "2 lignes de manifeste" in etat.output
+    assert "aucun fichier partiel dans bronze/." in etat.output
+
+
+def test_etat_signale_les_fichiers_partiels(
+    racine: Path, serveur: ServeurSimule, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "fabriquer_transport", serveur.transport)
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    lanceur.invoke(application, ["collecte", "--racine", str(racine), "--source", "bdpm.mitm"])
+    jour = next((racine / "bronze" / "bdpm" / "CIS_MITM.txt").iterdir())
+    (jour / ".20261024T151703Z__abcdef012345.txt.gz.partiel-4242").write_bytes(b"coupe")
+    (jour / ".rsync-partiel").mkdir()
+    (jour / ".rsync-partiel" / "20261024T161703Z__abcdef012345.txt.gz").write_bytes(b"morceau")
+
+    etat = lanceur.invoke(application, ["etat", "--racine", str(racine)])
+    assert etat.exit_code == 0, etat.output
+    assert "1 fichier(s) partiel(s) dans bronze/" in etat.output
+    assert ".partiel-4242  (modifié le 20" in etat.output
+    assert ".rsync-partiel" not in etat.output
+
+
+def test_journal_en_utc() -> None:
+    """Mission 01, décision 9 : les horodatages du journal sont en UTC, comme le manifeste."""
+    instant = datetime(2026, 10, 24, 14, 17, 3, tzinfo=UTC)
+    enregistrement = logging.LogRecord("pharmaflux", logging.INFO, "", 0, "début", None, None)
+    enregistrement.created = instant.timestamp()
+    texte = cli.FormateurUTC("%(asctime)s %(levelname)s %(message)s").format(enregistrement)
+    assert texte == "2026-10-24T14:17:03Z INFO début"
 
 
 def test_collecte_en_erreur_sort_non_nul(

@@ -38,3 +38,4 @@ CT-21616	https://www.has-sante.fr/jcms/p_4335978
 CT-21904	https://www.has-sante.fr/jcms/p_4335977
 CT-21827	https://www.has-sante.fr/jcms/p_4335975
 CT-21890	https://www.has-sante.fr/jcms/p_4335972
+CT-17553	https://www.has-sante.fr/jcms/c_2973834

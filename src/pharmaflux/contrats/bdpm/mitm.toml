@@ -1,0 +1,81 @@
+# Contrat de schéma v0 (mission 01). On constate, on ne corrige pas (PRD §6.2).
+# Un « motif » doit couvrir toute la valeur. Les énumérations listent les
+# graphies telles qu'elles sont dans le fichier : la normalisation est au Lot 1.
+# Les plages de dates servent à signaler une date manifestement fausse
+# (date_hors_plage, non bloquante), jamais à la corriger.
+version = "v0"
+identifiant = "bdpm.mitm"
+fichier = "CIS_MITM.txt"
+description = "Médicaments d'intérêt thérapeutique majeur (MITM) publiés par l'ANSM : un drapeau par CIS, sans historique"
+
+[source]
+documentation = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf"
+documentation_sha256 = "db10d5a62bc640c227405bcb11cef5db9ad2a2d9a6b4b547198ee19978b6bc8b"
+section = "3.11"
+date_verification = 2026-10-26
+archive_reference = "bronze/bdpm/CIS_MITM.txt/2026-10-24/20261024T194203Z__300f24c39e84.txt.gz"
+archive_sha256 = "300f24c39e84466c617eedce9edfd491870259fd5abd2092b3f8296a3b6245fa"
+
+# Seul fichier sans retour à la ligne final le 24/10 : toléré.
+[format]
+encodage = "cp1252"
+fin_de_ligne = "CRLF"
+separateur = "\t"
+retour_final = "tolere"
+
+[[colonnes]]
+nom = "code_cis"
+type = "code"
+motif = '\d{8}'
+obligatoire = true
+description = "Code Identifiant de Spécialité ; tous présents dans CIS_bdpm.txt le 24/10"
+
+[[colonnes]]
+nom = "code_atc"
+type = "code"
+motif = '[A-Z]\d{2}[A-Z]{2}(\d{2})?'
+obligatoire = true
+description = "Code ATC à 7 caractères (7 769 lignes le 24/10) ou classe à 5 caractères (86)"
+
+[[colonnes]]
+nom = "denomination"
+type = "texte"
+obligatoire = true
+description = "Dénomination du médicament"
+
+[[colonnes]]
+nom = "titulaire"
+type = "texte"
+obligatoire = true
+description = "Titulaire de l'AMM"
+
+[[colonnes]]
+nom = "exploitant"
+type = "texte"
+obligatoire = false
+description = "Exploitant ; vide sur 20 lignes le 24/10"
+
+[[colonnes]]
+nom = "date_publication"
+type = "date"
+format = "JJ/MM/AAAA"
+plage_min = 2020-01-01
+plage_max = 2030-12-31
+obligatoire = true
+description = "Date de publication de la liste (trois valeurs le 24/10), pas de la spécialité"
+
+[[colonnes]]
+nom = "lien_bdpm"
+type = "url"
+hotes = ["base-donnees-publique.medicaments.gouv.fr"]
+obligatoire = true
+description = "Lien vers la fiche de la spécialité sur la BDPM"
+
+[cle]
+colonnes = ["code_cis"]
+unique = true
+
+[[liens]]
+colonne = "code_cis"
+vers = "bdpm.specialites"
+colonne_cible = "code_cis"

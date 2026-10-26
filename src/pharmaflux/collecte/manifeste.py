@@ -34,6 +34,29 @@ class Statut(StrEnum):
     ERREUR = "erreur"
 
 
+# Motifs du champ ``erreur``. Un motif est suivi de son détail après « : »
+# (``lien_change: X_v6.pdf (catalogue : X_v5.pdf)``) ; plusieurs motifs
+# s'enchaînent avec SEPARATEUR_MOTIFS (``HTTP 404 ; lien_absent``). Une
+# erreur de téléchargement n'a pas de motif nommé : c'est son message
+# (``HTTP 503``, ``ConnectTimeout``…).
+SEPARATEUR_MOTIFS = " ; "
+MOTIF_LIEN_ABSENT = "lien_absent"
+MOTIF_LIEN_NOUVEAU = "lien_nouveau"
+MOTIF_LIEN_CHANGE = "lien_change"
+MOTIF_ARCHIVE_EXISTANTE = "archive_existante"
+MOTIF_ANALYSE_IMPOSSIBLE = "analyse_impossible"
+MOTIF_EMPREINTE_IMPOSSIBLE = "empreinte_impossible"
+MOTIF_ECRITURE = "ecriture"
+MOTIF_INATTENDUE = "inattendue"
+# Signalements : les octets ont été reçus, reconnus et archivés s'ils étaient
+# nouveaux ; seule une personne doit regarder (mettre le catalogue à jour). Une
+# ligne qui n'a que ces motifs vaut collecte du jour (mission 01, C1), sinon
+# une entrée quotidienne serait retéléchargée à chaque passage tant que
+# l'alerte dure. Toute autre erreur ne vaut jamais collecte : la liste est
+# volontairement fermée, et c'est le seul endroit qui la définit.
+MOTIFS_SIGNALEMENT = frozenset({MOTIF_LIEN_ABSENT, MOTIF_LIEN_CHANGE})
+
+
 @dataclass(slots=True)
 class Enregistrement:
     """Une ligne du manifeste."""
@@ -59,6 +82,29 @@ class Enregistrement:
     content_disposition_nom: str | None = None
     chemin_archive: str | None = None
     erreur: str | None = None
+
+    def motifs(self) -> list[str]:
+        """Les motifs de ``erreur`` sans leur détail (``lien_change: X`` → ``lien_change``)."""
+        if not self.erreur:
+            return []
+        return [motif.split(":", 1)[0].strip() for motif in self.erreur.split(SEPARATEUR_MOTIFS)]
+
+    @property
+    def vaut_collecte(self) -> bool:
+        """Vrai si les octets ont été reçus et reconnus : la ligne vaut collecte du jour.
+
+        Une ligne sans erreur vaut collecte. Une ligne en erreur aussi, quand son
+        empreinte de comparaison est connue (le contenu a été reçu entier) et
+        que tous ses motifs sont des signalements (``MOTIFS_SIGNALEMENT``). Une
+        erreur de téléchargement (HTTP, délai), d'analyse ou d'écriture, ou le
+        filet ``inattendue``, ne vaut jamais collecte : l'entrée repasse.
+        """
+        if self.statut != Statut.ERREUR:
+            return True
+        motifs = self.motifs()
+        return bool(self.empreinte_comparaison and motifs) and all(
+            motif in MOTIFS_SIGNALEMENT for motif in motifs
+        )
 
 
 CHAMPS = tuple(champ.name for champ in fields(Enregistrement))
@@ -159,8 +205,9 @@ class EtatConnu:
     """Ce qu'un passage retient du manifeste, borné par le catalogue, pas par son âge.
 
     ``empreintes`` : la dernière empreinte de comparaison connue, par identifiant.
-    ``collectes_du_jour`` : les identifiants qui ont déjà une ligne sans erreur
-    ce jour-là (les entrées quotidiennes ne repassent pas).
+    ``collectes_du_jour`` : les identifiants qui ont déjà, ce jour-là, une ligne
+    qui vaut collecte (``Enregistrement.vaut_collecte`` : sans erreur, ou en
+    erreur sur de seuls signalements) ; les entrées quotidiennes ne repassent pas.
     """
 
     empreintes: dict[str, str] = field(default_factory=dict)
@@ -174,7 +221,7 @@ def etat_connu(racine: Path, jour: str) -> EtatConnu:
         _retenir_empreinte(etat.empreintes, enregistrement)
         if (
             enregistrement.identifiant
-            and enregistrement.statut != Statut.ERREUR
+            and enregistrement.vaut_collecte
             and enregistrement.debut.startswith(jour)
         ):
             etat.collectes_du_jour.add(enregistrement.identifiant)

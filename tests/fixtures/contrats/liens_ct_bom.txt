@@ -1,0 +1,3 @@
+﻿CT-21902	https://www.has-sante.fr/jcms/p_4461003
+CT-21926	https://www.has-sante.fr/jcms/p_4461000
+CT-21426	https://www.has-sante.fr/jcms/p_4460994

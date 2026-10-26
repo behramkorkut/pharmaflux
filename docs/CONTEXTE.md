@@ -52,6 +52,32 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
   sont celles du robot de data.gouv, pas de la Cnam ; les dates utiles
   sont `created_at` de la ressource et `last_modified` du jeu.
 
+## Contrats de schéma et lecture du bronze (mission 01)
+
+- **Un contrat TOML par fichier** (`src/pharmaflux/contrats/bdpm/<nom>.toml`,
+  version `v0`) : encodage, fin de ligne, colonnes typées (neuf types,
+  ADR 0002), clé déclarée unique ou non avec sa raison, liens de mesure
+  vers d'autres fichiers, documentation PDF et archive de référence avec
+  leurs sha256. Le chargeur est strict : toute clé inconnue est refusée.
+  À partir de la fusion de la mission 01, **tout changement de contenu
+  d'un contrat, lien compris, passe par une nouvelle version**.
+- **On constate, on ne corrige pas** (PRD §6.2). `pharmaflux profil`
+  vérifie une archive contre son contrat et signale les anomalies : quatre
+  règles bloquantes (encodage, fin de ligne, nombre de colonnes, clé
+  déclarée unique non unique) et quinze non bloquantes (valeur inconnue,
+  date hors plage, décimal illisible, espace parasite…). Rien n'est
+  jamais réécrit : les prix à virgule des milliers, les dates de 1949 et
+  les espaces de fin restent tels quels dans le bronze, et c'est au Lot 1
+  de normaliser. Ce que l'on sait des fichiers est dans `docs/donnees/`.
+- **Le bronze se lit par `pharmaflux.bronze`** (`lister`, `derniere`,
+  `lire_archive`), jamais par le système de fichiers directement : les noms
+  qui commencent par un point (temporaires, `.rsync-partiel/`) sont
+  ignorés, les archives rendues sont les octets bruts décompressés.
+- **Jeu de questions de référence** (`evaluation/`, PRD annexe B) :
+  quarante questions dont la réponse attendue est lue dans une archive
+  précise par la clé et les colonnes du contrat ; `pharmaflux questions
+  verifier` la recalcule. Les lignes attendues sont brutes elles aussi.
+
 ## Pièges connus
 
 - Deux sources changent d'octets sans changer de fond (ordre des lignes
@@ -79,12 +105,13 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 | Quoi | Où |
 |---|---|
 | Spécifications (PRD) | `01_Specifications/` |
-| Code | `src/pharmaflux/` : `cli.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` |
+| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` |
 | Tests et fixtures | `tests/`, `tests/fixtures/` |
 | Planification de la collecte (systemd, rapatriement) | `infra/planification/` |
 | Décisions d'architecture | `docs/adr/` (gabarit : `0000-modele.md`) |
 | Journal | `docs/journal.md` (ajout en fin de fichier) |
 | Profil des sources | `docs/donnees/` (mission 01) |
+| Jeu de questions de référence | `evaluation/` (PRD annexe B) |
 | Circuit de travail, ordres, rapports, relectures | `docs/agents/`, `docs/missions/`, `docs/rapports/`, `docs/relectures/` |
 
 ## Outillage

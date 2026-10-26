@@ -1,0 +1,3 @@
+64610621	A02AH	BICAFRES 1000 mg, comprimé gastro-résistant	FRESENIUS MEDICAL CARE DEUTSCHLAND GmbH	THERADIAL - ORVAULT	05/10/2026	http://base-donnees-publique.medicaments.gouv.fr/extrait.php?specid=64610621
+68053454	A02BA01	CIMETIDINE ARROW 200 mg, comprimé effervescent	ARROW GENERIQUES	ARROW GENERIQUES - LYON	18/12/2024	https://exemple.invalid/extrait.php?specid=1
+67557907	A02	FAMOTIDINE EG 40 mg, comprimé pelliculé	EG LABO - Laboratoires EuroGenerics	EG LABO - LABORATOIRES EUROGENERICS - ISSY LES MOULINEAUX	18/12/2024	fiche BDPM

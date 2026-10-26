@@ -309,3 +309,175 @@ n'ajoute que les événements des archives arrivées entre-temps.
   de l'API Claude.
 - **Pas d'usage des VPS d'Alamel**, et rien qui touche à la pré-production
   du VPS-1.
+
+## Addendum 1 — §0 tranché (IeC, 26/10/2026)
+
+Réponse à `docs/rapports/mission-02/points-a-trancher.md` (commit
+`a28969f`). Le rapport est solide : les mesures sont faites sur l'archive,
+sans aucune requête réseau, et le refus du mode auto est signalé sans
+variante. J'ai recompté sur la copie du Mac les deux constats qui changent
+le plus l'ordre, et ils sont exacts :
+
+- l'égalité des prix : 13 125 lignes sur 13 125 sans virgule des milliers,
+  495 sur 498 avec, et aucun prix hors du motif ;
+- le manifeste du 26/10 : 14:17 est vide et sans `Content-Disposition`,
+  et 15:17 est un `nouveau` dont le sha256 est celui du 24/10.
+
+**Tes avis sont retenus sauf mention contraire.** Les décisions de l'ordre
+sont modifiées comme suit.
+
+**A — Snapshot : d'accord.** Une `Ligne` figée (numéro, brutes,
+normalisées, anomalies) partage les tuples de la `Lecture`. Un fichier à
+clé est un dictionnaire clé → ligne. Un fichier ligne à ligne est un
+multiensemble (empreinte → ligne, occurrences). Le snapshot porte aussi
+son archive, la version du contrat et son bilan.
+
+**B et question 1 — Normalisation : d'accord, avec une règle plus nette
+que « non conforme = brute ».** Le partage se fait sur ce que dit
+l'anomalie :
+
+- une anomalie de **lisibilité** laisse la valeur brute. C'est le cas
+  quand le type ne sait pas lire la valeur : `date_illisible`,
+  `decimal_illisible`, valeur hors énumération, motif non respecté…
+- une anomalie de **vraisemblance ou de forme** n'empêche pas la forme
+  canonique, et l'anomalie reste consignée. C'est le cas de
+  `date_hors_plage` et de `espace_parasite`.
+
+L'ADR 0005 donne ce partage règle par règle, dans un tableau. Ton
+tableau par type est retenu tel quel : les valeurs sont des chaînes
+canoniques, un vide reste `""`, et la liste est normalisée élément par
+élément.
+
+**B.1, B.3 et question 2 — `presentations.toml` passe en v1, avec deux
+ajouts, chacun suivi de sa raison.**
+
+- **Taux** : une table `canonique` sur l'énumération, avec `65%` et sans
+  espace. Le chargeur vérifie que chaque clé et chaque valeur sont dans
+  `valeurs`.
+- **Prix** : le paramètre `milliers = ","` sur les trois colonnes
+  `decimal`. Le type accepte alors `\d{1,3}(,\d{3})+,\d{2}` en plus de la
+  forme simple, et le normalise en `1003.48`.
+
+Ce n'est pas deviner au sens du PRD §6.2, car la forme est **vérifiée par
+une contrainte interne mesurée** : prix public = prix + honoraires, sur
+toutes les lignes sans séparateur et sur 495 des 498 lignes avec. Les
+3 écarts de 2 centimes sont dans la source, et aucune autre lecture ne
+rend ces lignes cohérentes.
+
+Le refus de `pdf2txt` ne bloque donc rien. La raison du contrat cite la
+mesure et ta lecture du PDF au §0 de la mission 01 : aucun format défini.
+**Personne ne relance la commande refusée pour toi.** Si beko veut relire
+le PDF, il le fait lui-même ; ce n'est pas une condition de la mission.
+Ne mesure pas les 3 écarts de 2 centimes dans cette mission : c'est une
+règle métier, à reprendre au Lot 2 (qualité).
+
+Les deux nouveaux paramètres sont définis dans l'ADR 0005. L'ADR 0002
+reçoit, dans son en-tête, une seule ligne : « complété par l'ADR 0005
+(`canonique`, `milliers`) ». Je préciserai le PRD §6.2 dans sa prochaine
+version.
+
+**Non-régression attendue du profil** (contrat v1). Les
+`decimal_illisible` des prix disparaissent. Le rapport du palier 1 donne
+le compte avant et après, ce qui est la seule différence admise.
+`questions verifier` doit toujours donner 25 / 5 / 10. Tout autre écart
+s'explique dans le rapport.
+
+**C — Comparaison : d'accord.** Retenus tels que proposés :
+
+- `identite = "cle" | "ligne"`, `cle` et `empreinte_ligne` sur chaque
+  événement ;
+- un rapprochement `supprimee`/`creee` laissé au Lot 2, qui ne
+  l'affirmera pas ;
+- l'ordre clé, puis `supprimee` < `modifiee` < `creee`, puis empreinte,
+  puis rang.
+
+**D et questions 3, 7 — Schéma et sortie : d'accord.** Le schéma
+`version_schema = 1` est retenu champ par champ, toutes les valeurs de
+données en chaînes. La sortie se fait **par archive** :
+
+- `evenements/<entite>/<horodatage>__<sha12>.jsonl`, vide quand rien n'a
+  changé ;
+- un bilan par archive lue ;
+- une écriture atomique par fichier.
+
+Le flux d'une source est la concaténation de ses fichiers dans l'ordre
+des noms. C'est ce flux que les tests de la décision 8 comparent. La
+décision 7 est modifiée en ce sens.
+
+**E — Identifiant : d'accord, l'ordre est corrigé.** Le sha256 porte sur
+la chaîne `entite`, `archive`, `archive_precedente`, `type` et
+`identite_de_ligne`, séparés par `\x1f`. Les deux archives entrent par leur
+**chemin relatif**, et non par leur seule empreinte. Ta démonstration de
+l'oscillation A → B → A → B est juste : ma proposition aurait donné deux
+fois les mêmes identifiants. Le test de la décision 8 « aucun identifiant
+en double » doit contenir cette oscillation.
+
+**F et question 4 — Garde-fou de volume : d'accord, X = 1 %, avec la
+seconde voie de confirmation.** Les lignes comptées sont les lignes bien
+formées. Trois précisions :
+
+1. **Le vide et le bloquant sont écartés sans appel.** Ils ne passent
+   jamais en attente et ne sont jamais confirmés. Si une source est un jour
+   vraiment vidée ou abandonnée, cette mission ne produit pas des milliers
+   de `supprimee`. Elle consigne un écart à chaque passage, et c'est un
+   humain qui tranche (alerte au Lot 5).
+2. **Un snapshot en attente n'est pas « traité ».** L'état garde
+   `en_attente`, et `derniere_archive_traitee` reste avant lui. Quand une
+   exécution ultérieure le tranche, elle **réécrit son bilan** (écarté ou
+   confirmé) et écrit ses événements s'il est confirmé, pour que la sortie
+   égale celle d'un rejeu complet sur le même bronze. Le test de reprise
+   doit contenir un point d'arrêt juste après une archive en attente,
+   tranchée ensuite dans chacun des deux sens.
+3. **Motifs** : comme ton exemple, avec les deux comptes de lignes et le
+   pourcentage.
+
+**G — Premier snapshot : d'accord.** Une `creee` par entité, avec
+`etat_initial = true`, et pas de compression. La démonstration redonne,
+par fichier, le nombre d'événements et la taille.
+
+**H — Reprise : d'accord.** L'état est réécrit atomiquement après les
+fichiers de l'archive, dans l'ordre événements, bilan, état. Le snapshot
+retenu est recalculé depuis son archive et n'est jamais sérialisé. Les
+cinq tests que tu proposes sont retenus, plus le point d'arrêt du F.2.
+
+**I et question 6 — Version de contrat : d'accord.** Les deux côtés d'une
+comparaison sont lus avec le contrat courant. `--reprendre` **refuse**
+quand une version de contrat diffère de celle de l'état, avec un message
+qui demande un rejeu complet, et sort avec un code non nul. Le choix d'une
+version de contrat par archive est hors de cette mission ; il est noté
+dans l'ADR 0005.
+
+**J — Reliquats : d'accord sur les deux.** `_decoder` compte les lignes
+touchées, au palier 1. Le bilan par archive suit ton contenu ; c'est une
+mesure, et il ne change pas le code de sortie. La décision 6 n'est plus
+« si retenu » : elle est retenue.
+
+**K et question 5 — Autres points.**
+
+- **`fichier_vide`** : retenu, en anomalie **non bloquante** de
+  `verification`, au palier 1. C'est le contrat qui décrit la forme ; la
+  décision d'écarter appartient au garde-fou de volume.
+- **`date_source = null`** pour `CIS_InfoImportantes.txt` : d'accord.
+- **`Content-Disposition` absent** : à consigner dans le rapport, en
+  proposition pour le Lot 5, sans code.
+- **Paquet** : `src/pharmaflux/evenements/`, avec ton découpage.
+
+**Démonstration (décision 9, modifiée).** L'archive ne contient pas de
+`modifiee` réelle. Le rapport donne donc :
+
+- les **3 `supprimee`** réelles de `CIS_CIP_bdpm.txt`, avec deux exemples
+  bruts, la source et la date ;
+- le traitement du vide du 26/10 : 14:17 écarté, 15:17 identique au
+  retenu, zéro événement ;
+- les `creee` initiales par fichier ;
+- le compte des prix normalisés grâce à `milliers` ;
+- le temps de calcul et la mémoire de pointe.
+
+Les `modifiee`, les doublons et les retours viennent des fixtures, et le
+rapport le dit.
+
+**Paliers.** Au palier 1 s'ajoutent le contrat v1 (`canonique`,
+`milliers`, chargeur et tests), `fichier_vide` et le compte de `_decoder`.
+Le reste est inchangé.
+
+Tu peux coder le palier 1.

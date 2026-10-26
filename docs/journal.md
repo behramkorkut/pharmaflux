@@ -296,3 +296,16 @@ commercialisation), le vide du 26/10 à 14:17 écarté et le 15:17 identique
 au 24/10 (zéro événement), 995 prix lus grâce à `milliers`, 7,9 s, 474 Mo
 de mémoire résidente ; `--reprendre` ensuite : 0 archive, 2,9 s. ADR 0006,
 `CONTEXTE.md`, `README.md`. 399 tests.
+
+**Relecture 1** (26/10) : deux bloquants corrigés. La dernière archive
+traitée de l'état suit désormais chaque verdict définitif, et non le seul
+dernier résultat : une archive en attente tranchée par une archive
+elle-même en attente ne reste plus en arrière, ce qui faisait relire et
+effacer ses événements à `--reprendre`. Les `supprimee` d'une même ligne
+sortent du rang le plus haut au plus bas, pour qu'un consommateur qui suit
+le flux, comme `appliquer`, voie un compte toujours juste quand une ligne
+perd plusieurs occurrences. `deserialiser` exige de vraies listes. La suite
+des tests de reprise passe à vingt-deux archives (deux pertes en attente
+qui se suivent, dans les deux sens ; une ligne en triple ramenée à une puis
+remontée à trois). Sur la copie du Mac, la sortie est identique à l'octet
+à celle du palier 3. 413 tests.

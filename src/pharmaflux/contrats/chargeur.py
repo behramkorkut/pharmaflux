@@ -12,7 +12,7 @@ from __future__ import annotations
 import codecs
 import re
 import tomllib
-from datetime import date, datetime
+from datetime import date
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -32,6 +32,7 @@ from pharmaflux.contrats.modele import (
     TypeNom,
     TypeValeur,
 )
+from pharmaflux.tomlstrict import TableStricte
 
 MOTIF_IDENTIFIANT = re.compile(r"[a-z]+\.[a-z][a-z0-9_]*")
 MOTIF_NOM_COLONNE = re.compile(r"[a-z][a-z0-9_]*")
@@ -46,87 +47,10 @@ class ContratIntrouvable(LookupError):  # noqa: N818 (nom français voulu)
     """Aucun contrat dans le paquet pour cet identifiant."""
 
 
-class _Table:
-    """Une table TOML dont chaque clé doit être consommée ; ce qui reste est une erreur."""
+class _Table(TableStricte):
+    """Une table TOML d'un contrat : ce qui n'est pas consommé est un ``ContratInvalide``."""
 
-    def __init__(self, valeurs: object, contexte: str) -> None:
-        if not isinstance(valeurs, dict):
-            raise ContratInvalide(f"{contexte} : une table est attendue")
-        self.contexte = contexte
-        self._restants: dict[str, object] = dict(valeurs)
-
-    def _prendre(self, cle: str, obligatoire: bool) -> object | None:
-        if cle not in self._restants:
-            if obligatoire:
-                raise ContratInvalide(f"{self.contexte} : clé « {cle} » manquante")
-            return None
-        return self._restants.pop(cle)
-
-    def _refuser(self, cle: str, attendu: str) -> ContratInvalide:
-        return ContratInvalide(f"{self.contexte} : « {cle} » doit être {attendu}")
-
-    def texte(self, cle: str) -> str:
-        valeur = self._prendre(cle, obligatoire=True)
-        if not isinstance(valeur, str) or not valeur.strip():
-            raise self._refuser(cle, "une chaîne non vide")
-        return valeur
-
-    def texte_facultatif(self, cle: str, *, blancs_admis: bool = False) -> str | None:
-        """``blancs_admis`` : une chaîne d'espaces ou de tabulations passe (le séparateur)."""
-        valeur = self._prendre(cle, obligatoire=False)
-        if valeur is None:
-            return None
-        if not isinstance(valeur, str) or not (valeur if blancs_admis else valeur.strip()):
-            raise self._refuser(cle, "une chaîne non vide")
-        return valeur
-
-    def booleen(self, cle: str) -> bool:
-        valeur = self._prendre(cle, obligatoire=True)
-        if not isinstance(valeur, bool):
-            raise self._refuser(cle, "un booléen")
-        return valeur
-
-    def entier_facultatif(self, cle: str, *, minimum: int) -> int | None:
-        valeur = self._prendre(cle, obligatoire=False)
-        if valeur is None:
-            return None
-        if isinstance(valeur, bool) or not isinstance(valeur, int) or valeur < minimum:
-            raise self._refuser(cle, f"un entier d'au moins {minimum}")
-        return valeur
-
-    def date(self, cle: str, *, obligatoire: bool) -> date | None:
-        valeur = self._prendre(cle, obligatoire)
-        if valeur is None:
-            return None
-        if not isinstance(valeur, date) or isinstance(valeur, datetime):
-            raise self._refuser(cle, "une date TOML (AAAA-MM-JJ), sans heure")
-        return valeur
-
-    def textes(self, cle: str, *, obligatoire: bool) -> tuple[str, ...]:
-        valeur = self._prendre(cle, obligatoire)
-        if valeur is None:
-            return ()
-        if not isinstance(valeur, list) or not all(isinstance(v, str) and v for v in valeur):
-            raise self._refuser(cle, "une liste de chaînes non vides")
-        return tuple(valeur)
-
-    def table(self, cle: str) -> _Table:
-        return _Table(self._prendre(cle, obligatoire=True), f"{self.contexte}.{cle}")
-
-    def tables(self, cle: str, *, obligatoire: bool) -> list[_Table]:
-        valeur = self._prendre(cle, obligatoire)
-        if valeur is None:
-            return []
-        if not isinstance(valeur, list):
-            raise self._refuser(cle, "un tableau de tables ([[...]])")
-        return [_Table(v, f"{self.contexte}.{cle}[{i}]") for i, v in enumerate(valeur)]
-
-    def terminer(self) -> None:
-        if self._restants:
-            inconnues = ", ".join(sorted(self._restants))
-            raise ContratInvalide(
-                f"{self.contexte} : clé(s) inconnue(s) ou sans objet ici : {inconnues}"
-            )
+    erreur = ContratInvalide
 
 
 def charger(chemin: Path) -> Contrat:

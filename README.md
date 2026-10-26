@@ -17,9 +17,13 @@ et le point d'entrée technique dans [`docs/CONTEXTE.md`](docs/CONTEXTE.md).
 
 ## État
 
-**Mission 00 en cours** : socle du dépôt et archivage horaire des fichiers
-BDPM. L'archive brute est la seule brique qui ne se rattrape pas : elle
-démarre avant tout le reste.
+**Mission 00 fusionnée** : socle du dépôt et archivage horaire des fichiers
+BDPM, en production sur un VPS depuis le 24/10/2026. L'archive brute est
+la seule brique qui ne se rattrape pas : elle a démarré avant tout le reste.
+
+**Mission 01 en cours** : contrats de schéma des onze fichiers BDPM,
+profil des archives (`docs/donnees/`), décisions d'architecture
+(`docs/adr/`) et jeu de questions de référence (`evaluation/`).
 
 | Lot | Contenu | État |
 |---|---|---|
@@ -44,6 +48,8 @@ uv run pharmaflux --help
 uv run pharmaflux catalogue          # les quatorze entrées collectées
 uv run pharmaflux collecte           # un passage : télécharge, compare, archive, consigne
 uv run pharmaflux etat               # dernière archive, dernier changement, erreurs, 24 h
+uv run pharmaflux profil             # chaque archive contre son contrat : anomalies, clé, colonnes, liens
+uv run pharmaflux questions verifier # le jeu de questions de référence rejoué sur l'archive
 ```
 
 Un passage télécharge la page de téléchargement de la BDPM et ses onze
@@ -58,6 +64,14 @@ dépôt, sous `PHARMAFLUX_DATA` (défaut : `~/pharmaflux-data`). Rien de
 heures à `:17` sur un VPS (minuteur systemd) et une copie est rapatriée
 chaque semaine : procédure dans
 [`infra/planification/README.md`](infra/planification/README.md).
+
+`profil` vérifie une archive contre son **contrat de schéma**
+(`src/pharmaflux/contrats/bdpm/`, un TOML par fichier) et mesure ce
+qu'elle contient : les anomalies sont signalées, jamais corrigées. Le
+résultat sur l'archive du 24/10/2026 est dans
+[`docs/donnees/`](docs/donnees/README.md). `questions verifier` rejoue le
+[jeu de questions de référence](evaluation/README.md) : quarante questions
+dont la réponse attendue est lue dans une archive précise.
 
 Vérifications locales, identiques à la CI :
 

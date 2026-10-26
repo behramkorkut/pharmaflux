@@ -227,3 +227,21 @@ HAS permises ont été faites : `robots.txt` n'interdit pas les pages
 d'avis, le document d'avis est servi derrière une redirection de mesure
 d'audience (non suivie), les mentions légales autorisent la réutilisation
 avec source et date. 198 tests.
+
+## 2026-10-26 — Mission 01 : palier 4 (questions de référence)
+
+Palier 3 accepté sans correctif (profils régénérés identiques à
+`docs/donnees/`, ADR 0004 validé). Palier 4 : `evaluation/questions-reference-v0.toml`,
+quarante questions, cinq par catégorie de l'annexe B du PRD, chacune avec
+son comportement attendu (réponse, abstention, refus médical) et, pour une
+réponse, l'archive du 24/10 (chemin et sha256), le contrat, la clé, les
+colonnes et les lignes attendues, brutes. Deux questions visent un CIS
+absent de `CIS_bdpm.txt` (abstention motivée) ; une seule question
+Historique porte un début futur, voulu, pour tester la prudence. Les
+questions Dépense attendent Open Medic (`calculable_au = "lot4"`).
+`uv run pharmaflux questions verifier` relit chaque archive citée, vérifie
+son sha256 et son contrat, recalcule les lignes et signale tout écart :
+25 conformes, 5 non calculables, 10 sans attendu sur la copie du Mac. La
+lecture stricte des TOML est partagée (`tomlstrict.py`) entre contrats et
+questions. Docs : `CONTEXTE.md` (contrats, bronze, « on constate, on ne
+corrige pas »), `README.md`. 229 tests.

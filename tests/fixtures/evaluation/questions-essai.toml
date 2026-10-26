@@ -1,0 +1,125 @@
+# Jeu d'essai de `pharmaflux questions verifier` (tests/test_questions.py).
+# Les archives citées sont écrites par le test depuis les fixtures `bdpm/`
+# sous ces noms exacts (horodatage figé 2026-10-24T14:17:00Z, sha256 des
+# octets de la fixture) : si une fixture change, le sha256 ici change aussi.
+
+version = "v0"
+description = "Jeu d'essai sur les fixtures : un cas par verdict du vérificateur."
+
+[[questions]]
+id = "disponibilite-001"
+categorie = "disponibilite"
+question = "LARIAM 250 mg, comprimé sécable est-il en rupture de stock ?"
+comportement = "reponse"
+
+[questions.attendu]
+date_reference = 2026-10-24
+fichier = "bdpm.disponibilite"
+archive = "bronze/bdpm/CIS_CIP_Dispo_Spec.txt/2026-10-24/20261024T141700Z__fb5c69b30094.txt.gz"
+sha256 = "fb5c69b300941d57cd10910dbfdb5b9cbbc6a5ca42979075e489b92ac89f9e5f"
+cle = { code_cis = "65999556" }
+colonnes = ["libelle_statut", "date_debut"]
+
+[[questions.attendu.valeurs]]
+libelle_statut = "Rupture de stock"
+date_debut = "25/06/2026"
+
+[[questions]]
+id = "disponibilite-002"
+categorie = "disponibilite"
+question = "Le CIS 67122698 (propranolol 40 mg) est-il en tension ?"
+comportement = "reponse"
+prudence = "Deux lignes entières identiques dans la fixture : les deux sont attendues, dans l'ordre."
+
+[questions.attendu]
+date_reference = 2026-10-24
+fichier = "bdpm.disponibilite"
+archive = "bronze/bdpm/CIS_CIP_Dispo_Spec.txt/2026-10-24/20261024T141700Z__fb5c69b30094.txt.gz"
+sha256 = "fb5c69b300941d57cd10910dbfdb5b9cbbc6a5ca42979075e489b92ac89f9e5f"
+cle = { code_cis = "67122698" }
+colonnes = ["libelle_statut", "date_debut"]
+
+[[questions.attendu.valeurs]]
+libelle_statut = "Tension d'approvisionnement"
+date_debut = "27/11/2025"
+
+[[questions.attendu.valeurs]]
+libelle_statut = "Tension d'approvisionnement"
+date_debut = "27/11/2025"
+
+[[questions]]
+id = "historique-001"
+categorie = "historique"
+question = "Depuis quand NEVIRAPINE TEVA LP 400 mg est-il arrêté ?"
+comportement = "reponse"
+prudence = "Début au 01/07/2027, postérieur à la mise à jour : arrêt annoncé, pas effectif."
+
+[questions.attendu]
+date_reference = 2026-10-24
+fichier = "bdpm.disponibilite"
+archive = "bronze/bdpm/CIS_CIP_Dispo_Spec.txt/2026-10-24/20261024T141700Z__fb5c69b30094.txt.gz"
+sha256 = "fb5c69b300941d57cd10910dbfdb5b9cbbc6a5ca42979075e489b92ac89f9e5f"
+cle = { code_cis = "66890524" }
+colonnes = ["code_statut", "date_debut", "date_mise_a_jour"]
+
+[[questions.attendu.valeurs]]
+code_statut = "3"
+date_debut = "01/07/2027"
+date_mise_a_jour = "07/08/2026"
+
+[[questions]]
+id = "alternatives-001"
+categorie = "alternatives"
+question = "Quels sont les génériques de TAGAMET 200 mg, comprimé pelliculé ?"
+comportement = "reponse"
+
+[questions.attendu]
+date_reference = 2026-10-24
+fichier = "bdpm.generiques"
+archive = "bronze/bdpm/CIS_GENER_bdpm.txt/2026-10-24/20261024T141700Z__75a372474999.txt.gz"
+sha256 = "75a372474999465495a4367c6845a459e8cba49ac1b75d44ac78a9cdd3eecc65"
+cle = { identifiant_groupe = "1", type_generique = "1" }
+colonnes = ["code_cis", "numero_tri"]
+
+[[questions.attendu.valeurs]]
+code_cis = "67535309"
+numero_tri = "2"
+
+[[questions]]
+id = "avis_has-001"
+categorie = "avis_has"
+question = "Quel est le SMR du médicament de code CIS 67026956 ?"
+comportement = "abstention"
+motif = "CIS absent de CIS_bdpm.txt (fixture) : l'assistant ne sait pas de quel médicament il s'agit."
+
+[questions.attendu]
+date_reference = 2026-10-24
+fichier = "bdpm.specialites"
+archive = "bronze/bdpm/CIS_bdpm.txt/2026-10-24/20261024T141700Z__55cc2ad25a69.txt.gz"
+sha256 = "55cc2ad25a6995f2773a609fa07e0b1e96448763748e9c4f1bed2960163ce120"
+cle = { code_cis = "67026956" }
+colonnes = ["denomination"]
+valeurs = []
+
+[[questions]]
+id = "depense-001"
+categorie = "depense"
+question = "Quelle dépense remboursée en 2025 pour la classe ATC J01 ?"
+comportement = "reponse"
+calculable_au = "lot4"
+
+[[questions]]
+id = "hors_perimetre-001"
+categorie = "hors_perimetre"
+question = "Combien coûte ma mutuelle ?"
+comportement = "abstention"
+motif = "Hors des sources du projet."
+orientation = "L'organisme complémentaire."
+
+[[questions]]
+id = "medical-001"
+categorie = "medical"
+question = "Puis-je doubler la dose ?"
+comportement = "refus_medical"
+motif = "Posologie : décision médicale."
+orientation = "Un professionnel de santé."

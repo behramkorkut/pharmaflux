@@ -3,6 +3,7 @@
 ``collecte`` : un passage d'archivage (télécharger, comparer, archiver,
 consigner). ``etat`` : ce que contient l'archive, d'après le manifeste.
 ``profil`` : une archive contre son contrat de schéma, anomalies et mesures.
+``questions verifier`` : le jeu de questions de référence rejoué sur l'archive.
 """
 
 from __future__ import annotations
@@ -29,8 +30,11 @@ from pharmaflux.contrats.chargeur import charger_tous
 from pharmaflux.contrats.modele import Contrat
 from pharmaflux.contrats.profil import ArchiveIntrouvable, profiler_racine
 from pharmaflux.contrats.rendu import rendre_markdown, resume
+from pharmaflux.evaluation import questions as jeu_questions
+from pharmaflux.evaluation.verification import formater_bilan, verifier_jeu
 
 VARIABLE_RACINE = "PHARMAFLUX_DATA"
+QUESTIONS_PAR_DEFAUT = Path("evaluation/questions-reference-v0.toml")
 RACINE_PAR_DEFAUT = Path.home() / "pharmaflux-data"
 
 # Remplacé par les tests pour simuler le serveur ; None = vrai réseau.
@@ -224,6 +228,41 @@ def _selection_contrats(
     if archive is not None and len(selection) != 1:
         raise typer.BadParameter("--archive demande un seul --fichier", param_hint="--archive")
     return selection
+
+
+questions = typer.Typer(
+    name="questions",
+    help="Jeu de questions de référence (PRD annexe B) : rejeu sur l'archive.",
+    no_args_is_help=True,
+)
+application.add_typer(questions)
+
+
+@questions.command("verifier")
+def questions_verifier(
+    racine: OptionRacine = None,
+    fichier_questions: Annotated[
+        Path,
+        typer.Option(
+            "--questions",
+            help="Le jeu de questions TOML.",
+            show_default=True,
+        ),
+    ] = QUESTIONS_PAR_DEFAUT,
+) -> None:
+    """Rejoue chaque question : archive citée relue, sha256 vérifié, valeur recalculée.
+
+    Code de sortie 1 au moindre écart, archive introuvable, sha256 différent
+    ou archive non conforme à son contrat.
+    """
+    contrats = charger_tous()
+    try:
+        jeu = jeu_questions.charger(fichier_questions, contrats)
+    except jeu_questions.JeuInvalide as exc:
+        raise typer.BadParameter(str(exc), param_hint="--questions") from exc
+    bilan = verifier_jeu(jeu, _racine(racine), contrats)
+    typer.echo(formater_bilan(bilan))
+    raise typer.Exit(code=bilan.code_sortie)
 
 
 @application.command()

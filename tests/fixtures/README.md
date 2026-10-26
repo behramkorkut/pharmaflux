@@ -75,6 +75,15 @@ donnée réelle.
 | `mitm_anomalies.txt` | `CIS_MITM.txt`, lignes 1 à 3 | 2 : lien vers `exemple.invalid` → `hote_inconnu` ; 3 : lien `fiche BDPM`, ATC `A02` → `url_illisible`, `code_illisible` ; pas de retour final (toléré) |
 | `liens_ct_bom.txt` | `HAS_LiensPageCT_bdpm.txt`, lignes 1 à 3 | marque d'ordre des octets UTF-8 en tête → `encodage` |
 
+## `evaluation/` — jeu de questions d'essai
+
+`questions-essai.toml` : huit questions, un cas par verdict de
+`pharmaflux questions verifier`, qui citent les fixtures `bdpm/` comme
+archives (le test les écrit sous les noms cités, horodatage figé
+`2026-10-24T14:17:00Z`, sha256 des octets de la fixture). Si une fixture
+`bdpm/` change, le sha256 cité change aussi : c'est le vérificateur qui le
+dit (`sha256 différent`).
+
 ## `openmedic/` — <https://www.data.gouv.fr>
 
 | Fichier | URL | Extrait |

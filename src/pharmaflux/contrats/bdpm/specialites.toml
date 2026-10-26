@@ -127,7 +127,8 @@ description = "Surveillance renforcée (triangle noir)"
 colonnes = ["code_cis"]
 unique = true
 
-# Mesure inverse : les spécialités sans aucune présentation (1 261 le 24/10),
+# Mesure inverse : les spécialités sans aucune présentation (1 263 contre
+# l'archive CIS_CIP de 23:17 UTC le 24/10, 1 261 contre celle de 19:41 UTC),
 # pas une référence.
 [[liens]]
 colonne = "code_cis"

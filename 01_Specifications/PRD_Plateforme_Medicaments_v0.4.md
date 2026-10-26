@@ -2,8 +2,8 @@
 
 **Projet :** Pharmaflux — projet portfolio
 **Client :** client fictif — **direction santé d'une mutuelle** de taille moyenne (personas §3). Aucune donnée client : uniquement des données publiques réelles.
-**Version :** 0.3 _(après la mission 01 : sources profilées, contrats de schéma, ADR du Lot 0, jeu de questions v0)_
-**Date :** 26 octobre 2026 _(v0.1 : 23 octobre 2026 ; v0.2 : 26 octobre 2026)_
+**Version :** 0.4 _(après la mission 02 : normalisation, snapshots et événements de changement, du bronze à des fichiers JSONL sur le Mac)_
+**Date :** 26 octobre 2026 _(v0.1 : 23 octobre 2026 ; v0.2 et v0.3 : 26 octobre 2026)_
 **Auteur :** Behram Korkut
 
 **Sources de données (publiques, réelles) :**
@@ -29,6 +29,7 @@
 | 1 | Création du PRD v0.1 | Cadrage du 23/10/2026 : domaine santé × assurance, données publiques réelles, méthode Alamel |
 | 2 | PRD v0.2 : nom Pharmaflux retenu ; collecte **horaire** sur le VPS-1 de beko, partagé avec une pré-production jusqu'à mi-novembre 2026 ; pas de requête conditionnelle ; indicateur de fraîcheur découplé (§2.2) ; dates utiles de data.gouv (§6.1) ; constats sur les encodages et les formats (annexe A, avec le §0 de la mission 01) ; sens d'une ligne qui disparaît de la disponibilité (§6.3) ; points 5, 6 et 8 du §10.2 reportés à leur lot ; circuit local (annexe C) | Mission 00 (24-25/10/2026) : réponse au §0, addendum 2, 24 h de passages sur le VPS |
 | 3 | PRD v0.3 : Lot 0 soldé (§4) ; contrats de schéma v0 et règle de version (§6.2) ; **fichier servi vide** et garde-fou de volume (§6.1, §6.3, §9) ; points 2, 3, 4 et 7 du §10.2 tranchés par les ADR 0001 à 0004 ; annexe A avec colonne « Statut » ; annexe B : comportement attendu, archive citée, réponse avec réserve ; messages directs entre sessions pour la routine (annexe C) | Mission 01 (26/10/2026) : PR #2, contrôles des paliers 3 et 4, relecture 1, passages du 26/10 sur le VPS |
+| 4 | PRD v0.4 : avancement du Lot 1 (§4) ; forme canonique par type et forme déclarée vérifiée par une mesure (§6.2) ; valeur illisible gardée brute, et non rejetée (§6.2) ; schéma d'événement v1, identité d'une ligne sans clé unique, ordre des colonnes et des rangs, garde-fou de volume chiffré, premier snapshot (§6.3) ; reprise égale au rejeu complet (§7.1) ; mémoire de pointe au-dessus du plafond du VPS (§9) | Mission 02 (26/10/2026) : PR #3, ADR 0005 et 0006, contrôles des paliers 1 à 3, relectures 1 et 2 |
 
 ---
 
@@ -152,6 +153,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - Publication des événements dans Redpanda, contrats de schéma, file des messages en échec.
 - Idempotence et rejeu complet depuis le bronze.
 - `docker compose` local, CI (lint, types, tests unitaires et d'intégration).
+- _Avancement : la collecte est en service depuis la mission 00. La mission 02 (fusionnée le 26/10/2026) va du bronze aux événements : `pharmaflux evenements` normalise chaque archive, la compare au dernier snapshot retenu, et écrit les événements et un bilan par archive, avec rejeu complet et reprise. Elle ne tourne que sur le Mac. Restent la publication dans Redpanda, la file des messages en échec, l'écriture en flux et l'exécution sur le VPS._
 
 ### Lot 2 — Lakehouse, historique et voyage dans le temps
 
@@ -219,18 +221,26 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 
 - Encodage source détecté et converti en UTF-8 ; anomalies consignées, jamais corrigées en silence.
 - En-têtes appliqués depuis un **contrat de schéma versionné** par fichier (les fichiers n'en ont pas) : un TOML par fichier dans `src/pharmaflux/contrats/`, neuf types, clé avec `unique` et sa raison quand elle ne l'est pas (ADR 0002). Depuis la fusion de la mission 01, **tout changement de contenu d'un contrat, lien compris, passe par une nouvelle version** ; une borne haute de date se relève de la même façon.
-- Quatre anomalies sont **bloquantes** (encodage, fin de ligne, nombre de colonnes, clé déclarée unique qui ne l'est pas) ; les autres portent sur une valeur, sont comptées et gardent leur valeur brute (ADR 0002, `docs/donnees/`).
-- Dates converties au format ISO ; valeurs impossibles rejetées vers la file des messages en échec avec la ligne brute.
+- **Une forme que la source ne documente pas** peut être déclarée dans un contrat, par une nouvelle version, à une condition : une contrainte interne **mesurée** sur les données la vérifie, et le contrat porte la mesure. C'est le cas des prix de `CIS_CIP_bdpm.txt` écrits avec des milliers (`1,466,29`) : prix public = prix + honoraires sur 13 620 lignes sur 13 623, dont 495 des 498 à séparateur. Les 3 écarts, de 2 centimes, sont dans la source (ADR 0005, contrat `presentations` v1). Sans mesure, une forme reste illisible : on ne devine pas.
+- Quatre anomalies sont **bloquantes** (encodage, fin de ligne, nombre de colonnes, clé déclarée unique qui ne l'est pas) ; les autres portent sur une valeur et sont comptées (ADR 0002, `docs/donnees/`).
+- **Forme canonique par type**, toujours en chaîne : texte sans espaces de tête ni de fin, entier sans zéro de tête, décimal à point sans séparateur de milliers, date ISO, booléen `true` / `false`, graphie canonique d'une énumération déclarée dans le contrat (`65 %` → `65%`). Une valeur que le type **ne sait pas lire** reste **brute**, avec sa règle. Une valeur qui se lit mais dont la **forme ou la vraisemblance** est en cause (espace parasite, date hors plage) prend la forme canonique et garde sa règle (ADR 0005).
+- Une valeur illisible n'est **pas rejetée** : elle voyage brute, avec sa règle, dans l'événement (`anomalies`) et dans le bilan de l'archive. Une ligne n'est jamais écartée seule : c'est le snapshot entier qui l'est, avec son motif, quand il a une anomalie bloquante. La file des messages en échec (§6.4) reçoit ce que la chaîne ne peut pas publier.
 - **Licence BDPM** : les données ne doivent pas être altérées et la source et la date de mise à jour doivent être citées. La normalisation ne change que la forme (encodage, typage), jamais le sens ; chaque donnée exposée porte sa source et sa date.
 
 ### 6.3 Détection des changements et événements
 
-- Comparaison du snapshot normalisé avec le précédent, par clé métier (CIS, CIP13, couple CIS + substance…).
+- Comparaison du snapshot normalisé avec le **dernier snapshot retenu**, sur les valeurs normalisées, par clé métier (CIS, CIP13, couple CIS + substance…). Une graphie, une espace ou un format de date ne produisent aucun événement : le bilan les mesure.
 - Trois types d'événements par entité : `creee`, `modifiee` (avec les champs modifiés), `supprimee`.
-- Chaque événement porte : identifiant déterministe (rejeu sans doublon), entité, clé, état avant, état après, date de la source, date d'observation, empreinte du fichier d'origine, version du schéma.
+- Chaque événement (schéma v1, ADR 0006) porte : identifiant déterministe, entité, version du contrat, clé, état avant, état après, champs modifiés, anomalies de la ligne, date de la source, date d'observation, chemins et empreintes des deux archives comparées, version du schéma. Toutes les valeurs sont des chaînes. L'identifiant est un sha256 de l'entité, des **chemins relatifs** des deux archives, du type et de l'identité de la ligne. Il est donc le même à chaque rejeu, et différent pour deux comparaisons de même contenu (un aller-retour A → B → A → B).
+- **Premier snapshot** d'un fichier : une `creee` par entité, marquée état initial. Appliquer tous les événements au vide redonne le dernier snapshot retenu.
 - Fichier de disponibilité : la **remise à disposition est un statut explicite** (code 4, daté). Une ligne qui disparaît est une **fin de publication** de la fiche par l'ANSM (après une remise, un arrêt, ou un retrait), pas une remise probable. ADR 0003 « proposé », revu au plus tard le 07/12/2026 avec un critère de passage chiffré.
-- Trois fichiers n'ont pas de clé métier unique (disponibilité ; avis SMR et ASMR, un avis par indication) : leur comparaison se fait ligne à ligne, pas par clé.
-- **Garde-fou de volume** : un snapshot qui n'a pas d'anomalie bloquante mais qui est vide, ou qui perd une part anormale de ses lignes d'un passage à l'autre, ne produit **aucun** événement `supprimee`. Il est mis de côté avec un motif visible, et la comparaison reprend au snapshot suivant (cas réel du §6.1). Le seuil est fixé et justifié par la mission qui l'implémente.
+- Trois fichiers n'ont pas de clé métier unique (disponibilité ; avis SMR et ASMR, un avis par indication) : leur comparaison se fait ligne à ligne, pas par clé. L'**identité d'une ligne** y est l'empreinte de la ligne normalisée plus son **rang**, qui distingue les occurrences d'une ligne répétée. Une ligne qui change donne une `supprimee` puis une `creee`, jamais une `modifiee`. L'événement porte quand même les colonnes de la clé déclarée non unique, pour que le Lot 2 rapproche les deux sans que l'événement l'affirme.
+- **Ordre, sans dépendre d'un objet JSON** : dans l'identifiant comme dans le tri, les colonnes de la clé sont prises par **ordre alphabétique de leurs noms**, l'ordre que le JSON écrit. Les événements d'une comparaison sont triés par clé, puis `supprimee` < `modifiee` < `creee`, puis empreinte, puis rang. Le rang est **décroissant pour les `supprimee`** et croissant pour les `creee`. Un consommateur qui suit le flux dans l'ordre voit ainsi un compte d'occurrences toujours juste, même quand une ligne en perd plusieurs d'un coup.
+- **Garde-fou de volume** : un snapshot qui n'a pas d'anomalie bloquante mais qui est vide, ou qui perd une part anormale de ses lignes d'un passage à l'autre, ne produit **aucun** événement `supprimee`. Il est mis de côté avec un motif visible, et la comparaison reprend au snapshot suivant (cas réel du §6.1). Règle de la mission 02 (ADR 0006) :
+  - un snapshot vide ou bloquant est **écarté sans appel** ;
+  - un snapshot qui perd plus de **1 %** des lignes du dernier retenu est **en attente**. Il est confirmé si la source maintient la baisse : un passage inchangé avant l'archive suivante, ou une archive suivante d'au plus 101 % de ses lignes. Sinon, il est écarté.
+
+  Un vrai rétrécissement coûte une heure de retard, et ses événements gardent la date d'observation de leur archive.
 - `CIS_bdpm.txt` ne contient pas tous les CIS cités par les autres fichiers (avis anciens, médicaments sortis de la base : `docs/donnees/README.md`) : les jointures sont externes, et un CIS absent du référentiel n'est pas une erreur.
 
 ### 6.4 Bus d'événements
@@ -284,7 +294,8 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 
 ### 7.1 Exactitude et rejeu — exigence centrale
 
-- Rejeu complet depuis le bronze à tout moment, avec un résultat identique.
+- Rejeu complet depuis le bronze à tout moment, avec un résultat identique **à l'octet**.
+- **Reprise égale au rejeu complet** : après une coupure à n'importe quel point, même pendant un rejeu complet, la reprise produit la même sortie que le rejeu complet. Pour cela, chaque fichier de sortie est écrit entier puis renommé, dans l'ordre événements, bilan, état, et l'état ne garde que des chemins d'archives : les snapshots se recalculent. Une reprise est refusée quand une version de contrat a changé.
 - Aucun événement perdu, aucun doublon ; vérifié par un test automatique.
 - Toute anomalie de source est visible (file des messages en échec, tableau de bord), jamais absorbée.
 
@@ -339,6 +350,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 |---|---|---|---|
 | **Format d'un fichier source modifié sans préavis** | Élevé | Moyenne | Contrats de schéma ; collecte qui s'arrête proprement et alerte ; incident documenté |
 | **Fichier servi vide ou tronqué par la source**, sans erreur HTTP (observé le 26/10/2026) | Élevé | Faible | Archivé tel quel ; garde-fou de volume avant toute comparaison (§6.3) ; jamais d'événement `supprimee` en masse |
+| **Mémoire de pointe au-dessus du plafond du VPS** : 474 Mo au rejeu complet, contre 256 Mo pour l'unité systemd (mission 02) | Élevé | Certaine tant que la chaîne n'écrit pas en flux | La chaîne ne tourne que sur le Mac ; écriture des événements en flux avant toute exécution sur le VPS (condition de la mission 03) ; plafond de l'unité gardé, au service de la pré-production voisine |
 | **Rythme réel de mise à jour inconnu ou faible** (peu d'événements à montrer) | Élevé | Moyenne | Archivage dès le Lot 0 ; mode rejeu accéléré ; mesure honnête publiée |
 | **Sens d'une disparition de ligne ambigu** (remise à disposition ? arrêt ?) | Moyen | Élevée | ADR 0003 « proposé » (fin de publication, pas remise), revu au plus tard le 07/12/2026 sur les disparitions observées ; libellés prudents dans l'assistant |
 | Granularités incompatibles (dépense annuelle, disponibilité quotidienne) | Moyen | Certaine | Indicateur « dépense exposée » défini et documenté avec ses limites |

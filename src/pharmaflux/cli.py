@@ -245,7 +245,8 @@ def questions_verifier(
         Path,
         typer.Option(
             "--questions",
-            help="Le jeu de questions TOML.",
+            help="Le jeu de questions TOML. Le chemin par défaut est relatif au dossier courant : "
+            "le jeu de référence est à la racine du dépôt.",
             show_default=True,
         ),
     ] = QUESTIONS_PAR_DEFAUT,

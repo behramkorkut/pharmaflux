@@ -58,6 +58,12 @@ une nouvelle version du contrat**, avant d'être atteintes.
   compte élevé d'anomalies non bloquantes à chaque profil (17 016 espaces
   dans `CIS_bdpm.txt`). C'est voulu : rien n'est caché, et le Lot 1 pourra
   proposer une détection d'écart au compte attendu.
+- Une ligne faite seulement de blancs (espaces, tabulations, un `\r`
+  isolé) est une **ligne vide**, pas une ligne dont toutes les valeurs
+  manquent : elle est signalée comme telle (`ligne_vide`, ou
+  `nombre_colonnes` quand le contrat interdit les lignes vides) et n'entre
+  pas dans les lignes lues. Voulu : une telle ligne ne porte aucune clé et
+  ne dit rien d'une colonne (précisé après la relecture 1).
 - À surveiller : les fichiers d'autres sources (CSV Open Medic au Lot 4,
   JSON de data.gouv) demanderont peut-être d'autres types (décimal à point,
   entier avec séparateur) ; ce sera une extension du jeu, par ADR.

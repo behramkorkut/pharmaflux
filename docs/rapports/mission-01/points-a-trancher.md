@@ -317,7 +317,10 @@ Compléments :
    mesure mémoire de la mission 00 : les deux chemins (outil `Write`,
    redirection Bash) ne sont pas traités pareil. À trancher par l'IeC :
    permettre le dossier temporaire de session au codeur, ou interdire les
-   deux.
+   deux. *(Ajout après la relecture 1 : ce script jetable n'existe plus ;
+   depuis le palier 3, les chiffres de ce §0 sont refaits par
+   `uv run pharmaflux profil`, comme l'addendum H.9 le demandait, et
+   `docs/donnees/` en est la sortie.)*
 
 ## Questions pour l'IeC
 

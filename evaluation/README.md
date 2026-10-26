@@ -65,6 +65,10 @@ date_debut = "25/06/2026"
 uv run pharmaflux questions verifier [--racine ~/pharmaflux-data] [--questions evaluation/questions-reference-v0.toml]
 ```
 
+Le chemin par défaut de `--questions` est relatif au dossier courant :
+lancer la commande depuis la racine du dépôt, ou donner le chemin complet
+du jeu (vérification de clôture sur une copie rapatriée, par exemple).
+
 Pour chaque attendu : l'archive citée est relue sous la racine (jamais
 écrite), son sha256 comparé, le fichier vérifié contre son contrat (une
 anomalie bloquante arrête là), puis les lignes qui portent la clé sont

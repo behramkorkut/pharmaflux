@@ -236,7 +236,9 @@ def forme_decimale(type_: TypeValeur, valeur: str) -> str | None:
     chiffres ASCII (« ²³ » passe ``isdigit``, comme pour ``_entier``). Quand le
     type déclare ``milliers`` (contrat v1, ADR 0005), la partie entière peut
     aussi s'écrire par groupes de trois chiffres (« 1,003,48 » → « 1003.48 »).
-    La forme canonique n'a ni séparateur de milliers ni zéro de tête.
+    La forme canonique n'a ni séparateur de milliers ni zéro de tête ; le signe
+    est gardé dès qu'un chiffre n'est pas nul (« -0,50 » → « -0.50 »), et
+    « -0,00 » devient « 0.00 ».
     """
     partie_entiere, virgule, decimales = valeur.rpartition(",")
     if not virgule or len(decimales) != type_.decimales or not _entier(decimales):
@@ -249,18 +251,21 @@ def forme_decimale(type_: TypeValeur, valeur: str) -> str | None:
         chiffres = partie_entiere.replace(type_.milliers, "")
     else:
         return None
-    return f"{_entier_canonique(chiffres)}.{decimales}"
+    return f"{_partie_entiere_canonique(chiffres, decimales)}.{decimales}"
 
 
 @cache
 def _motif_milliers(milliers: str) -> re.Pattern[str]:
-    """Une partie entière par groupes de trois chiffres, au moins un séparateur."""
-    return re.compile(rf"-?\d{{1,3}}(?:{re.escape(milliers)}\d{{3}})+")
+    """Une partie entière par groupes de trois chiffres ASCII, au moins un séparateur."""
+    return re.compile(rf"-?[0-9]{{1,3}}(?:{re.escape(milliers)}[0-9]{{3}})+")
 
 
-def _entier_canonique(chiffres: str) -> str:
-    """« 007 » → « 7 », « -0 » → « 0 » : la forme de ``int``, sans zéro de tête ni signe inutile."""
-    return str(int(chiffres))
+def _partie_entiere_canonique(chiffres: str, decimales: str) -> str:
+    """« 007 » → « 7 » ; le « - » reste si le nombre n'est pas nul (« -0,50 » garde son signe)."""
+    negatif = chiffres.startswith("-")
+    entiers = chiffres.removeprefix("-").lstrip("0") or "0"
+    nul = entiers == "0" and set(decimales) <= {"0"}
+    return f"-{entiers}" if negatif and not nul else entiers
 
 
 def _verifier_date(type_: TypeValeur, valeur: str) -> Regle | None:

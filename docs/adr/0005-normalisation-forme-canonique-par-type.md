@@ -41,7 +41,7 @@ snapshot (`evenements/snapshot.py`) et par les bornes du profil.
 |---|---|---|
 | `texte` | espaces de tête et de fin retirés, intérieur intact | ` BIOGARAN` → `BIOGARAN` |
 | `entier` | sans zéro de tête ni signe inutile | `007` → `7` |
-| `decimal` | point décimal, exactement `decimales` chiffres après, sans séparateur de milliers ni zéro de tête | `12,50` → `12.50` ; `1,003,48` → `1003.48` si `milliers` |
+| `decimal` | point décimal, exactement `decimales` chiffres après, sans séparateur de milliers ni zéro de tête ; le signe reste dès qu'un chiffre n'est pas nul, `-0,00` devient `0.00` | `12,50` → `12.50` ; `-0,50` → `-0.50` ; `1,003,48` → `1003.48` si `milliers` |
 | `date` | ISO 8601 `AAAA-MM-JJ`, quel que soit le format du contrat | `19/01/2026`, `20260119` → `2026-01-19` |
 | `booleen` | `true` / `false` | `Oui` → `true` |
 | `enumeration` | la graphie de la table `canonique` du contrat, sinon telle quelle | `65 %` → `65%` |
@@ -66,8 +66,8 @@ contrat.** Le chargeur admet `v0` et `v1` ; un paramètre de la v1 dans un
 contrat `v0` est refusé, la v0 reste figée sur l'archive du 24/10/2026.
 
 - `milliers = "<caractère>"` sur un `decimal` : la partie entière peut
-  s'écrire par groupes de trois chiffres (`\d{1,3}(?:<m>\d{3})+`), la
-  virgule restant le séparateur décimal ; forme canonique sans séparateur.
+  s'écrire par groupes de trois chiffres ASCII (`[0-9]{1,3}(?:<m>[0-9]{3})+`),
+  la virgule restant le séparateur décimal ; forme canonique sans séparateur.
   Un seul caractère, ni chiffre, ni `-`, ni `.`. Déclaré sur les trois prix
   de `presentations.toml`. Ce n'est pas deviner : la lecture est vérifiée
   par une contrainte interne mesurée (prix public = prix + honoraires,
@@ -87,7 +87,13 @@ même objet chaîne. Un fichier à clé déclarée unique est un dictionnaire cl
 normalisée → ligne ; un fichier sans clé unique (SMR, ASMR, Dispo_Spec) est
 un multiensemble empreinte de la ligne normalisée (sha256 des valeurs
 jointes par `\x1f`) → (ligne, occurrences). Une anomalie **bloquante** rend
-un snapshot **écarté** avec son motif, jamais une exception. Le snapshot
+un snapshot **écarté** avec son motif, jamais une exception. Une clé
+**normalisée** qui se répète alors que les clés brutes sont distinctes
+(`" X"` et `"X"`, `01` et `1` : aucune bloquante brute) écarte aussi le
+snapshot, avec un motif qui la nomme (« clé normalisée non unique : 1
+clé(s), 2 lignes, première ligne 812 ») : un fichier à clé dont la clé est
+ambiguë ne se compare pas, et aucune ligne ne doit se perdre en silence
+(contrôle du palier 1). Le snapshot
 porte l'archive (chemin relatif, sha256, horodatage), la version du contrat
 et son **bilan** : lignes, lignes bien formées, entités, occurrences en
 doublon, anomalies par règle, graphies par colonne à `canonique`.

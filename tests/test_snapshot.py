@@ -117,6 +117,7 @@ def test_une_anomalie_bloquante_ecarte_le_snapshot_sans_exception() -> None:
     assert s.ecarte
     assert s.motif_ecart == (
         "4 anomalie(s) bloquante(s) : cle_non_unique (2), fin_de_ligne (1), nombre_colonnes (1)"
+        " ; clé normalisée non unique : 1 clé(s), 3 lignes, première ligne 1"
     )
     assert s.bilan.lignes == 6 and s.bilan.lignes_bien_formees == 5
     assert s.bilan.entites == 3 and s.bilan.occurrences_en_doublon == 2, (
@@ -128,6 +129,44 @@ def test_une_anomalie_bloquante_ecarte_le_snapshot_sans_exception() -> None:
     assert ("code_cis", Regle.CODE_ILLISIBLE) in ligne_6.anomalies
     assert ("denomination", Regle.VALEUR_MANQUANTE) in ligne_6.anomalies
     assert (None, Regle.RETOUR_FINAL) in ligne_6.anomalies
+
+
+def _lignes_cpd(*conditions: bytes) -> bytes:
+    """Des lignes de ``CIS_CPD_bdpm.txt`` (cp1252, CRLF) au même CIS, avec ces conditions."""
+    premiere = contenu_fixture_par_nom("CIS_CPD_bdpm.txt").split(b"\r\n")[0]
+    code_cis = premiere.split(b"\t")[0]
+    return b"".join(code_cis + b"\t" + condition + b"\r\n" for condition in conditions)
+
+
+def test_une_cle_normalisee_repetee_ecarte_le_snapshot() -> None:
+    """Contrôle du palier 1, point 3 : `" X"` et `"X"` dans une clé texte, sans bloquante brute."""
+    contrat = charger_identifiant("bdpm.conditions_prescription")  # clé : code_cis + condition
+    octets = _lignes_cpd(b"liste I", b"liste II", b" liste I", b"liste I ", b"liste II ")
+    s = snapshot.construire(contrat, octets, "cpd")
+    assert s.ecarte
+    assert s.motif_ecart == "clé normalisée non unique : 2 clé(s), 5 lignes, première ligne 1"
+    assert dict(s.bilan.anomalies) == {Regle.ESPACE_PARASITE: 3}, "rien de bloquant côté brut"
+    assert s.bilan.lignes_bien_formees == 5 and s.bilan.entites == 2
+    assert s.bilan.occurrences_en_doublon == 3
+    assert [ligne.numero for ligne in s.lignes] == [1, 2]
+    retenu = snapshot.construire(contrat, _lignes_cpd(b"liste I", b"liste II"), "cpd")
+    assert not retenu.ecarte and retenu.bilan.entites == 2
+
+
+def test_une_cle_normalisee_repetee_sur_un_entier() -> None:
+    """``01`` et ``1`` dans ``numero_liaison`` (clé de ``bdpm.compositions``) : même clé."""
+    contrat = charger_identifiant("bdpm.compositions")
+    i = contrat.index("numero_liaison")
+    premiere = contenu_fixture_par_nom("CIS_COMPO_bdpm.txt").split(b"\r\n")[0].split(b"\t")
+    assert premiere[i] == b"1"
+    seconde = list(premiere)
+    seconde[i] = b"01"
+    octets = b"\t".join(premiere) + b"\r\n" + b"\t".join(seconde) + b"\r\n"
+    s = snapshot.construire(contrat, octets, "compo")
+    assert s.ecarte and s.motif_ecart == (
+        "clé normalisée non unique : 1 clé(s), 2 lignes, première ligne 1"
+    )
+    assert Regle.CLE_NON_UNIQUE not in dict(s.bilan.anomalies)
 
 
 def test_un_fichier_vide_n_est_pas_ecarte_par_le_snapshot() -> None:

@@ -6,8 +6,11 @@ avec la ``Lecture`` et portent leurs valeurs normalisées
 (``contrats.normalisation``) et leurs anomalies. Un fichier à clé unique est
 un dictionnaire clé normalisée → ligne ; un fichier sans clé unique est un
 multiensemble (empreinte de la ligne normalisée → ligne, occurrences). Une
-anomalie bloquante rend un snapshot **écarté** avec son motif, jamais une
-exception. Le snapshot porte son archive, la version du contrat et son bilan.
+anomalie bloquante, ou une clé **normalisée** qui se répète alors que les
+clés brutes sont distinctes (`" X"` et `"X"`), rend un snapshot **écarté**
+avec son motif, jamais une exception : un fichier à clé dont la clé est
+ambiguë ne se compare pas. Le snapshot porte son archive, la version du
+contrat et son bilan.
 """
 
 from __future__ import annotations
@@ -140,6 +143,7 @@ def depuis_lecture(lecture: Lecture, sha256: str, horodatage: datetime | None = 
     par_cle: dict[tuple[str, ...], Ligne] = {}
     par_ligne: dict[str, tuple[Ligne, int]] = {}
     doublons = 0
+    collisions: dict[tuple[str, ...], int] = {}  # clé normalisée répétée → lignes au-delà de la 1re
     for numero, brutes in lecture.lignes:
         normalisees = tuple(
             normaliser_valeur(type_, valeur).valeur
@@ -151,7 +155,10 @@ def depuis_lecture(lecture: Lecture, sha256: str, horodatage: datetime | None = 
         if identite is Identite.CLE:
             cle = tuple(normalisees[i] for i in index_cle)
             if cle in par_cle:
-                doublons += 1  # une clé déclarée unique qui se répète : bloquant, snapshot écarté
+                # Clés brutes répétées (bloquant, ``cle_non_unique``) ou clés brutes distinctes
+                # de même forme normalisée : dans les deux cas le snapshot est écarté.
+                doublons += 1
+                collisions[cle] = collisions.get(cle, 0) + 1
             else:
                 par_cle[cle] = ligne
         else:
@@ -169,7 +176,7 @@ def depuis_lecture(lecture: Lecture, sha256: str, horodatage: datetime | None = 
         occurrences_en_doublon=doublons,
         anomalies=_anomalies_par_regle(lecture),
         graphies=_graphies(contrat, lecture),
-        motif_ecart=_motif_ecart(lecture),
+        motif_ecart=_motif_ecart(lecture, collisions, par_cle),
     )
     return Snapshot(
         contrat=contrat,
@@ -188,13 +195,31 @@ def _anomalies_par_regle(lecture: Lecture) -> tuple[tuple[Regle, int], ...]:
     return tuple((regle, comptes[regle]) for regle in Regle if comptes[regle])
 
 
-def _motif_ecart(lecture: Lecture) -> str | None:
-    """« 3 anomalie(s) bloquante(s) : fin_de_ligne (1), nombre_colonnes (2) », ou None."""
+def _motif_ecart(
+    lecture: Lecture,
+    collisions: dict[tuple[str, ...], int],
+    par_cle: dict[tuple[str, ...], Ligne],
+) -> str | None:
+    """Pourquoi le snapshot est écarté, ou None.
+
+    « 3 anomalie(s) bloquante(s) : fin_de_ligne (1), nombre_colonnes (2) », puis,
+    s'il y a lieu, « clé normalisée non unique : 1 clé(s), 2 lignes, première
+    ligne 812 » (les lignes en trop, et la première ligne de la première clé
+    répétée). Une clé normalisée répétée sans bloquante brute écarte à elle seule.
+    """
+    motifs = []
     bloquantes = Counter(anomalie.regle for anomalie in lecture.bloquantes)
-    if not bloquantes:
-        return None
-    detail = ", ".join(f"{regle} ({n})" for regle, n in sorted(bloquantes.items()))
-    return f"{sum(bloquantes.values())} anomalie(s) bloquante(s) : {detail}"
+    if bloquantes:
+        detail = ", ".join(f"{regle} ({n})" for regle, n in sorted(bloquantes.items()))
+        motifs.append(f"{sum(bloquantes.values())} anomalie(s) bloquante(s) : {detail}")
+    if collisions:
+        premiere = min(par_cle[cle].numero for cle in collisions)
+        lignes = sum(collisions.values()) + len(collisions)
+        motifs.append(
+            f"clé normalisée non unique : {len(collisions)} clé(s), {lignes} lignes,"
+            f" première ligne {premiere}"
+        )
+    return " ; ".join(motifs) if motifs else None
 
 
 def _graphies(

@@ -95,7 +95,11 @@ et une session ne demande jamais à l'autre de faire ce qui lui a été refusé.
 1. **Crochet Claude Code** `.claude/hooks/garde_fou.py` (PreToolUse) :
    refuse selon le rôle les écritures hors zone, les chemins réservés à
    l'IeC, git en dehors de ce que le rôle permet, `gh`, toute commande
-   système. Test : `python3 infra/agents/test_garde_fou.py`.
+   système. Depuis la mission 03, pour tous les rôles : `docker` hors
+   compose ne fait que lire, `docker compose` ne vise que le projet
+   `pharmaflux` et ne télécharge aucune image, `colima` ne fait que lire
+   (le colima porte aussi les conteneurs d'Alamel). Test :
+   `python3 infra/agents/test_garde_fou.py`.
 2. **Crochets git** `infra/git-hooks/` (activés par `preparer-mission.sh`) :
    sous Claude Code, pas de push du tout, pas de commit sur `main` ni sur
    une HEAD détachée, pas de chemin réservé dans un commit, trailers

@@ -97,6 +97,45 @@ TESTS_GARDE_FOUS = (
 )
 # Commandes système interdites à tous les agents (beko installe).
 SYSTEME = {"launchctl", "crontab", "brew", "sudo", "su", "chmod", "chown"}
+# docker, pour tous les rôles (mission 03) : le colima de beko fait aussi
+# tourner les conteneurs d'Alamel. Hors compose, docker ne fait que lire ;
+# compose ne vise que le projet pharmaflux et ne télécharge aucune image
+# (le premier pull est à beko).
+PROJET_COMPOSE = "pharmaflux"
+DOCKER_LECTURE = {"ps", "version", "info", "images"}
+COMPOSE_SANS_PROJET = {"ls", "version"}
+COMPOSE_PERMIS = {
+    "up",
+    "down",
+    "ps",
+    "logs",
+    "config",
+    "start",
+    "stop",
+    "restart",
+    "exec",
+    "port",
+    "top",
+    "images",
+    "rm",
+    "wait",
+    "create",
+    "run",
+}
+COMPOSE_PULL_INTERDIT = {"up", "create", "run"}  # téléchargent une image absente
+COMPOSE_OPTIONS_A_VALEUR = {
+    "-p",
+    "--project-name",
+    "-f",
+    "--file",
+    "--project-directory",
+    "--env-file",
+    "--profile",
+    "--ansi",
+    "--progress",
+    "--parallel",
+}
+COLIMA_LECTURE = {"list", "status", "version"}
 # Préfixes neutres devant une commande, et mots-clés du shell qui introduisent
 # la commande suivante (« do cat … » est jugé comme « cat … »).
 PREFIXES = {"command", "builtin", "exec", "nohup", "time", "noglob"}
@@ -109,6 +148,8 @@ GIT_ECRIT_BRUT = re.compile(
     r"stash|clean|restore|filter-branch|filter-repo|update-ref|symbolic-ref|"
     r"replace|notes|tag|cherry-pick|revert|am|apply|gc|prune|remote)\b"
 )
+# Filet : docker ou colima appelés ailleurs qu'en tête de segment.
+CONTENEURS_BRUT = re.compile(r"(?<![\w./-])(docker(-compose)?|colima)(?![\w.-])")
 
 
 class Refus(Exception):  # noqa: N818 (nom français voulu)
@@ -339,6 +380,73 @@ def verifier_git(role: str, mots: list[str]) -> None:
     )
 
 
+def verifier_compose(args: list[str]) -> None:
+    """args : ce qui suit « docker compose » (ou « docker-compose »)."""
+    projet: str | None = None
+    sous: str | None = None
+    reste: list[str] = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if sous is not None:
+            reste.append(a)
+        elif a in COMPOSE_OPTIONS_A_VALEUR:
+            valeur = args[i + 1] if i + 1 < len(args) else ""
+            if a in ("-p", "--project-name"):
+                projet = valeur
+            i += 1
+        elif a.startswith("--project-name="):
+            projet = a.split("=", 1)[1]
+        elif a.startswith("-p") and len(a) > 2:
+            projet = a[2:]
+        elif not a.startswith("-"):
+            sous = a
+        i += 1
+    if sous is None or sous in COMPOSE_SANS_PROJET:
+        return
+    if sous not in COMPOSE_PERMIS:
+        raise Refus(
+            f"docker compose {sous} n'est pas permis aux agents"
+            + (" : télécharger une image est à beko." if sous == "pull" else ".")
+        )
+    if projet != PROJET_COMPOSE:
+        raise Refus(
+            f"docker compose doit nommer le projet : -p {PROJET_COMPOSE} "
+            "(le colima fait aussi tourner les conteneurs d'Alamel)."
+        )
+    if sous in COMPOSE_PULL_INTERDIT and not any(
+        a == "--pull=never" or (a == "--pull" and reste[j + 1 : j + 2] == ["never"])
+        for j, a in enumerate(reste)
+    ):
+        raise Refus(
+            f"docker compose {sous} sans --pull never : une image absente serait "
+            "téléchargée, et le premier pull est à beko."
+        )
+
+
+def verifier_conteneurs(tete: str, mots: list[str]) -> None:
+    """docker, docker-compose et colima, pour tous les rôles."""
+    args = mots[1:]
+    if tete == "colima":
+        if args[:1] and args[0] not in COLIMA_LECTURE:
+            raise Refus(
+                f"colima {args[0]} interdit : la machine virtuelle porte aussi les "
+                "conteneurs d'Alamel ; beko s'en charge."
+            )
+        return
+    if tete == "docker-compose":
+        verifier_compose(args)
+        return
+    if args[:1] == ["compose"]:
+        verifier_compose(args[1:])
+        return
+    if args and args[0] not in DOCKER_LECTURE:
+        raise Refus(
+            f"docker {args[0]} interdit : hors compose, docker ne fait que lire "
+            f"(ps, images…). Passe par docker compose -p {PROJET_COMPOSE}."
+        )
+
+
 def ecrit_par_option(mots: list[str]) -> bool:
     """Une commande de LECTURE qui écrit quand même : sed -i, sort -o, uniq ENTREE SORTIE."""
     tete, args = mots[0], mots[1:]
@@ -369,6 +477,16 @@ def verifier_bash(role: str, commande: str) -> None:
             cache = GIT_ECRIT_BRUT.search(" ".join(mots[1:]))
             if cache:
                 raise Refus(f"opération git « {cache.group(1)} » interdite aux agents.")
+        if tete not in ("docker", "docker-compose", "colima") and tete not in LECTURE:
+            cache = CONTENEURS_BRUT.search(" ".join(mots[1:]))
+            if cache:
+                raise Refus(
+                    f"« {cache.group(1)} » appelé par « {tete} » : lance-le en tête de "
+                    "commande, pour que ses règles s'appliquent."
+                )
+        if tete in ("docker", "docker-compose", "colima"):
+            verifier_conteneurs(tete, mots)
+            continue
         if tete in SYSTEME:
             raise Refus(
                 f"« {tete} » touche au système : beko s'en charge (CLAUDE.md, « Système »)."

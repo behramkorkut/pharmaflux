@@ -283,6 +283,50 @@ class GardeFou(unittest.TestCase):
             with self.subTest(commande=commande):
                 self.assertFalse(self.bash(self.codeur, commande))
 
+    def test_docker_limite_au_projet_pharmaflux(self) -> None:
+        """Mission 03 : le colima porte aussi les conteneurs d'Alamel, pour tous les rôles."""
+        for dossier in (self.codeur, self.relecteur, self.principal):
+            for commande in (
+                "docker ps",
+                "docker version",
+                "/opt/homebrew/bin/docker images",
+                "docker compose ls",
+                "docker compose -p pharmaflux up -d --pull never",
+                "docker compose -f docker-compose.yml -p pharmaflux up -d --pull=never",
+                "docker compose --project-name=pharmaflux down -v",
+                "docker compose -p pharmaflux ps",
+                "docker compose -p pharmaflux logs redpanda 2>&1 | tail -20",
+                "docker-compose -p pharmaflux down",
+                "colima list",
+                "ls docker-compose.yml",
+                "grep -n image docker-compose.yml",
+            ):
+                with self.subTest(dossier=dossier.name, commande=commande):
+                    self.assertTrue(self.bash(dossier, commande))
+            for commande in (
+                "docker compose up -d --pull never",
+                "docker compose -p alamel-dev down",
+                "docker compose -p pharmaflux up -d",
+                "docker compose -p pharmaflux run --rm redpanda rpk version",
+                "docker compose -p pharmaflux pull",
+                "docker compose -p pharmaflux build",
+                "docker stop alamel-dev-postgres",
+                "docker rm -f alamel-dev-minio",
+                "docker system prune -af",
+                "docker volume prune",
+                "docker pull redpandadata/redpanda",
+                "docker run --rm alpine true",
+                "docker exec alamel-dev-postgres psql",
+                "docker logs alamel-dev-postgres",
+                "colima stop",
+                "colima delete",
+                "bash -c 'docker stop alamel-dev-postgres'",
+                "echo x | xargs docker rm",
+                "env docker compose -p alamel-dev down",
+            ):
+                with self.subTest(dossier=dossier.name, commande=commande):
+                    self.assertFalse(self.bash(dossier, commande))
+
     def test_terminal_et_ecran_interdits_aux_agents(self) -> None:
         for outil in (
             "mcp__terminal__run_in_terminal",

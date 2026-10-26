@@ -1,7 +1,7 @@
 # Mission 02 — normalisation, snapshots et événements de changement du bronze
 
-Branche `mission-02-normalisation-et-evenements`, 21 commits depuis `main`,
-du §0 (`a28969f`) à cette description. Ordre de mission :
+Branche `mission-02-normalisation-et-evenements`, 21 commits depuis `main`
+(§0 en `a28969f`, cette description et sa retouche en dernier). Ordre de mission :
 `docs/missions/mission-02-normalisation-et-evenements.md` (addendum 1).
 Relecture 1 : NON CONFORME, deux bloquants corrigés en `bf005cb`
 (`docs/relectures/mission-02/relecture-1.md`,

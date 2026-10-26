@@ -6,12 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from pharmaflux.collecte.archive import (
-    ArchiveExistante,
-    chemin_archive,
-    ecrire_archive,
-    lire_archive,
-)
+from pharmaflux.bronze import lire_archive
+from pharmaflux.collecte.archive import ArchiveExistante, chemin_archive, ecrire_archive
 from pharmaflux.collecte.empreintes import sha256_hex
 from tests.conftest import entree
 

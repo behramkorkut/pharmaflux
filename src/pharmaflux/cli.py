@@ -10,13 +10,15 @@ import logging
 import os
 import sys
 from collections.abc import Callable
+from datetime import UTC, datetime
 from importlib.metadata import version as version_du_paquet
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, TextIO
 
 import httpx
 import typer
 
+from pharmaflux import bronze
 from pharmaflux.collecte import manifeste
 from pharmaflux.collecte.catalogue import CATALOGUE, Entree, IdentifiantInconnu, par_identifiant
 from pharmaflux.collecte.etat import calculer_etat, formater_etat
@@ -43,6 +45,22 @@ OptionRacine = Annotated[
         help=f"Racine de l'archive. Défaut : {VARIABLE_RACINE}, sinon ~/pharmaflux-data.",
     ),
 ]
+
+
+class FormateurUTC(logging.Formatter):
+    """Horodatages du journal en UTC (``2026-10-24T14:17:03Z``), comme le manifeste."""
+
+    def formatTime(  # noqa: N802 (nom imposé par logging)
+        self, record: logging.LogRecord, datefmt: str | None = None
+    ) -> str:
+        return datetime.fromtimestamp(record.created, UTC).strftime(datefmt or "%Y-%m-%dT%H:%M:%SZ")
+
+
+def configurer_journal(flux: TextIO = sys.stdout) -> None:
+    """Le journal du collecteur sur ``flux`` (journald via stdout sous systemd), en UTC."""
+    gestionnaire = logging.StreamHandler(flux)
+    gestionnaire.setFormatter(FormateurUTC("%(asctime)s %(levelname)s %(message)s"))
+    logging.basicConfig(level=logging.INFO, handlers=[gestionnaire])
 
 
 def _afficher_version(demandee: bool) -> None:
@@ -78,9 +96,7 @@ def collecte(
     racine: OptionRacine = None,
 ) -> None:
     """Un passage de collecte : télécharge, archive, consigne dans le manifeste."""
-    logging.basicConfig(
-        level=logging.INFO, stream=sys.stdout, format="%(asctime)s %(levelname)s %(message)s"
-    )
+    configurer_journal()
     entrees = _entrees(source)
     with Telechargeur(transport=fabriquer_transport()) as telechargeur:
         bilan = executer_passage(_racine(racine), entrees, telechargeur)
@@ -92,18 +108,35 @@ def collecte(
 def etat(racine: OptionRacine = None) -> None:
     """État de l'archive : dernière archive, dernier changement, erreurs, passages des 24 h."""
     chemin = _racine(racine)
-    enregistrements = manifeste.lire(chemin)
-    if not enregistrements:
+    # Le manifeste est parcouru en flux : la mémoire ne dépend pas de son âge.
+    etat_archive = calculer_etat(manifeste.parcourir(chemin), maintenant_utc())
+    if not etat_archive.nombre_enregistrements:
         typer.echo(f"aucun passage dans {chemin} ({manifeste.chemin_manifeste(chemin)} absent).")
         return
-    lignes = calculer_etat(enregistrements, maintenant_utc())
-    dernier = enregistrements[-1]
     typer.echo(f"racine : {chemin}")
     typer.echo(
-        f"{len(enregistrements)} lignes de manifeste ; dernier passage : {dernier.passage_id}"
+        f"{etat_archive.nombre_enregistrements} lignes de manifeste ; "
+        f"dernier passage : {etat_archive.dernier_passage}"
     )
     typer.echo("")
-    typer.echo(formater_etat(lignes))
+    typer.echo(formater_etat(etat_archive.lignes))
+    typer.echo("")
+    typer.echo(_rapport_partiels(chemin))
+
+
+def _rapport_partiels(chemin: Path) -> str:
+    """Les fichiers temporaires laissés sous ``bronze/`` (passage tué net), ou rien."""
+    partiels = bronze.fichiers_partiels(chemin)
+    if not partiels:
+        return "aucun fichier partiel dans bronze/."
+    lignes = [
+        f"{len(partiels)} fichier(s) partiel(s) dans bronze/ "
+        "(passage en cours, ou écriture interrompue : à vérifier avant de supprimer) :"
+    ]
+    for partiel in partiels:
+        modifie = datetime.fromtimestamp(partiel.stat().st_mtime, UTC).strftime("%Y-%m-%d %H:%MZ")
+        lignes.append(f"  {partiel.relative_to(chemin).as_posix()}  (modifié le {modifie})")
+    return "\n".join(lignes)
 
 
 @application.command()

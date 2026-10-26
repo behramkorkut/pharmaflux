@@ -16,7 +16,9 @@ from pathlib import PurePosixPath
 
 SITE_BDPM = "https://base-donnees-publique.medicaments.gouv.fr"
 URL_PAGE_BDPM = f"{SITE_BDPM}/telechargement"
-FICHIER_DOCUMENTATION_FORMATS = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf"
+# Dernier nom connu de la documentation ; la page fait foi (voir Entree.lien_page).
+PREFIXE_DOCUMENTATION_FORMATS = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM"
+FICHIER_DOCUMENTATION_FORMATS = f"{PREFIXE_DOCUMENTATION_FORMATS}_v5.pdf"
 URL_METADONNEES_OPENMEDIC = (
     "https://www.data.gouv.fr/api/1/datasets/"
     "open-medic-base-complete-sur-les-depenses-de-medicaments-interregimes/"
@@ -54,6 +56,11 @@ class Entree:
     description: str
     cadence: Cadence = Cadence.CHAQUE_PASSAGE
     empreinte: ModeEmpreinte = ModeEmpreinte.OCTETS
+    # Préfixe du nom du fichier tel que la page de téléchargement le lie. Quand
+    # il est donné, l'URL et le nom suivent la page à chaque passage (un
+    # ``_v6.pdf`` remplace un ``_v5.pdf`` sans changer le code) ; ``url`` et
+    # ``fichier`` sont alors les derniers connus, repli si la page est illisible.
+    lien_page: str | None = None
 
     @property
     def extension(self) -> str:
@@ -123,6 +130,7 @@ CATALOGUE: tuple[Entree, ...] = (
         url=f"{SITE_BDPM}/download/file/{FICHIER_DOCUMENTATION_FORMATS}",
         description="Documentation du format des fichiers BDPM (PDF) : change avec le schéma",
         cadence=Cadence.QUOTIDIENNE,
+        lien_page=PREFIXE_DOCUMENTATION_FORMATS,
     ),
     Entree(
         identifiant="openmedic.metadonnees",
@@ -147,6 +155,11 @@ def par_identifiant(identifiants: list[str]) -> list[Entree]:
         )
     demandes = set(identifiants)
     return [entree for entree in CATALOGUE if entree.identifiant in demandes]
+
+
+def entrees_suivies_par_la_page() -> list[Entree]:
+    """Les entrées dont l'URL est prise dans la page (``lien_page``)."""
+    return [entree for entree in CATALOGUE if entree.lien_page is not None]
 
 
 def entrees_bdpm_par_url() -> dict[str, Entree]:

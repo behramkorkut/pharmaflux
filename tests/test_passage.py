@@ -7,9 +7,10 @@ from pathlib import Path
 import httpx
 import pytest
 
+from pharmaflux.bronze import lire_archive
 from pharmaflux.collecte import manifeste
-from pharmaflux.collecte.archive import chemin_archive, ecrire_archive, lire_archive
-from pharmaflux.collecte.catalogue import CATALOGUE, SITE_BDPM
+from pharmaflux.collecte.archive import chemin_archive, ecrire_archive
+from pharmaflux.collecte.catalogue import CATALOGUE, SITE_BDPM, ModeEmpreinte
 from pharmaflux.collecte.empreintes import sha256_hex
 from pharmaflux.collecte.manifeste import CHAMPS, Statut
 from tests.conftest import Horloge, Lanceur, ServeurSimule, contenu_fixture, entree
@@ -25,6 +26,9 @@ PAGE_SANS_MITM = contenu_fixture(PAGE).replace(
     b'href="/download/file/CIS_MITM.txt"', b'href="/download/file/CIS_MITM_v2.txt"'
 )
 PAGE_MAINTENANCE = b"<html><body>Maintenance</body></html>"
+DOC_V6 = DOCUMENTATION.fichier.replace("_v5.pdf", "_v6.pdf")
+URL_DOC_V6 = DOCUMENTATION.url.replace("_v5.pdf", "_v6.pdf")
+PAGE_DOC_V6 = contenu_fixture(PAGE).replace(b"_BDM_v5.pdf", b"_BDM_v6.pdf")
 
 
 def _archives(racine: Path, fichier: str) -> list[Path]:
@@ -380,3 +384,104 @@ def test_ressource_datagouv_qui_n_est_pas_un_objet_donne_analyse_impossible(
     (ligne,) = lancer([OPENMEDIC]).enregistrements
     assert ligne.statut == "erreur" and str(ligne.erreur).startswith("analyse_impossible:")
     assert ligne.chemin_archive is not None, "archivée quand même (C1)"
+
+
+def test_empreinte_qui_leve_une_exception_imprevue_archive_quand_meme(
+    lancer: Lanceur,
+    racine: Path,
+    horloge: Horloge,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Mission 01, décision 9 : l'archive passe avant un défaut du collecteur."""
+    from pharmaflux.collecte import passage
+
+    empreinte_originale = passage.empreinte_comparaison
+
+    def empreinte_qui_casse(mode: ModeEmpreinte, contenu: bytes) -> str:
+        if mode is ModeEmpreinte.LIGNES_TRIEES:
+            raise RuntimeError("boum")
+        return empreinte_originale(mode, contenu)
+
+    monkeypatch.setattr(passage, "empreinte_comparaison", empreinte_qui_casse)
+    with caplog.at_level(logging.ERROR, logger="pharmaflux.collecte"):
+        (ligne,) = lancer([INFOS]).enregistrements
+    assert ligne.statut == "erreur" and ligne.erreur == "empreinte_impossible: RuntimeError: boum"
+    assert ligne.chemin_archive and lire_archive(racine / ligne.chemin_archive) == contenu_fixture(
+        INFOS
+    )
+    assert ligne.empreinte_comparaison == ligne.sha256, "repli sur les octets"
+    assert "Traceback" in caplog.text
+    horloge.avancer(hours=1)
+    (suivante,) = lancer([INFOS]).enregistrements
+    assert suivante.statut == "erreur" and suivante.chemin_archive is None, "l'alerte reste"
+    assert len(_archives(racine, INFOS.fichier)) == 1, "même contenu : pas réarchivé"
+
+
+def test_recherche_des_liens_nouveaux_sous_le_filet(
+    lancer: Lanceur, racine: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Mission 01, décision 9 : une exception après la boucle ne perd pas le passage."""
+    from pharmaflux.collecte import passage
+
+    def liens_qui_cassent(_liens: object) -> list[object]:
+        raise RuntimeError("liens")
+
+    monkeypatch.setattr(passage, "_liens_nouveaux", liens_qui_cassent)
+    with caplog.at_level(logging.ERROR, logger="pharmaflux.collecte"):
+        bilan = lancer([PAGE, SPECIALITES])
+    assert [e.statut for e in bilan.enregistrements] == ["nouveau", "nouveau", "erreur"]
+    derniere = bilan.enregistrements[-1]
+    assert derniere.identifiant == PAGE.identifiant and derniere.fichier == PAGE.fichier
+    assert derniere.erreur == "inattendue: RuntimeError: liens" and derniere.chemin_archive is None
+    assert bilan.code_sortie == 1 and len(_lignes(racine)) == 3
+    assert "Traceback" in caplog.text
+
+
+def test_documentation_suit_le_lien_de_la_page(
+    lancer: Lanceur, serveur: ServeurSimule, racine: Path
+) -> None:
+    """Mission 01, décision 9 : un ``_v6.pdf`` est collecté sous son nom, et signalé."""
+    serveur.remplacer_contenu(PAGE.url, PAGE_DOC_V6)
+    serveur.scenariser(URL_DOC_V6, (200, contenu_fixture(DOCUMENTATION), {}))
+    bilan = lancer([PAGE, DOCUMENTATION])
+    page, doc = bilan.enregistrements  # pas de troisième ligne : la v6 n'est pas un lien nouveau
+    assert page.statut == "nouveau"
+    assert doc.identifiant == DOCUMENTATION.identifiant
+    assert doc.url == URL_DOC_V6 and doc.fichier == DOC_V6
+    assert doc.statut == "erreur"
+    assert doc.erreur == f"lien_change: {DOC_V6} (catalogue : {DOCUMENTATION.fichier})"
+    assert doc.chemin_archive and f"/{DOC_V6}/" in doc.chemin_archive
+    assert lire_archive(racine / doc.chemin_archive) == contenu_fixture(DOCUMENTATION)
+    assert serveur.requetes_vers(DOCUMENTATION.url) == 0, "l'ancienne URL n'est plus demandée"
+    assert bilan.code_sortie == 1
+
+
+def test_nouvelle_version_du_pdf_n_est_pas_un_lien_nouveau_a_chaque_passage(
+    lancer: Lanceur, serveur: ServeurSimule
+) -> None:
+    serveur.remplacer_contenu(PAGE.url, PAGE_DOC_V6)
+    bilan = lancer([PAGE, SPECIALITES])
+    assert [e.statut for e in bilan.enregistrements] == ["nouveau", "nouveau"]
+
+
+def test_documentation_absente_de_la_page(lancer: Lanceur, serveur: ServeurSimule) -> None:
+    """Sans lien au préfixe connu : repli sur l'URL du catalogue, ``lien_absent``."""
+    page = contenu_fixture(PAGE).replace(DOCUMENTATION.fichier.encode(), b"Autre_document.pdf")
+    serveur.remplacer_contenu(PAGE.url, page)
+    bilan = lancer([PAGE, DOCUMENTATION])
+    _, doc, nouveau = bilan.enregistrements
+    assert doc.url == DOCUMENTATION.url and doc.fichier == DOCUMENTATION.fichier
+    assert doc.statut == "erreur" and doc.erreur == "lien_absent" and doc.chemin_archive
+    assert nouveau.fichier == "Autre_document.pdf" and nouveau.identifiant is None
+    assert str(nouveau.erreur).startswith("lien_nouveau:"), "un PDF inconnu est un lien nouveau"
+
+
+def test_deux_versions_du_pdf_sur_la_page(lancer: Lanceur, serveur: ServeurSimule) -> None:
+    """La version connue est collectée, l'autre est un lien nouveau."""
+    lien_v6 = f'<a href="/download/file/{DOC_V6}">Documentation v6</a></body>'.encode()
+    serveur.remplacer_contenu(PAGE.url, contenu_fixture(PAGE).replace(b"</body>", lien_v6))
+    bilan = lancer([PAGE, DOCUMENTATION])
+    _, doc, nouveau = bilan.enregistrements
+    assert doc.statut == "nouveau" and doc.url == DOCUMENTATION.url
+    assert nouveau.fichier == DOC_V6 and str(nouveau.erreur).startswith("lien_nouveau:")

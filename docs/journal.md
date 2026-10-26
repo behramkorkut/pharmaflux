@@ -165,3 +165,22 @@ La CI lance désormais `uvx --from shellcheck-py==0.11.0.1 shellcheck` :
 même version qu'en local, le décalage ne peut plus se reproduire. Vérifié
 ici avec la même commande : rien à signaler, `sh -n` ok, `usage` rendu
 avec le code 2 pour zéro ou trois arguments.
+
+## 2026-10-26 — Mission 01 : §0 tranché, palier 1 (reliquats)
+
+Addendum 1 de l'IeC sur `main` : mes avis du §0 sont retenus (clé
+déclarée non unique avec raison, anomalies connues signalées à chaque
+profil et jamais masquées, neuf types avec `date` paramétré, ADR 0003
+« proposé » revu au plus tard le 07/12/2026, `robots.txt` d'abord pour la
+HAS) ; le garde-fou accepte désormais les brouillons du codeur dans le
+dossier temporaire de ses propres sessions. Palier 1 : `bronze.py` est la
+seule lecture de `bronze/` (ordre chronologique, octets bruts, tout nom
+commençant par un point ignoré) ; le collecteur archive même si l'empreinte
+de comparaison lève une exception imprévue, consigne les liens nouveaux
+sous le filet, et prend l'URL de la documentation PDF dans la page (un
+`_v6.pdf` est archivé sous son nom et signalé `lien_change`) ; journal en
+UTC ; `etat` lit le manifeste en flux, affiche l'identifiant et les
+fichiers `.partiel-*` orphelins ; unité systemd durcie (capacités vides,
+filtre d'appels système, `UMask=0027` pour garder la lecture du groupe),
+score visé sous 3, mesuré par beko sur le VPS depuis la branche. 80 tests.
+Rapport : `docs/rapports/mission-01/palier-1.md`.

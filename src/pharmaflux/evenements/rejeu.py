@@ -1,0 +1,353 @@
+"""Du bronze aux événements : rejeu complet, reprise, sortie par archive, état (ADR 0006).
+
+Pour chaque fichier source, les archives sont lues dans l'ordre du bronze,
+chacune passe par le garde-fou de volume (``volume.Suivi``), et chaque
+archive lue laisse sur le disque :
+
+- ``<sortie>/evenements/<entite>/<horodatage>__<sha12>.jsonl`` quand elle est
+  retenue ou confirmée (vide quand rien n'a changé : la preuve qu'elle a été
+  comparée) ;
+- ``<sortie>/bilans/<entite>/<horodatage>__<sha12>.json`` toujours, réécrit
+  quand une archive en attente est tranchée ;
+- ``<sortie>/etat.json`` après les fichiers de l'archive, dans l'ordre
+  événements, bilan, état, chaque fichier écrit entier puis renommé.
+
+Le flux d'une source est la concaténation de ses fichiers d'événements dans
+l'ordre des noms. La reprise lit l'état, recalcule le dernier snapshot retenu
+(et celui en attente) **depuis leur archive**, et ne traite que les archives
+postérieures à la dernière traitée ; un snapshot en attente n'est pas
+« traité », l'état garde la dernière archive avant lui. Rien ne vient de
+l'horloge : les dates viennent des noms d'archive et du manifeste.
+"""
+
+from __future__ import annotations
+
+import gzip
+import json
+import shutil
+from collections import Counter
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+
+from pharmaflux import bronze
+from pharmaflux.collecte import manifeste
+from pharmaflux.collecte.manifeste import Enregistrement, Statut
+from pharmaflux.contrats.modele import Contrat
+from pharmaflux.evenements import bilan as bilans
+from pharmaflux.evenements import schema, snapshot
+from pharmaflux.evenements.schema import Evenement
+from pharmaflux.evenements.snapshot import Snapshot
+from pharmaflux.evenements.volume import Decision, Resultat, Suivi
+
+VERSION_ETAT = 1
+NOM_ETAT = "etat.json"
+DOSSIER_EVENEMENTS = "evenements"
+DOSSIER_BILANS = "bilans"
+Journal = Callable[[str], None]
+
+
+class ReprendreImpossible(Exception):  # noqa: N818 (nom français voulu)
+    """La reprise ne peut pas donner la sortie d'un rejeu complet : il faut le relancer."""
+
+
+@dataclass(frozen=True, slots=True)
+class EtatEntite:
+    """Ce que ``etat.json`` garde par entité ; les snapshots eux-mêmes ne sont jamais sérialisés."""
+
+    version_contrat: str
+    derniere_archive_traitee: str | None  # chemin relatif ; reste avant un snapshot en attente
+    dernier_retenu: str | None  # chemin relatif de l'archive du dernier snapshot retenu
+    en_attente: str | None  # chemin relatif de l'archive en attente, ou None
+
+
+@dataclass(slots=True)
+class ResumeEntite:
+    """Ce que le terminal résume pour un fichier."""
+
+    identifiant: str
+    fichier: str
+    archives_lues: int = 0
+    retenues: int = 0  # retenues ou confirmées
+    ecartees: int = 0
+    en_attente: int = 0  # encore en attente à la fin
+    evenements: Counter[str] = field(default_factory=Counter)
+    erreur: str | None = None
+
+
+@dataclass(slots=True)
+class Rapport:
+    resumes: list[ResumeEntite]
+
+    @property
+    def code_sortie(self) -> int:
+        """1 si une archive est illisible ; un snapshot écarté est un constat, pas une panne."""
+        return 1 if any(resume.erreur for resume in self.resumes) else 0
+
+
+def executer(
+    racine: Path,
+    sortie: Path,
+    contrats: dict[str, Contrat],
+    selection: list[str],
+    *,
+    reprendre: bool = False,
+    journal: Journal | None = None,
+) -> Rapport:
+    """Rejeu complet des fichiers de ``selection``, ou reprise depuis ``etat.json``.
+
+    ``--reprendre`` refuse quand une version de contrat diffère de celle de
+    l'état (``ReprendreImpossible``) : les événements déjà écrits auraient une
+    autre forme que les suivants.
+    """
+    dire = journal or (lambda _: None)
+    etats = _lire_etat(sortie) if reprendre else {}
+    if reprendre:
+        for identifiant in selection:
+            etat = etats.get(identifiant)
+            if etat is not None and etat.version_contrat != contrats[identifiant].version:
+                raise ReprendreImpossible(
+                    f"le contrat {identifiant} est passé de {etat.version_contrat} à"
+                    f" {contrats[identifiant].version} : relance sans --reprendre"
+                )
+    manifeste_ = _Manifeste.lire(racine, set(selection))
+    resumes = []
+    for identifiant in selection:
+        contrat = contrats[identifiant]
+        etat = etats.get(identifiant) if reprendre else None
+        resumes.append(_traiter_entite(racine, sortie, contrat, etat, manifeste_, dire))
+    return Rapport(resumes)
+
+
+def _traiter_entite(
+    racine: Path,
+    sortie: Path,
+    contrat: Contrat,
+    etat: EtatEntite | None,
+    manifeste_: _Manifeste,
+    dire: Journal,
+) -> ResumeEntite:
+    identifiant = contrat.identifiant
+    resume = ResumeEntite(identifiant, contrat.fichier)
+    archives = bronze.lister(racine, _source(identifiant), contrat.fichier)
+    par_chemin = {archive.relatif(racine): archive for archive in archives}
+    suivi = Suivi()
+    debut = 0
+    if etat is None:
+        # Rejeu complet : tout est recalculé, la sortie de l'entité repart de zéro.
+        for dossier in (DOSSIER_EVENEMENTS, DOSSIER_BILANS):
+            shutil.rmtree(sortie / dossier / identifiant, ignore_errors=True)
+    else:
+        suivi.retenu = _recalculer(contrat, racine, par_chemin, etat.dernier_retenu)
+        suivi.en_attente = _recalculer(contrat, racine, par_chemin, etat.en_attente)
+        if suivi.en_attente is not None:
+            suivi.date_source_en_attente = manifeste_.date_source(etat.en_attente)
+        if etat.derniere_archive_traitee is not None:
+            if etat.derniere_archive_traitee not in par_chemin:
+                raise ReprendreImpossible(
+                    f"{identifiant} : la dernière archive traitée"
+                    f" ({etat.derniere_archive_traitee}) n'est plus dans le bronze :"
+                    " relance sans --reprendre"
+                )
+            debut = list(par_chemin).index(etat.derniere_archive_traitee) + 1
+        dire(f"{identifiant} : reprise après {etat.derniere_archive_traitee or 'rien'}")
+    derniere_traitee = etat.derniere_archive_traitee if etat else None
+    for archive in archives[debut:]:
+        relatif = archive.relatif(racine)
+        if suivi.en_attente is not None and relatif == suivi.en_attente.archive:
+            continue  # déjà lue, en attente : c'est l'archive suivante qui la tranche
+        try:
+            octets = archive.lire()
+        except (OSError, EOFError, gzip.BadGzipFile) as exc:
+            resume.erreur = f"{relatif} : archive illisible ({exc})"
+            dire(resume.erreur)
+            break
+        nouveau = snapshot.construire(contrat, octets, relatif, archive.horodatage)
+        resume.archives_lues += 1
+        inchange_revu = suivi.en_attente is not None and manifeste_.inchange_revu(
+            identifiant, suivi.en_attente.archive, suivi.en_attente.horodatage, archive.horodatage
+        )
+        resultats = suivi.traiter(
+            nouveau, date_source=manifeste_.date_source(relatif), inchange_revu=inchange_revu
+        )
+        for resultat in resultats:
+            _ecrire_resultat(sortie, resultat, resume, dire)
+        if resultats[-1].verdict.decision is not Decision.EN_ATTENTE:
+            derniere_traitee = relatif
+        _ecrire_etat(sortie, identifiant, contrat, suivi, derniere_traitee)
+    if suivi.en_attente is not None and resume.erreur is None:
+        inchange_revu = manifeste_.inchange_revu(
+            identifiant, suivi.en_attente.archive, suivi.en_attente.horodatage, None
+        )
+        for resultat in suivi.clore(inchange_revu=inchange_revu):
+            _ecrire_resultat(sortie, resultat, resume, dire)
+            if resultat.verdict.decision is not Decision.EN_ATTENTE:
+                derniere_traitee = resultat.snapshot.archive
+        _ecrire_etat(sortie, identifiant, contrat, suivi, derniere_traitee)
+    resume.en_attente = 1 if suivi.en_attente is not None else 0
+    return resume
+
+
+def _recalculer(
+    contrat: Contrat, racine: Path, par_chemin: dict[str, bronze.Archive], chemin: str | None
+) -> Snapshot | None:
+    """Le snapshot d'une archive de l'état, relu depuis le bronze : jamais sérialisé."""
+    if chemin is None:
+        return None
+    archive = par_chemin.get(chemin)
+    if archive is None:
+        raise ReprendreImpossible(
+            f"{contrat.identifiant} : l'archive {chemin} de l'état n'est plus dans le bronze :"
+            " relance sans --reprendre"
+        )
+    return snapshot.lire(contrat, archive, racine)
+
+
+def _ecrire_resultat(sortie: Path, resultat: Resultat, resume: ResumeEntite, dire: Journal) -> None:
+    """Les événements (si comparé) puis le bilan d'une archive, chacun écrit entier puis renommé."""
+    s = resultat.snapshot
+    nom = Path(s.archive).name.removesuffix(".gz")
+    nom = nom[: nom.index(".")] if "." in nom else nom  # <horodatage>__<sha12>
+    entite = s.contrat.identifiant
+    decision = resultat.verdict.decision
+    if resultat.verdict.compare:
+        lignes = "".join(schema.serialiser(evenement) for evenement in resultat.evenements)
+        _ecrire(sortie / DOSSIER_EVENEMENTS / entite / f"{nom}.jsonl", lignes)
+        resume.retenues += 1
+        resume.evenements.update(evenement.type.value for evenement in resultat.evenements)
+    elif decision is Decision.ECARTE:
+        resume.ecartees += 1
+    contenu = json.dumps(
+        bilans.en_dict(bilans.etablir(resultat)), sort_keys=True, ensure_ascii=False, indent=2
+    )
+    _ecrire(sortie / DOSSIER_BILANS / entite / f"{nom}.json", contenu + "\n")
+    comptes = Counter(e.type.value for e in resultat.evenements)
+    types = ", ".join(f"{t} {n}" for t, n in sorted(comptes.items()))
+    suffixe = f" ; {types}" if types else ""
+    dire(f"{entite} {nom} : {decision.value} ({resultat.verdict.motif}){suffixe}")
+
+
+def _ecrire(chemin: Path, contenu: str) -> None:
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    temporaire = chemin.parent / f".{chemin.name}.partiel"
+    temporaire.write_text(contenu, encoding="utf-8")
+    temporaire.replace(chemin)
+
+
+def _ecrire_etat(
+    sortie: Path, identifiant: str, contrat: Contrat, suivi: Suivi, derniere_traitee: str | None
+) -> None:
+    """Réécrit ``etat.json`` entier, l'entité mise à jour, les autres conservées."""
+    etats = _lire_etat(sortie)
+    etats[identifiant] = EtatEntite(
+        version_contrat=contrat.version,
+        derniere_archive_traitee=derniere_traitee,
+        dernier_retenu=None if suivi.retenu is None else suivi.retenu.archive,
+        en_attente=None if suivi.en_attente is None else suivi.en_attente.archive,
+    )
+    contenu = {
+        "version": VERSION_ETAT,
+        "entites": {
+            ident: {
+                "version_contrat": e.version_contrat,
+                "derniere_archive_traitee": e.derniere_archive_traitee,
+                "dernier_retenu": e.dernier_retenu,
+                "en_attente": e.en_attente,
+            }
+            for ident, e in sorted(etats.items())
+        },
+    }
+    _ecrire(sortie / NOM_ETAT, json.dumps(contenu, sort_keys=True, indent=2) + "\n")
+
+
+def _lire_etat(sortie: Path) -> dict[str, EtatEntite]:
+    chemin = sortie / NOM_ETAT
+    if not chemin.is_file():
+        return {}
+    try:
+        brut = json.loads(chemin.read_text(encoding="utf-8"))
+        if brut["version"] != VERSION_ETAT:
+            raise ReprendreImpossible(
+                f"{chemin} : version {brut['version']}, attendu {VERSION_ETAT}"
+            )
+        return {
+            ident: EtatEntite(
+                version_contrat=e["version_contrat"],
+                derniere_archive_traitee=e["derniere_archive_traitee"],
+                dernier_retenu=e["dernier_retenu"],
+                en_attente=e["en_attente"],
+            )
+            for ident, e in brut["entites"].items()
+        }
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise ReprendreImpossible(
+            f"{chemin} : état illisible ({exc!r}) : relance sans --reprendre"
+        ) from exc
+
+
+@dataclass(slots=True)
+class _Manifeste:
+    """Ce que le rejeu prend au manifeste : la date source par archive, les passages inchangés."""
+
+    nouveaux: dict[str, Enregistrement]  # chemin_archive → ligne ``nouveau``
+    inchanges: dict[str, list[tuple[str, datetime]]]  # identifiant → (empreinte, fin du passage)
+
+    @classmethod
+    def lire(cls, racine: Path, identifiants: set[str]) -> _Manifeste:
+        nouveaux: dict[str, Enregistrement] = {}
+        inchanges: dict[str, list[tuple[str, datetime]]] = {}
+        for ligne in manifeste.parcourir(racine):
+            if ligne.identifiant not in identifiants:
+                continue
+            if ligne.statut == Statut.NOUVEAU and ligne.chemin_archive:
+                nouveaux.setdefault(ligne.chemin_archive, ligne)
+            elif ligne.statut == Statut.INCHANGE and ligne.empreinte_comparaison:
+                inchanges.setdefault(ligne.identifiant, []).append(
+                    (ligne.empreinte_comparaison, _instant(ligne.fin))
+                )
+        return cls(nouveaux, inchanges)
+
+    def date_source(self, chemin_archive: str | None) -> str | None:
+        if chemin_archive is None:
+            return None
+        ligne = self.nouveaux.get(chemin_archive)
+        return ligne.date_source_affichee if ligne else None
+
+    def inchange_revu(
+        self, identifiant: str, chemin_archive: str, depuis: datetime | None, avant: datetime | None
+    ) -> bool:
+        """Un passage ``inchange`` a revu l'empreinte de l'archive entre ``depuis`` et ``avant``.
+
+        Entre son archivage et l'archive suivante (ou la fin du manifeste) : au
+        delà, un ``inchange`` compare à l'archive suivante, pas à celle-ci.
+        """
+        ligne = self.nouveaux.get(chemin_archive)
+        if ligne is None or not ligne.empreinte_comparaison or depuis is None:
+            return False
+        attendue = ligne.empreinte_comparaison
+        return any(
+            empreinte == attendue and depuis < fin and (avant is None or fin < avant)
+            for empreinte, fin in self.inchanges.get(identifiant, [])
+        )
+
+
+def _instant(iso: str) -> datetime:
+    instant = datetime.fromisoformat(iso)
+    return instant if instant.tzinfo else instant.replace(tzinfo=UTC)
+
+
+def _source(identifiant: str) -> str:
+    return identifiant.partition(".")[0]
+
+
+def lire_evenements(sortie: Path, identifiant: str) -> Iterator[Evenement]:
+    """Le flux d'une entité : ses fichiers d'événements dans l'ordre des noms, ligne à ligne."""
+    dossier = sortie / DOSSIER_EVENEMENTS / identifiant
+    if not dossier.is_dir():
+        return
+    for fichier in sorted(dossier.glob("*.jsonl")):
+        with fichier.open(encoding="utf-8") as flux:
+            for ligne in flux:
+                if ligne.strip():
+                    yield schema.deserialiser(ligne)

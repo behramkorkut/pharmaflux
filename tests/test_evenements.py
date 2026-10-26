@@ -486,3 +486,15 @@ def test_les_fixtures_fabriquees_passent_leur_contrat(
     assert s.ecarte is bloquante
     assert s.archive.startswith(f"bronze/bdpm/{s.contrat.fichier}/2026-10-24/20261024T141700Z__")
     assert s.archive.endswith(f"{s.sha256[:12]}.txt.gz")
+
+
+def test_suppression_retenue_a_travers_le_garde_fou_avec_un_seuil_large() -> None:
+    """Contrôle du palier 2 (facultatif) : avec ``seuil=0.6``, la perte de 52,9 % est retenue."""
+    a = _pres("presentations_a.txt")
+    perte = _pres("presentations_perte.txt", heure="1517")
+    suivi = Suivi(seuil=0.6)
+    _, r_perte = _derouler(suivi, a, perte)
+    assert r_perte.verdict.decision is Decision.RETENU and _types(r_perte.evenements) == {
+        "supprimee": 9
+    }
+    assert suivi.retenu is perte and suivi.en_attente is None

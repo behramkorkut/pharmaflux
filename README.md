@@ -21,9 +21,16 @@ et le point d'entrée technique dans [`docs/CONTEXTE.md`](docs/CONTEXTE.md).
 BDPM, en production sur un VPS depuis le 24/10/2026. L'archive brute est
 la seule brique qui ne se rattrape pas : elle a démarré avant tout le reste.
 
-**Mission 01 en cours** : contrats de schéma des onze fichiers BDPM,
+**Mission 01 fusionnée** : contrats de schéma des onze fichiers BDPM,
 profil des archives (`docs/donnees/`), décisions d'architecture
 (`docs/adr/`) et jeu de questions de référence (`evaluation/`).
+
+**Mission 02 en cours** : du bronze aux événements. Chaque archive est
+normalisée selon son contrat (ADR 0005), comparée à la dernière retenue, et
+chaque changement devient un événement JSON rejouable à l'identique
+(`creee`, `modifiee`, `supprimee`, ADR 0006), avec un garde-fou qui écarte
+une réponse vide ou tronquée au lieu d'en faire des milliers de
+suppressions.
 
 | Lot | Contenu | État |
 |---|---|---|
@@ -50,6 +57,7 @@ uv run pharmaflux collecte           # un passage : télécharge, compare, archi
 uv run pharmaflux etat               # dernière archive, dernier changement, erreurs, 24 h
 uv run pharmaflux profil             # chaque archive contre son contrat : anomalies, clé, colonnes, liens
 uv run pharmaflux questions verifier # le jeu de questions de référence rejoué sur l'archive
+uv run pharmaflux evenements         # du bronze aux événements : rejeu complet, ou --reprendre
 ```
 
 Un passage télécharge la page de téléchargement de la BDPM et ses onze
@@ -72,6 +80,15 @@ résultat sur l'archive du 24/10/2026 est dans
 [`docs/donnees/`](docs/donnees/README.md). `questions verifier` rejoue le
 [jeu de questions de référence](evaluation/README.md) : quarante questions
 dont la réponse attendue est lue dans une archive précise.
+
+`evenements` lit chaque archive du bronze avec son contrat, la normalise,
+la compare à la dernière archive retenue du même fichier et écrit, par
+archive, un fichier d'événements JSON Lines, un bilan et un état de
+reprise (`data/evenements/` par défaut, hors git). Deux rejeux donnent les
+mêmes octets ; `--reprendre` ne traite que les archives arrivées depuis.
+Sur la copie de l'archive au 26/10/2026 : 164 096 événements d'état
+initial, puis 3 présentations supprimées, et le fichier vide du 26/10
+écarté sans un seul événement.
 
 Vérifications locales, identiques à la CI :
 

@@ -245,3 +245,19 @@ son sha256 et son contrat, recalcule les lignes et signale tout écart :
 lecture stricte des TOML est partagée (`tomlstrict.py`) entre contrats et
 questions. Docs : `CONTEXTE.md` (contrats, bronze, « on constate, on ne
 corrige pas »), `README.md`. 229 tests.
+
+## 2026-10-26 — Mission 01 : relecture 1 CONFORME, quatre correctifs
+
+Relecture à contexte neuf sur `7c5d10e` : CONFORME, aucun bloquant, quatre
+points non bloquants, tous corrigés par un commit chacun. Les bornes
+numériques du profil ne prennent plus que des valeurs conformes au type
+(`Decimal()` lisait « NaN », qui faisait planter le tri, et « 1e9 ») ; le
+type `decimal` exige des chiffres ASCII après la virgule comme avant ;
+l'archive citée par une question doit être dans le dossier bronze du
+contrat qu'elle nomme, en cinq segments exacts (`Contrat.dossier_bronze`),
+et le cache du rejeu est indexé par (archive, contrat) ; le test des règles
+bloquantes importe ce qu'il teste. Remarques : aide de `--questions`
+(chemin relatif au dossier courant), ADR 0002 (une ligne de blancs est une
+ligne vide, voulu), §0 (le script jetable cité est remplacé par
+`pharmaflux profil`). `docs/donnees/` régénéré identique ; 237 tests.
+Réponse : `docs/rapports/mission-01/reponse-relecture-1.md`.

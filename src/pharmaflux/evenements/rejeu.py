@@ -136,6 +136,9 @@ def _traiter_entite(
     debut = 0
     if etat is None:
         # Rejeu complet : tout est recalculé, la sortie de l'entité repart de zéro.
+        # L'entité quitte d'abord l'état, puis ses dossiers sont effacés : une coupure
+        # entre les deux laisse une entité sans état, que --reprendre rejoue en entier.
+        _retirer_etat(sortie, identifiant)
         for dossier in (DOSSIER_EVENEMENTS, DOSSIER_BILANS):
             shutil.rmtree(sortie / dossier / identifiant, ignore_errors=True)
     else:
@@ -246,6 +249,17 @@ def _ecrire_etat(
         dernier_retenu=None if suivi.retenu is None else suivi.retenu.archive,
         en_attente=None if suivi.en_attente is None else suivi.en_attente.archive,
     )
+    _sauver_etats(sortie, etats)
+
+
+def _retirer_etat(sortie: Path, identifiant: str) -> None:
+    """Réécrit ``etat.json`` sans l'entité, avant que le rejeu complet efface sa sortie."""
+    etats = _lire_etat(sortie)
+    if etats.pop(identifiant, None) is not None:
+        _sauver_etats(sortie, etats)
+
+
+def _sauver_etats(sortie: Path, etats: dict[str, EtatEntite]) -> None:
     contenu = {
         "version": VERSION_ETAT,
         "entites": {

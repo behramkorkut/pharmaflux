@@ -114,8 +114,11 @@ recalcule depuis leur archive. Un snapshot en attente n'est pas « traité »
 (la dernière archive traitée reste avant lui) ; quand une exécution
 ultérieure le tranche, elle réécrit son bilan et écrit ses événements s'il
 est confirmé, pour que la sortie égale celle d'un rejeu complet. Un rejeu
-complet recalcule tout et repart de zéro pour l'entité. `--reprendre`
-**refuse** quand une version de contrat diffère de celle de l'état
+complet recalcule tout et repart de zéro pour l'entité : il **retire
+d'abord l'entité de `etat.json`** (réécriture atomique), puis efface ses
+dossiers, pour qu'une coupure entre les deux laisse une entité sans état,
+que `--reprendre` rejoue en entier au lieu de la croire traitée.
+`--reprendre` **refuse** quand une version de contrat diffère de celle de l'état
 (code 2) : les événements écrits auraient une autre forme que les suivants.
 Code de sortie 1 si une archive est illisible ; un snapshot écarté est un
 constat, pas une panne. Le dossier de sortie n'est jamais sous la racine de
@@ -126,7 +129,9 @@ l'octet ; une reprise après **chaque** point d'arrêt d'une suite de treize
 archives fabriquées (dont une archive en attente tranchée dans les deux
 sens, une confirmée par un passage inchangé à la fin du bronze, le retour
 A → B → A, l'oscillation, le vide, le bloquant) égale au rejeu complet ;
-`etat.json` supprimé puis `--reprendre` ; aucun identifiant en double ;
+`etat.json` supprimé puis `--reprendre` ; un rejeu complet interrompu par
+une archive illisible en tête, après l'effacement de la sortie, puis
+`--reprendre` une fois l'archive lisible ; aucun identifiant en double ;
 `appliquer` sur la sortie **relue du disque** redonne le dernier snapshot
 retenu.
 
@@ -143,8 +148,8 @@ retenu.
 - Coût : 172 Mo d'état initial sur disque, hors dépôt (`data/`), une fois ;
   474 Mo de mémoire résidente au pic (les événements d'une comparaison sont
   construits en mémoire avant d'être écrits, 32 439 pour les compositions) ;
-  loin des 256 Mo de l'unité du VPS si la chaîne devait y tourner : à
-  revoir en flux avant un déploiement, ce que la mission 03 décidera.
+  près de deux fois au-dessus des 256 Mo de l'unité du VPS : la chaîne n'y
+  tourne pas avant d'être réécrite en flux, ce que la mission 03 décidera.
 - À surveiller : un `inchange` du manifeste ne confirme une archive en
   attente que dans la fenêtre entre son archivage et l'archive suivante ; au
   delà, il compare à l'archive suivante. Un changement de version de contrat

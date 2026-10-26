@@ -324,6 +324,26 @@ def test_commande_evenements(bronze_complet: Path, tmp_path: Path) -> None:
     assert not (bronze_complet / "evenements").exists(), "l'archive n'est jamais écrite"
 
 
+def test_rejeu_complet_interrompu_puis_reprise(
+    bronze_complet: Path, tmp_path: Path, reference: dict[str, bytes]
+) -> None:
+    """Contrôle 3 : l'entité quitte l'état avant l'effacement, la reprise la rejoue en entier."""
+    sortie = tmp_path / "sortie"
+    assert _executer(bronze_complet, sortie).code_sortie == 0
+    premiere = min(bronze_complet.rglob("CIS_CIP_bdpm.txt/*/*.gz"))
+    octets = premiere.read_bytes()
+    premiere.write_bytes(b"pas du gzip")
+    rapport = _executer(bronze_complet, sortie)  # rejeu complet coupé en tête
+    assert rapport.code_sortie == 1 and rapport.resumes[0].archives_lues == 0
+    etat = json.loads((sortie / "etat.json").read_text(encoding="utf-8"))
+    assert PRESENTATIONS not in etat["entites"] and DISPO in etat["entites"]
+    assert not (sortie / "evenements" / PRESENTATIONS).exists()
+    premiere.write_bytes(octets)
+    rapport = _executer(bronze_complet, sortie, reprendre=True)
+    assert rapport.code_sortie == 0 and rapport.resumes[0].archives_lues == 12
+    assert _arbre(sortie) == reference, "la reprise redonne la sortie du rejeu complet"
+
+
 def test_une_sortie_de_rejeu_complet_repart_de_zero(
     bronze_complet: Path, tmp_path: Path, reference: dict[str, bytes]
 ) -> None:

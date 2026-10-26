@@ -1,0 +1,99 @@
+# Contrat de schéma v0 (mission 01). On constate, on ne corrige pas (PRD §6.2).
+# Un « motif » doit couvrir toute la valeur. Les énumérations listent les
+# graphies telles qu'elles sont dans le fichier : la normalisation est au Lot 1.
+# Les plages de dates servent à signaler une date manifestement fausse
+# (date_hors_plage, non bloquante), jamais à la corriger.
+version = "v0"
+identifiant = "bdpm.disponibilite"
+fichier = "CIS_CIP_Dispo_Spec.txt"
+description = "Fiches ANSM de disponibilité des spécialités : ruptures, tensions, arrêts, remises à disposition"
+
+[source]
+documentation = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf"
+documentation_sha256 = "db10d5a62bc640c227405bcb11cef5db9ad2a2d9a6b4b547198ee19978b6bc8b"
+section = "3.10"
+date_verification = 2026-10-26
+archive_reference = "bronze/bdpm/CIS_CIP_Dispo_Spec.txt/2026-10-24/20261024T194201Z__43b7d2f3cfe6.txt.gz"
+archive_sha256 = "43b7d2f3cfe699fffded55893472d9fa17fd77964c5e3a31d4017160b8d35ed6"
+
+[format]
+encodage = "cp1252"
+fin_de_ligne = "CRLF"
+separateur = "\t"
+
+[[colonnes]]
+nom = "code_cis"
+type = "code"
+motif = '\d{8}'
+obligatoire = true
+description = "Code Identifiant de Spécialité"
+
+[[colonnes]]
+nom = "code_cip13"
+type = "code"
+motif = '34009\d{8}'
+obligatoire = false
+description = "Code CIP13 ; vide quand toutes les présentations de la spécialité sont concernées (667 lignes sur 703 le 24/10). Le schéma de la documentation dit CIP7, le texte et le fichier CIP13."
+
+[[colonnes]]
+nom = "code_statut"
+type = "enumeration"
+valeurs = ["1", "2", "3", "4"]
+obligatoire = true
+description = "1 rupture de stock, 2 tension d'approvisionnement, 3 arrêt de commercialisation, 4 remise à disposition"
+
+[[colonnes]]
+nom = "libelle_statut"
+type = "enumeration"
+valeurs = ["Rupture de stock", "Tension d'approvisionnement", "Arrêt de commercialisation", "Remise à disposition"]
+obligatoire = true
+description = "Libellé du statut, selon le code"
+
+[[colonnes]]
+nom = "date_debut"
+type = "date"
+format = "JJ/MM/AAAA"
+plage_min = 2000-01-01
+plage_max = 2030-12-31
+obligatoire = true
+description = "Début du statut ; date de mise à jour pour les fiches antérieures au 06/10/2023 ; peut être future (arrêt annoncé, une en 2027 le 24/10)"
+
+[[colonnes]]
+nom = "date_mise_a_jour"
+type = "date"
+format = "JJ/MM/AAAA"
+plage_min = 2000-01-01
+plage_max = 2030-12-31
+obligatoire = true
+description = "Mise à jour de la fiche sur le site de l'ANSM"
+
+[[colonnes]]
+nom = "date_remise_a_disposition"
+type = "date"
+format = "JJ/MM/AAAA"
+plage_min = 2000-01-01
+plage_max = 2030-12-31
+obligatoire = false
+description = "Renseignée sur les lignes de statut 4 et sur elles seules le 24/10, égale à la date de début"
+
+[[colonnes]]
+nom = "lien_ansm"
+type = "url"
+hotes = ["ansm.sante.fr"]
+obligatoire = true
+description = "Fiche sur le site de l'ANSM ; 290 fiches pour 703 lignes le 24/10"
+
+[cle]
+colonnes = ["code_cis", "code_cip13", "lien_ansm"]
+unique = false
+raison = "L'entité réelle est la fiche ANSM, qui couvre plusieurs CIS et parfois plusieurs présentations ; aucune combinaison de colonnes n'est unique et 5 lignes entières sont en doublon le 24/10 (ligne_dupliquee). Le Lot 1 raisonne par fiche et compare ligne à ligne."
+
+[[liens]]
+colonne = "code_cis"
+vers = "bdpm.specialites"
+colonne_cible = "code_cis"
+
+[[liens]]
+colonne = "code_cip13"
+vers = "bdpm.presentations"
+colonne_cible = "code_cip13"

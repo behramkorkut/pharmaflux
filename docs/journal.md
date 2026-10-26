@@ -184,3 +184,26 @@ fichiers `.partiel-*` orphelins ; unité systemd durcie (capacités vides,
 filtre d'appels système, `UMask=0027` pour garder la lecture du groupe),
 score visé sous 3, mesuré par beko sur le VPS depuis la branche. 80 tests.
 Rapport : `docs/rapports/mission-01/palier-1.md`.
+
+## 2026-10-26 — Mission 01 : contrôle du palier 1, correctif C1, palier 2 (contrats)
+
+Palier 1 accepté par l'IeC ; l'unité durcie est mesurée par beko sur le VPS
+à 1,3 au score d'exposition (6,3 avant), passage manuel sans erreur,
+`MemoryDenyWriteExecute` conservé. Le VPS tourne sur la branche de mission
+jusqu'à la fusion. **C1** : une entrée quotidienne archivée sous
+`lien_change` ou `lien_absent` était retéléchargée à chaque passage ; les
+motifs d'erreur sont maintenant définis une seule fois dans `manifeste`
+(`MOTIFS_SIGNALEMENT`, liste fermée) et `Enregistrement.vaut_collecte` dit
+ce qu'une ligne vaut. **Palier 2** : onze contrats TOML v0 dans
+`src/pharmaflux/contrats/bdpm/` (encodage, fin de ligne, colonnes typées
+parmi neuf types, clé avec `unique` et `raison`, liens, source avec sha256
+du PDF et archive de référence), chargeur strict (`tomllib`, toute clé
+inconnue refusée), vérification d'une archive en anomalies jamais
+corrigées (quatre règles bloquantes : encodage, fin de ligne, nombre de
+colonnes, clé déclarée unique). Les onze archives du 24/10 passent sans
+anomalie bloquante ; les constats du §0 ressortent tels quels (17 016
+espaces parasites dans `CIS_bdpm.txt`, 995 prix à virgule des milliers, 52
+dates hors plage, 5 lignes en doublon dans Dispo_Spec). Fixtures étendues
+de lignes réelles choisies, anomalies fabriquées à part dans
+`tests/fixtures/contrats/`. 190 tests. Rapport :
+`docs/rapports/mission-01/palier-2.md`.

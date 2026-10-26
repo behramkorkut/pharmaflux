@@ -1,0 +1,64 @@
+# Contrat de schéma v0 (mission 01). On constate, on ne corrige pas (PRD §6.2).
+# Un « motif » doit couvrir toute la valeur. Les énumérations listent les
+# graphies telles qu'elles sont dans le fichier : la normalisation est au Lot 1.
+# Les plages de dates servent à signaler une date manifestement fausse
+# (date_hors_plage, non bloquante), jamais à la corriger.
+version = "v0"
+identifiant = "bdpm.generiques"
+fichier = "CIS_GENER_bdpm.txt"
+description = "Groupes génériques et les médicaments qui en font partie"
+
+[source]
+documentation = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf"
+documentation_sha256 = "db10d5a62bc640c227405bcb11cef5db9ad2a2d9a6b4b547198ee19978b6bc8b"
+section = "3.7"
+date_verification = 2026-10-26
+archive_reference = "bronze/bdpm/CIS_GENER_bdpm.txt/2026-10-24/20261024T194157Z__04ea92fb3d2e.txt.gz"
+archive_sha256 = "04ea92fb3d2e7682ed0720daea48ecf65f3459b4b0b61fe9160bb7cce82f152c"
+
+[format]
+encodage = "cp1252"
+fin_de_ligne = "CRLF"
+separateur = "\t"
+
+[[colonnes]]
+nom = "identifiant_groupe"
+type = "code"
+motif = '\d+'
+obligatoire = true
+description = "Identifiant du groupe générique"
+
+[[colonnes]]
+nom = "libelle_groupe"
+type = "texte"
+obligatoire = true
+description = "Libellé du groupe générique"
+
+[[colonnes]]
+nom = "code_cis"
+type = "code"
+motif = '\d{8}'
+obligatoire = true
+description = "Code Identifiant de Spécialité ; 2 470 CIS absents de CIS_bdpm.txt le 24/10 (mesuré, pas une anomalie)"
+
+[[colonnes]]
+nom = "type_generique"
+type = "enumeration"
+valeurs = ["0", "1", "2", "4"]
+obligatoire = true
+description = "0 princeps, 1 générique, 2 générique par complémentarité posologique, 4 générique substituable"
+
+[[colonnes]]
+nom = "numero_tri"
+type = "entier"
+obligatoire = true
+description = "Numéro de tri des éléments d'un groupe"
+
+[cle]
+colonnes = ["identifiant_groupe", "code_cis"]
+unique = true
+
+[[liens]]
+colonne = "code_cis"
+vers = "bdpm.specialites"
+colonne_cible = "code_cis"

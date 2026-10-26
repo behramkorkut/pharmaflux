@@ -1,0 +1,83 @@
+# Contrat de schéma v0 (mission 01). On constate, on ne corrige pas (PRD §6.2).
+# Un « motif » doit couvrir toute la valeur. Les énumérations listent les
+# graphies telles qu'elles sont dans le fichier : la normalisation est au Lot 1.
+# Les plages de dates servent à signaler une date manifestement fausse
+# (date_hors_plage, non bloquante), jamais à la corriger.
+version = "v0"
+identifiant = "bdpm.compositions"
+fichier = "CIS_COMPO_bdpm.txt"
+description = "Composition qualitative et quantitative en substances actives et fractions thérapeutiques"
+
+[source]
+documentation = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf"
+documentation_sha256 = "db10d5a62bc640c227405bcb11cef5db9ad2a2d9a6b4b547198ee19978b6bc8b"
+section = "3.3"
+date_verification = 2026-10-26
+archive_reference = "bronze/bdpm/CIS_COMPO_bdpm.txt/2026-10-24/20261024T194148Z__90a6e8ee286b.txt.gz"
+archive_sha256 = "90a6e8ee286b6245c3938dd417ac75d1135a61b15ba50cfad70ee6b3bd181b7a"
+
+[format]
+encodage = "cp1252"
+fin_de_ligne = "CRLF"
+separateur = "\t"
+
+[[colonnes]]
+nom = "code_cis"
+type = "code"
+motif = '\d{8}'
+obligatoire = true
+description = "Code Identifiant de Spécialité"
+
+[[colonnes]]
+nom = "designation_element"
+type = "texte"
+obligatoire = true
+description = "Désignation de l'élément pharmaceutique"
+
+[[colonnes]]
+nom = "code_substance"
+type = "code"
+motif = '\d{5}'
+obligatoire = true
+description = "Code de la substance"
+
+[[colonnes]]
+nom = "denomination_substance"
+type = "texte"
+obligatoire = true
+description = "Dénomination de la substance ; espace de fin sur 1 288 lignes le 24/10 (espace_parasite)"
+
+[[colonnes]]
+nom = "dosage"
+type = "texte"
+obligatoire = false
+description = "Dosage de la substance ; vide sur 2 844 lignes le 24/10"
+
+[[colonnes]]
+nom = "reference_dosage"
+type = "texte"
+obligatoire = false
+description = "Référence du dosage (« un comprimé »)"
+
+[[colonnes]]
+nom = "nature_composant"
+type = "enumeration"
+valeurs = ["SA", "FT"]
+obligatoire = true
+description = "Nature du composant : substance active « SA » ou fraction thérapeutique « FT » (la documentation écrit « ST », le fichier « FT »)"
+
+[[colonnes]]
+nom = "numero_liaison"
+type = "entier"
+obligatoire = true
+description = "Numéro liant substances actives et fractions thérapeutiques"
+
+# Sans le numéro de liaison, 17 clés se répètent (dilutions homéopathiques).
+[cle]
+colonnes = ["code_cis", "designation_element", "code_substance", "nature_composant", "numero_liaison"]
+unique = true
+
+[[liens]]
+colonne = "code_cis"
+vers = "bdpm.specialites"
+colonne_cible = "code_cis"

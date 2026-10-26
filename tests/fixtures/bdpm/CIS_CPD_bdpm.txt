@@ -38,3 +38,12 @@
 60347728	réservé à l'usage HOSPITALIER
 60375001	réservé à l'usage HOSPITALIER
 60377803	réservé à l'usage HOSPITALIER
+69990857	prescription réservée aux médecins compétents en CANCEROLOGIE
+66371262	l'administration du 1 er cycle et de la 1 ère injection du 2 ème cycle doit être réalisée en milieu hospitalier
+
+66446220	l'administration du 1 er cycle et de la 1 ère injection du 2 ème cycle doit être réalisée en milieu hospitalier
+
+68822785	l'administration du 1 er cycle et de la 1 ère injection du 2 ème cycle doit être réalisée en milieu hospitalier
+
+63167621	prescription réservée aux spécialistes et services GENETIQUE MEDICALE
+68773605	prescription réservée aux spécialistes et services GENETIQUE MEDICALE

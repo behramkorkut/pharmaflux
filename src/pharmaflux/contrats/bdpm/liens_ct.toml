@@ -1,0 +1,41 @@
+# Contrat de schéma v0 (mission 01). On constate, on ne corrige pas (PRD §6.2).
+# Un « motif » doit couvrir toute la valeur. Les énumérations listent les
+# graphies telles qu'elles sont dans le fichier : la normalisation est au Lot 1.
+# Les plages de dates servent à signaler une date manifestement fausse
+# (date_hors_plage, non bloquante), jamais à la corriger.
+version = "v0"
+identifiant = "bdpm.liens_ct"
+fichier = "HAS_LiensPageCT_bdpm.txt"
+description = "Liens vers les avis complets de la Commission de la transparence de la HAS"
+
+[source]
+documentation = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf"
+documentation_sha256 = "db10d5a62bc640c227405bcb11cef5db9ad2a2d9a6b4b547198ee19978b6bc8b"
+section = "3.6"
+date_verification = 2026-10-26
+archive_reference = "bronze/bdpm/HAS_LiensPageCT_bdpm.txt/2026-10-24/20261024T194155Z__2f01ff1e13f8.txt.gz"
+archive_sha256 = "2f01ff1e13f8431434d545d1c567368276223b7a5d9c5612fc423f4353c54a2b"
+
+# Observé en ASCII pur (codes et URL) : un octet non ASCII serait un changement.
+[format]
+encodage = "ascii"
+fin_de_ligne = "CRLF"
+separateur = "\t"
+
+[[colonnes]]
+nom = "code_dossier_has"
+type = "code"
+motif = 'CT-\d+'
+obligatoire = true
+description = "Code de dossier HAS ; 12 dossiers ont plusieurs liens le 24/10"
+
+[[colonnes]]
+nom = "lien_avis"
+type = "url"
+hotes = ["www.has-sante.fr"]
+obligatoire = true
+description = "Lien vers la page d'avis de la CT : /jcms/c_N (7 996) ou /jcms/p_N (2 484) le 24/10"
+
+[cle]
+colonnes = ["code_dossier_has", "lien_avis"]
+unique = true

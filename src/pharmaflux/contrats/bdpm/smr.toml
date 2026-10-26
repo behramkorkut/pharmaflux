@@ -1,0 +1,103 @@
+# Contrat de schéma v0 (mission 01). On constate, on ne corrige pas (PRD §6.2).
+# Un « motif » doit couvrir toute la valeur. Les énumérations listent les
+# graphies telles qu'elles sont dans le fichier : la normalisation est au Lot 1.
+# Les plages de dates servent à signaler une date manifestement fausse
+# (date_hors_plage, non bloquante), jamais à la corriger.
+version = "v0"
+identifiant = "bdpm.smr"
+fichier = "CIS_HAS_SMR_bdpm.txt"
+description = "Avis de service médical rendu (SMR) de la HAS depuis 2002"
+
+[source]
+documentation = "Contenu_et_format_des_fichiers_telechargeables_dans_la_BDM_v5.pdf"
+documentation_sha256 = "db10d5a62bc640c227405bcb11cef5db9ad2a2d9a6b4b547198ee19978b6bc8b"
+section = "3.4"
+date_verification = 2026-10-26
+archive_reference = "bronze/bdpm/CIS_HAS_SMR_bdpm.txt/2026-10-24/20261024T194150Z__c2215af6b207.txt.gz"
+archive_sha256 = "c2215af6b20705bb8b8eb6f447ebb2a45000c40e5cd8d3f575149832c639ffdd"
+
+[format]
+encodage = "cp1252"
+fin_de_ligne = "CRLF"
+separateur = "\t"
+
+[[colonnes]]
+nom = "code_cis"
+type = "code"
+motif = '\d{8}'
+obligatoire = true
+description = "Code Identifiant de Spécialité"
+
+[[colonnes]]
+nom = "code_dossier_has"
+type = "code"
+motif = 'CT-\d+'
+obligatoire = true
+description = "Code de dossier HAS"
+
+[[colonnes]]
+nom = "motif_evaluation"
+type = "enumeration"
+valeurs = [
+  "Inscription (CT)",
+  "Renouvellement d'inscription (CT)",
+  "Extension d'indication",
+  "Extension d'indication non sollicitée",
+  "Réévaluation SMR",
+  "Réévaluation ASMR",
+  "Réévaluation SMR et ASMR",
+  "Réévaluation suite saisine Ministères (CT)",
+  "Réévaluation suite à résultats étude post-inscript",
+  "Modification des conditions d'inscription (CT)",
+  "Nouvel examen suite au dépôt de nouvelles données",
+  "Autre demande",
+]
+obligatoire = true
+description = "Motif d'évaluation : les douze libellés observés le 24/10 (SMR et ASMR réunis)"
+
+[[colonnes]]
+nom = "date_avis"
+type = "date"
+format = "AAAAMMJJ"
+plage_min = 2002-01-01
+plage_max = 2030-12-31
+obligatoire = true
+description = "Date de l'avis de la Commission de la transparence ; avis postérieurs à 2002"
+
+[[colonnes]]
+nom = "valeur_smr"
+type = "enumeration"
+valeurs = [
+  "Important",
+  "Modéré",
+  "Faible",
+  "Insuffisant",
+  "Important conditionnel",
+  "Modéré conditionnel",
+  "Faible conditionnel",
+  "Non précisé",
+  "Commentaires",
+]
+obligatoire = true
+description = "Valeur du SMR : neuf libellés le 24/10"
+
+[[colonnes]]
+nom = "libelle_smr"
+type = "texte"
+obligatoire = true
+description = "Libellé de l'avis de SMR"
+
+[cle]
+colonnes = ["code_cis", "code_dossier_has"]
+unique = false
+raison = "Un avis par indication : 2 488 couples (CIS, dossier) ont plusieurs lignes le 24/10, souvent avec des valeurs différentes. La ligne entière est unique ; le Lot 1 compare ligne à ligne."
+
+[[liens]]
+colonne = "code_cis"
+vers = "bdpm.specialites"
+colonne_cible = "code_cis"
+
+[[liens]]
+colonne = "code_dossier_has"
+vers = "bdpm.liens_ct"
+colonne_cible = "code_dossier_has"

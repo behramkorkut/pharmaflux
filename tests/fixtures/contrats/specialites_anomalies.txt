@@ -1,0 +1,6 @@
+61266250	A 313 200 000 UI POUR CENT, pommade	pommade	cutanée	Autorisation active	Procédure nationale	Commercialisée	12/03/1998			 PHARMA DEVELOPPEMENT	Non
+62869109	A 313 50 000 U.I., capsule molle	capsule molle	orale	Autorisation active	Procédure nationale	Commercialisée	07/07/1997			 PHARMA DEVELOPPEMENT	Non
+69103878	A.D.N. BOIRON, degré de dilution compris entre 4CH et 30CH ou entre 8DH et 60DH	 comprimé et solution(s) et granules et poudre et pommade	cutanée;orale;sublinguale	Autorisation active	Enreg homéo (Proc. Nat.)	Commercialisée	14/10/2021			 BOIRON
+61266250	ABACAVIR ARROW 300 mg, comprimé pelliculé sécable	comprimé pelliculé sécable	orale	Autorisation nouvelle	Procédure décentralisée	Commercialisée	31/02/2020			 ARROW GENERIQUES	oui
+61266250	A 313 200 000 UI POUR CENT, pommade	pommade	cutanée	Autorisation active	Procédure nationale	Commercialisée	12/03/1998			 PHARMA DEVELOPPEMENT	Non
+1234567		comprimé pelliculé sécable	orale	Autorisation active	Procédure décentralisée	Commercialisée	30/12/2016			 SANDOZ	Non

@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from pathlib import Path
 
 from pharmaflux import bronze
@@ -25,8 +25,9 @@ from pharmaflux.contrats.modele import (
     Lien,
     Regle,
     TypeNom,
+    TypeValeur,
 )
-from pharmaflux.contrats.verification import Lecture, verifier
+from pharmaflux.contrats.verification import Lecture, verifier, verifier_valeur
 
 EXEMPLES_PAR_REGLE = 5
 SEUIL_REPARTITION = 30  # au plus tant de valeurs distinctes : répartition complète
@@ -174,7 +175,7 @@ def _bornes(colonne: Colonne, valeurs: Counter[str]) -> tuple[str, str] | None:
         dates = {v: d for v in valeurs if (d := _lire_date(colonne.type.format, v)) is not None}
         return _extremes(dates)
     if nom in (TypeNom.ENTIER, TypeNom.DECIMAL):
-        nombres = {v: n for v in valeurs if (n := _lire_nombre(v)) is not None}
+        nombres = {v: n for v in valeurs if (n := _lire_nombre(colonne.type, v)) is not None}
         return _extremes(nombres)
     return None
 
@@ -198,13 +199,15 @@ def _lire_date(format_: str | None, valeur: str) -> date | None:
         return None
 
 
-def _lire_nombre(valeur: str) -> Decimal | None:
-    if valeur.count(",") > 1:  # « 1,003,48 » : illisible, hors bornes
+def _lire_nombre(type_: TypeValeur, valeur: str) -> Decimal | None:
+    """Seule une valeur conforme au type entre dans les bornes.
+
+    ``Decimal`` seul lirait « 1e9 », « Infinity » ou « NaN » (qui ne se trie pas) :
+    ces valeurs sont des anomalies comptées (``decimal_illisible``), pas des bornes.
+    """
+    if verifier_valeur(type_, valeur) is not None:
         return None
-    try:
-        return Decimal(valeur.replace(",", "."))
-    except InvalidOperation:
-        return None
+    return Decimal(valeur.replace(",", "."))
 
 
 def _ordres_dates(contrat: Contrat, lecture: Lecture) -> list[OrdreDates]:

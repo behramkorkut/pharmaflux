@@ -10,9 +10,9 @@ from pharmaflux.cli import application
 from pharmaflux.collecte.archive import chemin_archive, ecrire_archive
 from pharmaflux.contrats.chargeur import charger_tous
 from pharmaflux.contrats.modele import Regle
-from pharmaflux.contrats.profil import ArchiveIntrouvable, profiler_racine
+from pharmaflux.contrats.profil import ArchiveIntrouvable, profiler, profiler_racine
 from pharmaflux.contrats.rendu import nombre, pourcentage, rendre_markdown, tableau
-from tests.conftest import FIXTURES, Lanceur, entree, entrees_bdpm_txt
+from tests.conftest import FIXTURES, Lanceur, contenu_fixture, entree, entrees_bdpm_txt
 
 lanceur = CliRunner()
 
@@ -89,6 +89,24 @@ def test_valeur_inconnue_en_tete_et_bloquantes_avant_le_reste(racine_peuplee: Pa
     assert regles[1:4] == [Regle.CLE_NON_UNIQUE, Regle.FIN_DE_LIGNE, Regle.NOMBRE_COLONNES]
     assert profil.nombre_bloquantes == 4 and profil.archive.endswith("ffffffffffff.txt.gz")
     assert profil.lignes_bien_formees == 5 and profil.cle_repetees == 2
+
+
+def test_bornes_sans_les_nombres_non_conformes() -> None:
+    """Relecture 1, point 1 : « NaN », « 1e9 », « Infinity » sont comptés, jamais des bornes."""
+    contrat = charger_tous()["bdpm.presentations"]
+    i = contrat.index("prix_medicament")
+    lignes = [
+        ligne.split(b"\t")
+        for ligne in contenu_fixture(entree("bdpm.presentations")).split(b"\n")[:4]
+    ]
+    for ligne, faux in zip(lignes[1:], (b"NaN", b"1e9", b"Infinity"), strict=True):
+        ligne[i] = faux
+    octets = b"\n".join(b"\t".join(ligne) for ligne in lignes) + b"\n"
+    profil = profiler(contrat, octets, "essai", {})
+    prix = next(c for c in profil.colonnes if c.nom == "prix_medicament")
+    assert (prix.minimum, prix.maximum) == (lignes[0][i].decode(), lignes[0][i].decode())
+    assert prix.distinctes == 4 and prix.vides == 0
+    assert {g.regle: g.nombre for g in profil.anomalies}[Regle.DECIMAL_ILLISIBLE] == 3
 
 
 def test_archive_precise_et_introuvable(racine_peuplee: Path) -> None:

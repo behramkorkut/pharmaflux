@@ -2,6 +2,7 @@
 
 ``collecte`` : un passage d'archivage (télécharger, comparer, archiver,
 consigner). ``etat`` : ce que contient l'archive, d'après le manifeste.
+``profil`` : une archive contre son contrat de schéma, anomalies et mesures.
 """
 
 from __future__ import annotations
@@ -24,6 +25,10 @@ from pharmaflux.collecte.catalogue import CATALOGUE, Entree, IdentifiantInconnu,
 from pharmaflux.collecte.etat import calculer_etat, formater_etat
 from pharmaflux.collecte.passage import executer_passage, maintenant_utc
 from pharmaflux.collecte.telechargement import Telechargeur
+from pharmaflux.contrats.chargeur import charger_tous
+from pharmaflux.contrats.modele import Contrat
+from pharmaflux.contrats.profil import ArchiveIntrouvable, profiler_racine
+from pharmaflux.contrats.rendu import rendre_markdown, resume
 
 VARIABLE_RACINE = "PHARMAFLUX_DATA"
 RACINE_PAR_DEFAUT = Path.home() / "pharmaflux-data"
@@ -137,6 +142,88 @@ def _rapport_partiels(chemin: Path) -> str:
         modifie = datetime.fromtimestamp(partiel.stat().st_mtime, UTC).strftime("%Y-%m-%d %H:%MZ")
         lignes.append(f"  {partiel.relative_to(chemin).as_posix()}  (modifié le {modifie})")
     return "\n".join(lignes)
+
+
+@application.command()
+def profil(
+    fichier: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--fichier",
+            help="Identifiant (bdpm.specialites) ou nom de fichier (CIS_bdpm.txt), répétable."
+            " Les onze fichiers TSV par défaut.",
+        ),
+    ] = None,
+    racine: OptionRacine = None,
+    archive: Annotated[
+        Path | None,
+        typer.Option(
+            "--archive",
+            help="Une archive précise (chemin absolu ou relatif à la racine) à la place de la"
+            " dernière ; avec un seul --fichier, ou déduit du chemin.",
+        ),
+    ] = None,
+    markdown: Annotated[
+        Path | None,
+        typer.Option(
+            "--markdown", help="Écrit un fichier <identifiant>.md par source dans ce dossier."
+        ),
+    ] = None,
+) -> None:
+    """Profil d'archives contre leur contrat : conformité, clé, colonnes, dates, liens.
+
+    Code de sortie 1 si une anomalie bloquante est trouvée (encodage, fin de
+    ligne, nombre de colonnes, clé déclarée unique non unique).
+    """
+    chemin = _racine(racine)
+    contrats = charger_tous()
+    selection = _selection_contrats(fichier, archive, contrats)
+    try:
+        profils = profiler_racine(chemin, contrats, selection, archive)
+    except (ArchiveIntrouvable, ValueError) as exc:
+        raise typer.BadParameter(str(exc), param_hint="--archive") from exc
+    instant = maintenant_utc()
+    if markdown is not None:
+        markdown.mkdir(parents=True, exist_ok=True)
+        for profil_ in profils:
+            cible = markdown / f"{profil_.contrat.identifiant}.md"
+            cible.write_text(rendre_markdown(profil_, instant), encoding="utf-8")
+            typer.echo(f"{resume(profil_)}  → {cible}")
+    else:
+        for profil_ in profils:
+            typer.echo(rendre_markdown(profil_, instant))
+    bloquantes = sum(profil_.nombre_bloquantes for profil_ in profils)
+    typer.echo(f"{len(profils)} fichier(s) profilé(s), {bloquantes} anomalie(s) bloquante(s).")
+    raise typer.Exit(code=1 if bloquantes else 0)
+
+
+def _selection_contrats(
+    fichiers: list[str] | None, archive: Path | None, contrats: dict[str, Contrat]
+) -> list[str]:
+    """Les identifiants demandés, par identifiant ou nom de fichier ; déduits de l'archive sinon."""
+    par_fichier = {contrat.fichier: identifiant for identifiant, contrat in contrats.items()}
+    if not fichiers:
+        if archive is None:
+            return list(contrats)
+        # bronze/<source>/<fichier>/<jour>/<archive> : le fichier est l'avant-avant-dernier dossier.
+        nom = archive.parent.parent.name
+        if nom not in par_fichier:
+            raise typer.BadParameter(
+                f"fichier non déduit de {archive} ; précise --fichier", param_hint="--archive"
+            )
+        return [par_fichier[nom]]
+    selection = []
+    for demande in fichiers:
+        identifiant = demande if demande in contrats else par_fichier.get(demande)
+        if identifiant is None:
+            connus = ", ".join(sorted(par_fichier))
+            raise typer.BadParameter(
+                f"{demande} inconnu ; fichiers : {connus}", param_hint="--fichier"
+            )
+        selection.append(identifiant)
+    if archive is not None and len(selection) != 1:
+        raise typer.BadParameter("--archive demande un seul --fichier", param_hint="--archive")
+    return selection
 
 
 @application.command()

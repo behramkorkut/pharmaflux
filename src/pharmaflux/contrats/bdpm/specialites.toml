@@ -126,3 +126,10 @@ description = "Surveillance renforcée (triangle noir)"
 [cle]
 colonnes = ["code_cis"]
 unique = true
+
+# Mesure inverse : les spécialités sans aucune présentation (1 261 le 24/10),
+# pas une référence.
+[[liens]]
+colonne = "code_cis"
+vers = "bdpm.presentations"
+colonne_cible = "code_cis"

@@ -17,7 +17,9 @@ lanceur = CliRunner()
 def test_aide_liste_les_commandes() -> None:
     resultat = lanceur.invoke(application, ["--help"])
     assert resultat.exit_code == 0
-    assert "collecte" in resultat.output and "etat" in resultat.output
+    assert (
+        "collecte" in resultat.output and "etat" in resultat.output and "profil" in resultat.output
+    )
 
 
 def test_sans_argument_affiche_l_aide() -> None:

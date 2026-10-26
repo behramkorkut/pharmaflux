@@ -97,3 +97,10 @@ colonne_cible = "code_cis"
 colonne = "code_cip13"
 vers = "bdpm.presentations"
 colonne_cible = "code_cip13"
+
+# Mesure du croisement avec les MITM (84 % des CIS en difficulté le 24/10),
+# pas une référence : le fichier MITM n'est pas un référentiel.
+[[liens]]
+colonne = "code_cis"
+vers = "bdpm.mitm"
+colonne_cible = "code_cis"

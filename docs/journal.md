@@ -207,3 +207,23 @@ dates hors plage, 5 lignes en doublon dans Dispo_Spec). Fixtures étendues
 de lignes réelles choisies, anomalies fabriquées à part dans
 `tests/fixtures/contrats/`. 190 tests. Rapport :
 `docs/rapports/mission-01/palier-2.md`.
+
+## 2026-10-26 — Mission 01 : palier 3 (profil, docs/donnees, ADR 0001 à 0004)
+
+Palier 2 accepté sans correctif ; l'IeC et le codeur se parlent désormais
+directement pour la routine (messages d'une ligne entre sessions), beko
+gardant push, PR, fusion, VPS et toute décision hors de l'ordre. Palier 3 :
+`pharmaflux profil` mesure n'importe quelle archive contre son contrat
+(conformité groupée par règle avec `valeur_inconnue` en tête, clé,
+colonnes, répartitions, bornes, ordre des dates, liens) et écrit un
+Markdown par source ; `docs/donnees/` contient les onze profils de
+l'archive du 24/10 (0 anomalie bloquante) et un README qui ouvre sur le
+constat que `CIS_bdpm.txt` n'est pas le référentiel de tous les CIS. ADR
+0001 (collecte horaire sur le VPS-1, consignée), 0002 (contrats TOML, neuf
+types, bornes hautes relevées par nouvelle version), 0003 (disponibilité,
+« proposé », revue au plus tard le 07/12/2026 avec critère de passage) et
+0004 (corpus HAS : pages d'avis d'abord, PDF en second). Les cinq requêtes
+HAS permises ont été faites : `robots.txt` n'interdit pas les pages
+d'avis, le document d'avis est servi derrière une redirection de mesure
+d'audience (non suivie), les mentions légales autorisent la réutilisation
+avec source et date. 198 tests.

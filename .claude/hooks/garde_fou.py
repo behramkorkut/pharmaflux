@@ -88,6 +88,9 @@ LECTURE = {
     "tr",
     "sort",
     "uniq",
+    "which",
+    "whereis",
+    "type",
 }
 # awk n'y est pas : print > fichier et system() en font un outil d'écriture.
 # Exécutions permises sous un chemin réservé : les tests des garde-fous.
@@ -102,7 +105,7 @@ SYSTEME = {"launchctl", "crontab", "brew", "sudo", "su", "chmod", "chown"}
 # compose ne vise que le projet pharmaflux et ne télécharge aucune image
 # (le premier pull est à beko).
 PROJET_COMPOSE = "pharmaflux"
-DOCKER_LECTURE = {"ps", "version", "info", "images"}
+DOCKER_LECTURE = {"ps", "version", "info", "images", "--version", "-v", "--help"}
 COMPOSE_SANS_PROJET = {"ls", "version"}
 COMPOSE_PERMIS = {
     "up",

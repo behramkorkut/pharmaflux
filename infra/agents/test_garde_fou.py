@@ -199,6 +199,32 @@ class GardeFou(unittest.TestCase):
             with self.subTest(commande=commande):
                 self.assertFalse(self.bash(self.codeur, commande))
 
+    def test_boucle_de_lecture_sur_les_reserves(self) -> None:
+        """Relecture 1 de la mission 01 : une boucle qui lit docs/relectures/ passe,
+        la même boucle qui écrit par sa variable reste refusée."""
+        permises = (
+            'for f in docs/relectures/mission-01/*.md; do cat "$f"; done',
+            'for f in CLAUDE.md docs/missions/m.md; do echo "== $f"; head -5 "${f}"; done',
+            "for n in 1 2; do echo $n; done",
+            "if test -f CLAUDE.md; then grep -n x CLAUDE.md; fi",
+        )
+        refusees = (
+            'for f in docs/relectures/*.md; do rm "$f"; done',
+            "for f in docs/relectures/*.md; do sed -i '' s/a/b/ \"${f}\"; done",
+            'for f in docs/relectures/*.md; do cat "$f" > "$f.bak"; done',
+            'for f in docs/missions/*.md; do cp x "$f"; done',
+            "for f in x; do echo y > docs/missions/m.md; done",
+            "for f in x; do git push; done",
+            "if true; then rm CLAUDE.md; fi",
+        )
+        for dossier in (self.codeur, self.relecteur):
+            for commande in permises:
+                with self.subTest(dossier=dossier.name, commande=commande):
+                    self.assertTrue(self.bash(dossier, commande))
+            for commande in refusees:
+                with self.subTest(dossier=dossier.name, commande=commande):
+                    self.assertFalse(self.bash(dossier, commande))
+
     def test_codeur_git_interdit(self) -> None:
         for commande in (
             "git push",

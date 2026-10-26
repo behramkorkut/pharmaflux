@@ -97,8 +97,10 @@ TESTS_GARDE_FOUS = (
 )
 # Commandes système interdites à tous les agents (beko installe).
 SYSTEME = {"launchctl", "crontab", "brew", "sudo", "su", "chmod", "chown"}
-# Préfixes neutres devant une commande.
+# Préfixes neutres devant une commande, et mots-clés du shell qui introduisent
+# la commande suivante (« do cat … » est jugé comme « cat … »).
 PREFIXES = {"command", "builtin", "exec", "nohup", "time", "noglob"}
+MOTS_CLES = {"do", "then", "else", "elif", "if", "while", "until", "!"}
 
 # Filet sur la commande brute : git appelé ailleurs qu'en tête de segment
 # (bash -c, xargs, eval…) pour une opération qui écrit.
@@ -263,7 +265,9 @@ def segments(commande: str) -> list[tuple[list[str], list[str]]]:
             jeton = jetons[i] if i < len(jetons) else ";"
             if jeton in SEPARATEURS:
                 while mots and (
-                    re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", mots[0]) or mots[0] in PREFIXES
+                    re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", mots[0])
+                    or mots[0] in PREFIXES
+                    or mots[0] in MOTS_CLES
                 ):
                     mots = mots[1:]
                 if mots or cibles:
@@ -349,6 +353,15 @@ def ecrit_par_option(mots: list[str]) -> bool:
 
 def verifier_bash(role: str, commande: str) -> None:
     nette = retirer_heredocs(commande)
+    # Variables d'une boucle « for » dont la liste nomme un chemin réservé :
+    # dans le corps, « $f » désigne ce chemin (lecture permise, écriture non).
+    variables_reservees: set[str] = set()
+
+    def designe_reserve(mot: str) -> bool:
+        return mentionne_reserve(mot) or any(
+            re.search(r"\$\{?" + re.escape(v) + r"\b", mot) for v in variables_reservees
+        )
+
     for mots, cibles in segments(nette):
         tete = Path(mots[0]).name
         # Filet : git caché derrière bash -c, xargs, eval…
@@ -380,16 +393,27 @@ def verifier_bash(role: str, commande: str) -> None:
             ):
                 continue
             raise Refus("gh est réservé à beko (PR, dépôt, CI).")
+        if (
+            tete == "for"
+            and len(mots) >= 3
+            and mots[2] == "in"
+            and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", mots[1])
+            and not cibles
+        ):
+            # La liste n'est pas exécutée : seul le corps de la boucle est jugé.
+            if any(mentionne_reserve(a) for a in mots[3:]):
+                variables_reservees.add(mots[1])
+            continue
         if role == "iec":
             continue
-        ecrit_reserve = any(mentionne_reserve(c) for c in cibles)
+        ecrit_reserve = any(designe_reserve(c) for c in cibles)
         if not ecrit_reserve and any(
             mots[: len(t)] == t and all(a.startswith("-") for a in mots[len(t) :])
             for t in TESTS_GARDE_FOUS
         ):
             continue
         # Codeur et relecteur : pas d'écriture shell vers un chemin réservé.
-        if not ecrit_reserve and not any(mentionne_reserve(a) for a in mots[1:]):
+        if not ecrit_reserve and not any(designe_reserve(a) for a in mots[1:]):
             continue
         lecture_pure = tete in LECTURE and not ecrit_reserve and not ecrit_par_option(mots)
         if not lecture_pure:

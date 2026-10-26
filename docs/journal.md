@@ -309,3 +309,11 @@ des tests de reprise passe à vingt-deux archives (deux pertes en attente
 qui se suivent, dans les deux sens ; une ligne en triple ramenée à une puis
 remontée à trois). Sur la copie du Mac, la sortie est identique à l'octet
 à celle du palier 3. 413 tests.
+
+**Relecture 2** (26/10) : **CONFORME**, 0 bloquant. Un point non bloquant,
+les trois fixtures ajoutées à la relecture 1 signalées dans
+`tests/fixtures/README.md`. Le relecteur signale deux refus du garde-fou
+(une sonde dans son dossier temporaire, un `cmp` sur `docs/relectures/`)
+et propose à l'IeC d'autoriser le dossier temporaire au relecteur.
+`docs/rapports/mission-02/pr.md` écrit. Fin de la mission 02 : 413 tests,
+21 commits depuis `main`.

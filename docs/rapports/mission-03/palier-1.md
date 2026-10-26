@@ -70,7 +70,7 @@ Le pic du rejeu complet est désormais la lecture de la troisième archive de
 découpage), plus la sérialisation des 32 439 `creee` des compositions. Les
 32 439 squelettes pèsent 11 Mo tracés (le §0 en estimait 6).
 
-**Vérifications locales** (arbre committé comme fils de `8c2017e`)
+**Vérifications locales** (arbre committé en `eb79940`, fils de `173e410`, la fusion de `main` avec l'addendum)
 
 | commande | résultat |
 |---|---|

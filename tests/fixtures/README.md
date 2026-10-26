@@ -95,6 +95,9 @@ Le cas bloquant réutilise `contrats/presentations_anomalies.txt`.
 | `presentations_perte.txt` | `presentations_a.txt`, lignes 1 à 8 | 9 lignes retirées (perte de 52,9 %) | en attente, puis confirmé ou écarté selon la suite |
 | `dispo_a.txt` | `CIS_CIP_Dispo_Spec.txt`, lignes 41 à 47 (46 et 47 identiques) | aucune | 7 `creee` initiales, la ligne en doublon aux rangs 1 et 2 |
 | `dispo_b.txt` | `dispo_a.txt` | ligne 47 (le doublon) retirée ; ligne 44 (CIS `66890524`) : date de début `01/07/2027` → `01/09/2027` | de A vers B : `supprimee` de rang 2 du doublon, `supprimee` puis `creee` de la ligne changée, pas de `modifiee` |
+| `dispo_triple.txt` | `dispo_a.txt` | ligne 47 (le doublon, CIS `67122698`) répétée une fois de plus : trois occurrences (8 lignes) | depuis `dispo_simple.txt` : `creee` de rangs 2 puis 3 de la même ligne (rang croissant) ; vers `dispo_b.txt` : `supprimee` de rangs 3 puis 2, plus le changement de date de B |
+| `dispo_simple.txt` | `dispo_a.txt` | ligne 47 (le doublon) retirée : une seule occurrence (6 lignes) | depuis `dispo_triple.txt` : `supprimee` de rangs 3 puis 2 (rang décroissant), un passage `inchange` la confirme ensuite |
+| `presentations_perte_forte.txt` | `presentations_perte.txt`, lignes 1 à 4 | 4 lignes retirées sur 8 | après `presentations_a.txt` : perte de 76,5 %, en attente, écartée dès que `presentations_perte.txt` revient ; après `presentations_perte.txt` : perte de 50 %, en attente, et confirme la perte précédente (deux attentes qui se suivent, dans les deux sens) |
 
 ## `evaluation/` — jeu de questions d'essai
 

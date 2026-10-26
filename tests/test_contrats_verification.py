@@ -1,4 +1,8 @@
-"""Mission 01, décision 3 : une archive contre son contrat, des anomalies, jamais une correction."""
+"""Mission 01, décision 3 : une archive contre son contrat, des anomalies, jamais une correction.
+
+Mission 02, palier 1 : la virgule des milliers déclarée (v1), ``fichier_vide``,
+le compte des lignes touchées par un octet illisible.
+"""
 
 import re
 from datetime import date
@@ -17,10 +21,7 @@ CODE_CIS = re.compile(r"\d{8}")
 # voir tests/fixtures/README.md) : règle → nombre. Rien d'autre que ces règles.
 ATTENDUES_SUR_FIXTURES_REELLES: dict[str, dict[Regle, int]] = {
     "bdpm.specialites": {Regle.ESPACE_PARASITE: 45 + 6},  # titulaires sur chaque ligne, six formes
-    "bdpm.presentations": {
-        Regle.DECIMAL_ILLISIBLE: 4,
-        Regle.DATE_HORS_PLAGE: 2,
-    },  # deux prix, deux dates
+    "bdpm.presentations": {Regle.DATE_HORS_PLAGE: 2},  # deux dates ; les prix se lisent (v1)
     "bdpm.compositions": {},
     "bdpm.smr": {},
     "bdpm.asmr": {},
@@ -51,21 +52,18 @@ def test_chaque_fixture_reelle_passe_son_contrat_sans_anomalie_bloquante(identif
 
 
 def test_les_anomalies_connues_sont_signalees_pas_corrigees() -> None:
-    """Option (a) de l'addendum 1 : la valeur brute est rendue telle quelle."""
-    lecture = verifier(
-        charger_identifiant("bdpm.presentations"), contenu_fixture_par_nom("CIS_CIP_bdpm.txt")
-    )
+    """Option (a) de l'addendum 1 : la valeur brute est rendue telle quelle.
+
+    Depuis la v1 de ``presentations.toml`` (mission 02), « 1,466,29 » se lit : la
+    virgule des milliers est déclarée, plus d'anomalie, et la brute reste brute.
+    """
+    contrat = charger_identifiant("bdpm.presentations")
+    lecture = verifier(contrat, contenu_fixture_par_nom("CIS_CIP_bdpm.txt"))
     par_regle = lecture.par_regle()
-    assert {a.valeur for a in par_regle[Regle.DECIMAL_ILLISIBLE]} == {
-        "1,466,29",
-        "1,469,05",
-        "7,518,58",
-        "7,519,60",
-    }, "la virgule des milliers est rendue telle quelle"
-    assert {a.colonne for a in par_regle[Regle.DECIMAL_ILLISIBLE]} == {
-        "prix_medicament",
-        "prix_public",
-    }
+    assert Regle.DECIMAL_ILLISIBLE not in par_regle, "la virgule des milliers est déclarée (v1)"
+    i, j = contrat.index("prix_medicament"), contrat.index("prix_public")
+    prix = {(valeurs[i], valeurs[j]) for _, valeurs in lecture.lignes}
+    assert {("1,466,29", "1,469,05"), ("7,518,58", "7,519,60")} <= prix, "rendus tels quels"
     assert sorted(a.valeur[-4:] for a in par_regle[Regle.DATE_HORS_PLAGE]) == ["1949", "2924"]
     doublon = verifier(
         charger_identifiant("bdpm.disponibilite"), contenu_fixture_par_nom("CIS_CIP_Dispo_Spec.txt")
@@ -155,7 +153,7 @@ def test_fixture_fabriquee_presentations() -> None:
         (3, "date_declaration_commercialisation", Regle.DATE_HORS_PLAGE),
     }
     (encodage,) = [a for a in lecture.anomalies if a.regle is Regle.ENCODAGE]
-    assert encodage.valeur == "octets e9 illisibles en utf-8"
+    assert encodage.valeur == "octets e9 illisibles en utf-8 (1 ligne touchée)"
     (fin,) = [a for a in lecture.anomalies if a.regle is Regle.FIN_DE_LIGNE]
     assert fin.valeur == "CRLF au lieu de LF"
     assert len(lecture.lignes) == 3, "la ligne à l'octet illisible est lue avec substitution"
@@ -209,8 +207,37 @@ def test_nom_de_fichier_et_valeur_tronquee() -> None:
     (anomalie,) = lecture.anomalies
     assert anomalie.fichier.startswith("bronze/") and anomalie.regle is Regle.NOMBRE_COLONNES
     assert len(anomalie.valeur) == 80 and anomalie.valeur.endswith("…")
+
+
+def test_fichier_vide_signale_non_bloquant() -> None:
+    """Un fichier sans aucune ligne respecte la forme ; ``fichier_vide`` le dit, sans bloquer."""
+    contrat = charger_identifiant("bdpm.presentations")
     vide = verifier(contrat, b"")
-    assert vide.anomalies == [] and vide.nombre_lignes == 0 and vide.lignes == []
+    (anomalie,) = vide.anomalies
+    assert anomalie.regle is Regle.FICHIER_VIDE and anomalie.ligne == FICHIER_ENTIER
+    assert anomalie.valeur == "0 octet(s), aucune ligne non vide" and not anomalie.bloquante
+    assert vide.nombre_lignes == 0 and vide.lignes == [] and vide.bloquantes == []
+    blancs = verifier(charger_identifiant("bdpm.conditions_prescription"), b"\r\n \r\n")
+    regles = [a.regle for a in blancs.anomalies]
+    assert regles == [Regle.FICHIER_VIDE, Regle.LIGNE_VIDE, Regle.LIGNE_VIDE]
+    assert blancs.anomalies[0].valeur == "5 octet(s), aucune ligne non vide"
+    une_ligne = verifier(
+        contrat, contenu_fixture_par_nom("CIS_CIP_bdpm.txt").split(b"\n")[0] + b"\n"
+    )
+    assert Regle.FICHIER_VIDE not in une_ligne.par_regle()
+
+
+def test_decodage_compte_les_lignes_touchees() -> None:
+    contrat = charger_identifiant("bdpm.presentations")  # utf-8
+    ligne = contenu_fixture_par_nom("CIS_CIP_bdpm.txt").split(b"\n")[0]
+    octets = b"\n".join([ligne, ligne + b"\xe9", ligne, ligne + b"\xe9\xe9", b""])
+    lecture = verifier(contrat, octets)
+    (encodage,) = [a for a in lecture.anomalies if a.regle is Regle.ENCODAGE]
+    assert (
+        encodage.ligne == 2
+        and encodage.valeur == "octets e9 illisibles en utf-8 (2 lignes touchées)"
+    )
+    assert len(lecture.lignes) == 4, "la lecture continue avec substitution"
 
 
 def _type(nom: TypeNom, **parametres: object) -> TypeValeur:
@@ -234,6 +261,23 @@ ENUM_TAUX = _type(TypeNom.ENUMERATION, valeurs=("65%", "65 %", "100%"))
         (_type(TypeNom.ENTIER), "٤٢", Regle.ENTIER_ILLISIBLE),
         (_type(TypeNom.DECIMAL), "24,34", None),
         (_type(TypeNom.DECIMAL), "1,003,48", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL, milliers=","), "1,003,48", None),
+        (_type(TypeNom.DECIMAL, milliers=","), "66,596,25", None),
+        (_type(TypeNom.DECIMAL, milliers=","), "1,003,480,12", None),
+        (_type(TypeNom.DECIMAL, milliers=","), "1003,48", None),
+        (_type(TypeNom.DECIMAL, milliers=","), "-1,003,48", None),
+        (_type(TypeNom.DECIMAL, milliers=","), "1,03,48", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL, milliers=","), "1003,48,12", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL, milliers=","), ",003,48", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL, milliers=","), "1,003,4", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL, milliers=","), "1,003,", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL, milliers=","), "1,003", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL, milliers=","), "٤,٢٠٠,48", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL, milliers=","), "1,٠٠٣,48", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL, milliers=","), "1,003,4٨", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL, milliers=" "), "1 003,48", None),
+        (_type(TypeNom.DECIMAL, milliers=" "), "1,003,48", Regle.DECIMAL_ILLISIBLE),
+        (_type(TypeNom.DECIMAL), "24,-3", Regle.DECIMAL_ILLISIBLE),
         (_type(TypeNom.DECIMAL), "24.34", Regle.DECIMAL_ILLISIBLE),
         (_type(TypeNom.DECIMAL), "24,3", Regle.DECIMAL_ILLISIBLE),
         (_type(TypeNom.DECIMAL), "1,²³", Regle.DECIMAL_ILLISIBLE),

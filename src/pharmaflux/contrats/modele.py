@@ -1,11 +1,17 @@
-"""Contrats de schéma v0 : ce qu'un fichier source doit être, et ce que l'on constate.
+"""Contrats de schéma : ce qu'un fichier source doit être, et ce que l'on constate.
 
 Un contrat décrit un fichier TSV de la BDPM tel qu'il est reçu : encodage,
 fin de ligne, colonnes typées dans l'ordre, clé, liens vers d'autres
 fichiers. La vérification (``verification``) compare une archive à son
 contrat et rend des anomalies ; elle ne corrige rien et ne convertit rien
-(PRD §6.2 : on constate). Les contrats sont des fichiers TOML dans ``bdpm/``,
-lus par ``chargeur``, qui garantit la cohérence décrite ici.
+(PRD §6.2 : on constate). La forme canonique d'une valeur conforme est
+donnée par ``normalisation``, à partir du type et de ses paramètres. Les
+contrats sont des fichiers TOML dans ``bdpm/``, lus par ``chargeur``, qui
+garantit la cohérence décrite ici.
+
+Deux versions coexistent : ``v0`` (mission 01, figée sur l'archive du
+24/10/2026) et ``v1`` (mission 02, ADR 0005), qui ajoute deux paramètres de
+type : ``milliers`` sur un décimal et ``canonique`` sur une énumération.
 """
 
 from __future__ import annotations
@@ -15,7 +21,10 @@ from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
 
-VERSION_CONTRAT = "v0"
+# Les versions de contrat que le chargeur admet ; les paramètres de la v1 sont
+# refusés dans un contrat v0, pour que la v0 reste ce qu'elle était.
+VERSIONS_CONTRAT = ("v0", "v1")
+PARAMETRES_V1 = frozenset({"milliers", "canonique"})
 
 # Longueur maximale d'une valeur brute reproduite dans une anomalie.
 LONGUEUR_VALEUR = 80
@@ -67,6 +76,7 @@ class Regle(StrEnum):
     CODE_ILLISIBLE = "code_illisible"
     URL_ILLISIBLE = "url_illisible"
     HOTE_INCONNU = "hote_inconnu"
+    FICHIER_VIDE = "fichier_vide"  # aucune ligne non vide (mission 02, addendum 1)
 
 
 # Bloquantes : le fichier ne se lit pas comme le contrat l'attend (addendum 1 :
@@ -113,12 +123,14 @@ class TypeValeur:
     nom: TypeNom
     longueur_max: int | None = None  # texte
     decimales: int = 2  # decimal : chiffres après la virgule
+    milliers: str | None = None  # decimal (v1) : séparateur des milliers admis (``1,003,48``)
     format: str | None = None  # date : une clé de FORMATS_DATE
     plage_min: date | None = None  # date
     plage_max: date | None = None  # date
     vrai: str | None = None  # booleen
     faux: str | None = None  # booleen
     valeurs: tuple[str, ...] = ()  # enumeration : liste fermée, telle qu'écrite dans le fichier
+    canonique: tuple[tuple[str, str], ...] = ()  # enumeration (v1) : graphie → graphie canonique
     motif: re.Pattern[str] | None = None  # code : doit couvrir toute la valeur
     hotes: tuple[str, ...] = ()  # url : hôtes admis ; vide = tous
     de: TypeValeur | None = None  # liste : type des éléments

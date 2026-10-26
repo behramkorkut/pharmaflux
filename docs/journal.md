@@ -261,3 +261,59 @@ bloquantes importe ce qu'il teste. Remarques : aide de `--questions`
 ligne vide, voulu), §0 (le script jetable cité est remplacé par
 `pharmaflux profil`). `docs/donnees/` régénéré identique ; 237 tests.
 Réponse : `docs/rapports/mission-01/reponse-relecture-1.md`.
+
+## 2026-10-26 — Mission 02 : normalisation et événements (paliers 1 à 3)
+
+Branche `mission-02-normalisation-et-evenements`. §0 répondu sur mesures
+(archive du Mac en lecture seule, aucune requête réseau), tranché par
+l'addendum 1. **Palier 1** : `contrats/normalisation.py` (forme canonique par
+type, en chaînes ; lisibilité → brute, forme ou vraisemblance → canonique),
+`presentations.toml` v1 (`milliers = ","` sur les prix, lecture vérifiée par
+prix public = prix + honoraires sur 13 620 lignes sur 13 623 ; `canonique`
+des taux), chargeur v0/v1, `fichier_vide` non bloquante, compte des lignes
+touchées par un octet illisible, `evenements/snapshot.py` (lignes figées
+partageant les tuples de la lecture, à clé ou multiensemble, bilan, écarté
+avec motif), ADR 0005 ; `decimal_illisible` 995 → 0 sur `CIS_CIP_bdpm.txt`,
+seule différence de non-régression. Contrôle : signe de `-0,50`, chiffres
+ASCII des milliers, clé normalisée ambiguë → écarté. **Palier 2** :
+`schema.py` (événement v1 tout en chaînes, identifiant sha256 sur les chemins
+relatifs des deux archives, JSON stable relu), `comparaison.py` (à clé et
+ligne à ligne avec rangs, tri déterministe, `appliquer`), `volume.py`
+(seuil 1 %, vide et bloquant écartés sans appel, attente confirmée par un
+passage inchangé ou l'archive suivante), `bilan.py`, six archives
+fabriquées. Contrôle : rien ne dépend de l'ordre d'un objet JSON (ordre
+alphabétique des colonnes), `deserialiser` strict. **Palier 3** :
+`rejeu.py` et `pharmaflux evenements [--fichier] [--racine] [--sortie]
+[--reprendre]`, sortie par archive écrite atomiquement (événements, bilan,
+état), reprise depuis les archives (snapshots jamais sérialisés), bilan
+d'une archive en attente réécrit quand elle est tranchée, `--reprendre`
+refusé après un changement de version de contrat ; tests : deux rejeux
+identiques à l'octet, reprise après chacun des treize points d'arrêt,
+`etat.json` supprimé, aucun identifiant en double, `appliquer` sur la sortie
+relue du disque. Démonstration sur la copie du Mac : 164 096 `creee`
+initiales (172 Mo), 3 `supprimee` réelles de `CIS_CIP_bdpm.txt` (arrêts de
+commercialisation), le vide du 26/10 à 14:17 écarté et le 15:17 identique
+au 24/10 (zéro événement), 995 prix lus grâce à `milliers`, 7,9 s, 474 Mo
+de mémoire résidente ; `--reprendre` ensuite : 0 archive, 2,9 s. ADR 0006,
+`CONTEXTE.md`, `README.md`. 399 tests.
+
+**Relecture 1** (26/10) : deux bloquants corrigés. La dernière archive
+traitée de l'état suit désormais chaque verdict définitif, et non le seul
+dernier résultat : une archive en attente tranchée par une archive
+elle-même en attente ne reste plus en arrière, ce qui faisait relire et
+effacer ses événements à `--reprendre`. Les `supprimee` d'une même ligne
+sortent du rang le plus haut au plus bas, pour qu'un consommateur qui suit
+le flux, comme `appliquer`, voie un compte toujours juste quand une ligne
+perd plusieurs occurrences. `deserialiser` exige de vraies listes. La suite
+des tests de reprise passe à vingt-deux archives (deux pertes en attente
+qui se suivent, dans les deux sens ; une ligne en triple ramenée à une puis
+remontée à trois). Sur la copie du Mac, la sortie est identique à l'octet
+à celle du palier 3. 413 tests.
+
+**Relecture 2** (26/10) : **CONFORME**, 0 bloquant. Un point non bloquant,
+les trois fixtures ajoutées à la relecture 1 signalées dans
+`tests/fixtures/README.md`. Le relecteur signale deux refus du garde-fou
+(une sonde dans son dossier temporaire, un `cmp` sur `docs/relectures/`)
+et propose à l'IeC d'autoriser le dossier temporaire au relecteur.
+`docs/rapports/mission-02/pr.md` écrit. Fin de la mission 02 : 413 tests,
+21 commits depuis `main`.

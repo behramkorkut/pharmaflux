@@ -1,7 +1,7 @@
 # ADR-0002 — Contrats de schéma en TOML, neuf types, anomalies constatées jamais corrigées
 
 **Statut :** accepté · **Date :** 2026-10-26 · **Mission :** 01
-**Remplace / remplacé par :** —
+**Remplace / remplacé par :** — · complété par l'ADR 0005 (`canonique`, `milliers`)
 
 ## Contexte
 

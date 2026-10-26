@@ -1,4 +1,7 @@
-"""Mission 01, décision 2 : les onze contrats du paquet et le refus des contrats mal formés."""
+"""Mission 01, décision 2 : les onze contrats du paquet et le refus des contrats mal formés.
+
+Mission 02, palier 1 : la v1 (``milliers``, ``canonique``), refusée dans un contrat v0.
+"""
 
 from pathlib import Path
 
@@ -64,6 +67,13 @@ colonne_cible = "code"
 """
 
 
+CONTRAT_V1 = CONTRAT_MINIMAL.replace('version = "v0"', 'version = "v1"', 1)
+ENUMERATION = 'valeurs = ["a", "b"]'
+CANONIQUE = 'valeurs = ["a", "b"]\ncanonique = { "b" = "a" }'
+DECIMAL = 'type = "decimal"\ndecimales = 2'
+MILLIERS = 'type = "decimal"\ndecimales = 2\nmilliers = ","'
+
+
 def _charger(texte: str):  # type: ignore[no-untyped-def]
     return charger_octets(texte.encode("utf-8"), "essai.toml")
 
@@ -75,7 +85,8 @@ def test_les_onze_contrats_du_paquet_se_chargent_et_suivent_le_catalogue() -> No
     assert len(attendus) == 11
     assert {identifiant: c.fichier for identifiant, c in contrats.items()} == attendus
     for identifiant, contrat in contrats.items():
-        assert contrat.version == "v0" and contrat.identifiant == identifiant
+        attendue = "v1" if identifiant == "bdpm.presentations" else "v0"
+        assert contrat.version == attendue and contrat.identifiant == identifiant
         assert charger_identifiant(identifiant) == contrat
         assert contrat.source.documentation.endswith("_v5.pdf")
         assert contrat.source.archive_reference.startswith(
@@ -99,6 +110,22 @@ def test_les_contrats_disent_ce_que_l_archive_du_24_10_a_montre() -> None:
     taux = contrats["bdpm.presentations"].colonnes[8]
     assert taux.nom == "taux_remboursement" and taux.type.nom is TypeNom.LISTE
     assert taux.type.de is not None and "65 %" in taux.type.de.valeurs
+    assert dict(taux.type.de.canonique) == {
+        "65 %": "65%",
+        "100 %": "100%",
+        "30 %": "30%",
+        "15 %": "15%",
+    }
+    prix = [c for c in contrats["bdpm.presentations"].colonnes if c.type.nom is TypeNom.DECIMAL]
+    assert [c.nom for c in prix] == ["prix_medicament", "prix_public", "honoraires_dispensation"]
+    assert all(c.type.milliers == "," for c in prix), "v1 : la virgule des milliers est déclarée"
+    autres = [
+        c.type
+        for i, contrat in contrats.items()
+        if i != "bdpm.presentations"
+        for c in contrat.colonnes
+    ]
+    assert all(t.milliers is None and t.canonique == () for t in autres), "les v0 sont intactes"
     formats = {
         c.type.format for contrat in contrats.values() for c in contrat.colonnes if c.type.format
     }
@@ -128,7 +155,7 @@ def test_contrat_minimal_valide() -> None:
 @pytest.mark.parametrize(
     ("ancien", "nouveau", "message"),
     [
-        ('version = "v0"', 'version = "v1"', "version « v1 »"),
+        ('version = "v0"', 'version = "v2"', "version « v2 » ; attendu « v0 », « v1 »"),
         (
             'description = "Contrat d\'essai"',
             'description = "Contrat d\'essai"\ncouleur = "bleu"',
@@ -195,6 +222,78 @@ def test_contrat_mal_forme_refuse(ancien: str, nouveau: str, message: str) -> No
     texte = CONTRAT_MINIMAL.replace(ancien, nouveau, 1)
     with pytest.raises(ContratInvalide, match=message.replace("(", r"\(").replace(")", r"\)")):
         _charger(texte)
+
+
+@pytest.mark.parametrize(
+    ("ancien", "nouveau", "message"),
+    [
+        (ENUMERATION, CANONIQUE, r"paramètre\(s\) de la v1 dans un contrat v0"),
+        (DECIMAL, MILLIERS, r"paramètre\(s\) de la v1 dans un contrat v0"),
+    ],
+)
+def test_parametres_de_la_v1_refuses_en_v0(ancien: str, nouveau: str, message: str) -> None:
+    """La v0 reste ce qu'elle était : ``canonique`` et ``milliers`` y sont refusés."""
+    texte = CONTRAT_MINIMAL.replace("type = \"code\"\nmotif = '\\d{3}'", DECIMAL, 1)
+    assert ancien in texte
+    with pytest.raises(ContratInvalide, match=message):
+        _charger(texte.replace(ancien, nouveau, 1))
+    assert _charger(
+        texte.replace('version = "v0"', 'version = "v1"', 1).replace(ancien, nouveau, 1)
+    )
+
+
+def test_contrat_v1_canonique_et_milliers() -> None:
+    texte = CONTRAT_V1.replace("type = \"code\"\nmotif = '\\d{3}'", MILLIERS, 1)
+    texte = texte.replace(ENUMERATION, CANONIQUE, 1)
+    contrat = _charger(texte)
+    assert contrat.version == "v1"
+    assert contrat.colonnes[0].type.milliers == "," and contrat.colonnes[0].type.decimales == 2
+    assert contrat.colonnes[1].type.canonique == (("b", "a"),)
+    sans = _charger(CONTRAT_V1)
+    assert sans.colonnes[1].type.canonique == (), "la table est facultative"
+
+
+@pytest.mark.parametrize(
+    ("ancien", "nouveau", "message"),
+    [
+        (
+            ENUMERATION,
+            'valeurs = ["a", "b"]\ncanonique = { "c" = "a" }',
+            "doivent être dans « valeurs »",
+        ),
+        (
+            ENUMERATION,
+            'valeurs = ["a", "b"]\ncanonique = { "b" = "c" }',
+            "doivent être dans « valeurs »",
+        ),
+        (ENUMERATION, 'valeurs = ["a", "b"]\ncanonique = { "a" = "a" }', "renvoie à elle-même"),
+        (
+            ENUMERATION,
+            'valeurs = ["a", "b", "c"]\ncanonique = { "a" = "b", "b" = "c" }',
+            "à la fois graphie et forme canonique",
+        ),
+        (ENUMERATION, 'valeurs = ["a", "b"]\ncanonique = { }', "table vide"),
+        (ENUMERATION, 'valeurs = ["a", "b"]\ncanonique = { "b" = 1 }', "doit être une chaîne"),
+        (ENUMERATION, 'valeurs = ["a", "b"]\ncanonique = "b"', "une table est attendue"),
+        (DECIMAL, 'type = "decimal"\nmilliers = ",,"', "un seul caractère"),
+        (DECIMAL, 'type = "decimal"\nmilliers = "1"', "un seul caractère"),
+        (DECIMAL, 'type = "decimal"\nmilliers = "-"', "un seul caractère"),
+        (DECIMAL, 'type = "decimal"\nmilliers = "."', "un seul caractère"),
+        ("type = \"code\"\nmotif = '\\d{3}'", 'type = "texte"\nmilliers = ","', "sans objet"),
+        (
+            "type = \"code\"\nmotif = '\\d{3}'",
+            'type = "texte"\ncanonique = { "a" = "b" }',
+            "sans objet",
+        ),
+    ],
+)
+def test_canonique_et_milliers_mal_formes_refuses(ancien: str, nouveau: str, message: str) -> None:
+    texte = CONTRAT_V1.replace("type = \"code\"\nmotif = '\\d{3}'", DECIMAL, 1)
+    if ancien not in texte:
+        texte = CONTRAT_V1
+    assert ancien in texte, "le cas de test ne porte sur rien"
+    with pytest.raises(ContratInvalide, match=message):
+        _charger(texte.replace(ancien, nouveau, 1))
 
 
 def test_liste_de_listes_et_liste_sans_separateur_refusees() -> None:

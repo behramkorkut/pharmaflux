@@ -4,6 +4,7 @@
 consigner). ``etat`` : ce que contient l'archive, d'après le manifeste.
 ``profil`` : une archive contre son contrat de schéma, anomalies et mesures.
 ``questions verifier`` : le jeu de questions de référence rejoué sur l'archive.
+``evenements`` : du bronze aux événements, rejeu complet ou reprise.
 """
 
 from __future__ import annotations
@@ -32,9 +33,11 @@ from pharmaflux.contrats.profil import ArchiveIntrouvable, profiler_racine
 from pharmaflux.contrats.rendu import rendre_markdown, resume
 from pharmaflux.evaluation import questions as jeu_questions
 from pharmaflux.evaluation.verification import formater_bilan, verifier_jeu
+from pharmaflux.evenements import rejeu
 
 VARIABLE_RACINE = "PHARMAFLUX_DATA"
 QUESTIONS_PAR_DEFAUT = Path("evaluation/questions-reference-v0.toml")
+SORTIE_PAR_DEFAUT = Path("data/evenements")  # ignoré par git ; jamais sous la racine de l'archive
 RACINE_PAR_DEFAUT = Path.home() / "pharmaflux-data"
 
 # Remplacé par les tests pour simuler le serveur ; None = vrai réseau.
@@ -228,6 +231,74 @@ def _selection_contrats(
     if archive is not None and len(selection) != 1:
         raise typer.BadParameter("--archive demande un seul --fichier", param_hint="--archive")
     return selection
+
+
+@application.command()
+def evenements(
+    fichier: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--fichier",
+            help="Identifiant (bdpm.presentations) ou nom de fichier (CIS_CIP_bdpm.txt), répétable."
+            " Les onze fichiers TSV par défaut.",
+        ),
+    ] = None,
+    racine: OptionRacine = None,
+    sortie: Annotated[
+        Path,
+        typer.Option(
+            "--sortie",
+            help="Dossier de sortie : evenements/<entite>/*.jsonl, bilans/<entite>/*.json,"
+            " etat.json. Relatif au dossier courant.",
+            show_default=True,
+        ),
+    ] = SORTIE_PAR_DEFAUT,
+    reprendre: Annotated[
+        bool,
+        typer.Option(
+            "--reprendre",
+            help="Ne traite que les archives postérieures à la dernière traitée (etat.json) ;"
+            " refusé si une version de contrat a changé.",
+        ),
+    ] = False,
+) -> None:
+    """Du bronze aux événements : chaque archive comparée à la dernière retenue.
+
+    Sans --reprendre, rejeu complet depuis la première archive de chaque
+    fichier (la sortie du fichier est recalculée). Code de sortie 1 si une
+    archive est illisible, 2 si la reprise est impossible ; un snapshot écarté
+    est un constat, pas une panne.
+    """
+    chemin = _racine(racine)
+    contrats = charger_tous()
+    selection = _selection_contrats(fichier, None, contrats)
+    if sortie.resolve().is_relative_to(chemin.resolve()):
+        raise typer.BadParameter(
+            f"{sortie} est sous la racine de l'archive {chemin}, qui ne s'écrit pas",
+            param_hint="--sortie",
+        )
+    try:
+        rapport = rejeu.executer(
+            chemin, sortie, contrats, selection, reprendre=reprendre, journal=_journal_evenements
+        )
+    except rejeu.ReprendreImpossible as exc:
+        titre = "reprise impossible" if reprendre else "rejeu impossible"
+        typer.echo(f"{titre} : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for bilan_ in rapport.resumes:
+        types = ", ".join(f"{t} {n}" for t, n in sorted(bilan_.evenements.items())) or "aucun"
+        typer.echo(
+            f"{bilan_.identifiant:28} {bilan_.archives_lues} archive(s) lue(s),"
+            f" {bilan_.retenues} retenue(s), {bilan_.ecartees} écartée(s),"
+            f" {bilan_.en_attente} en attente ; événements : {types}"
+            + (f" ; ERREUR {bilan_.erreur}" if bilan_.erreur else "")
+        )
+    typer.echo(f"sortie : {sortie}")
+    raise typer.Exit(code=rapport.code_sortie)
+
+
+def _journal_evenements(message: str) -> None:
+    logging.getLogger("pharmaflux.evenements").info(message)
 
 
 questions = typer.Typer(

@@ -37,7 +37,7 @@ réponse (`evaluation/`, mission 01 palier 4).
 | fichier | lignes | clé | unique | encodage, fin de ligne | anomalies non bloquantes le 24/10 |
 |---|---|---|---|---|---|
 | `CIS_bdpm.txt` | 15 883 | CIS | oui | cp1252, CRLF | 17 016 `espace_parasite` (titulaire précédé d'une espace sur **toutes** les lignes, 1 133 formes), 1 `code_illisible` (`EU/1/17/1235/`) |
-| `CIS_CIP_bdpm.txt` | 20 896 | CIP13 | oui | **UTF-8, LF** | 995 `decimal_illisible` (prix ≥ 1 000 € écrits `1,466,29`), 52 `date_hors_plage` (51 déclarations de 1910 à 1949, une au `29/11/2924`), 3 espaces |
+| `CIS_CIP_bdpm.txt` | 20 896 | CIP13 | oui | **UTF-8, LF** | 52 `date_hors_plage` (51 déclarations de 1910 à 1949, une au `29/11/2924`), 3 espaces ; les 995 prix ≥ 1 000 € écrits `1,466,29` étaient `decimal_illisible` avec le contrat v0, ils se lisent depuis la v1 (`milliers`, ADR 0005) |
 | `CIS_COMPO_bdpm.txt` | 32 439 | CIS + élément + substance + nature + n° de liaison | oui | cp1252, CRLF | 1 309 `espace_parasite` (espace de fin après la substance) |
 | `CIS_HAS_SMR_bdpm.txt` | 15 547 | CIS + dossier HAS | **non** | cp1252, CRLF | aucune |
 | `CIS_HAS_ASMR_bdpm.txt` | 10 117 | CIS + dossier HAS | **non** | cp1252, CRLF | aucune |
@@ -71,6 +71,10 @@ pourquoi les contrats ne portent pas de tolérance.
    milliers) ; les honoraires, jamais. Les taux de remboursement ont neuf
    graphies (`65%` 9 084 fois, `65 %` 1 769, `100%`, `100 %`, `30%`,
    `30 %`, `15%`, `15 %`, `35%`), énumérées telles quelles dans le contrat.
+   Depuis la v1 du contrat (mission 02, ADR 0005), la virgule des milliers
+   est déclarée (`milliers = ","`, lecture vérifiée par prix public = prix
+   + honoraires) et les graphies avec espace ont une forme canonique
+   (`canonique`) : la normalisation les lit, le profil ne les signale plus.
 3. **Des dates fausses, à ne pas corriger.** 51 dates de déclaration de
    commercialisation entre 1910 et 1949 (presque toutes un 19 janvier) et
    une au `29/11/2924`. Le contrat les signale `date_hors_plage` ; le jeu de

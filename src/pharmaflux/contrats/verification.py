@@ -1,17 +1,20 @@
 """Vérification d'une archive contre son contrat : des anomalies, jamais une correction.
 
 Dans l'ordre : décodage strict dans l'encodage déclaré, fin de ligne, retour
-final, lignes vides, nombre de colonnes, type de chaque valeur, valeurs
-obligatoires, unicité de la clé déclarée unique, lignes entières en doublon.
-Une anomalie n'arrête pas la lecture du reste du fichier : les lignes bien
-formées sont rendues telles quelles (chaînes), avec la liste des anomalies.
+final, lignes vides, nombre de colonnes, fichier sans aucune ligne, type de
+chaque valeur, valeurs obligatoires, unicité de la clé déclarée unique,
+lignes entières en doublon. Une anomalie n'arrête pas la lecture du reste du
+fichier : les lignes bien formées sont rendues telles quelles (chaînes), avec
+la liste des anomalies.
 """
 
 from __future__ import annotations
 
 import codecs
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import cache
 from urllib.parse import urlsplit
 
 from pharmaflux.contrats.modele import (
@@ -62,6 +65,11 @@ def verifier(contrat: Contrat, octets: bytes, *, fichier: str | None = None) -> 
     lecture = Lecture(contrat, fichier or contrat.fichier)
     texte = _decoder(lecture, octets)
     _decouper(lecture, texte)
+    if lecture.nombre_lignes == 0:
+        # Non bloquant : le contrat décrit la forme, un fichier vide la respecte ; c'est au
+        # garde-fou de volume (mission 02) de décider d'écarter un snapshot vide.
+        constat = f"{len(octets)} octet(s), aucune ligne non vide"
+        _signaler(lecture, FICHIER_ENTIER, None, Regle.FICHIER_VIDE, constat)
     _verifier_valeurs(lecture)
     _verifier_cle(lecture)
     _verifier_doublons(lecture)
@@ -76,11 +84,13 @@ def _signaler(lecture: Lecture, ligne: int, colonne: str | None, regle: Regle, v
 def _decoder(lecture: Lecture, octets: bytes) -> str:
     """Décode strictement ; une erreur est signalée et la lecture continue avec substitution.
 
-    Deux signes d'un changement d'encodage sont aussi signalés : une marque
-    d'ordre des octets (BOM) UTF-8 en tête, et, pour un contrat en encodage à
-    un octet (cp1252), un fichier non ASCII qui se décode entièrement en UTF-8,
-    ce que du texte cp1252 réel ne fait pratiquement jamais (``é`` vaut un seul
-    octet 0xE9, invalide en UTF-8), alors que l'inverse passerait inaperçu.
+    L'anomalie porte la première séquence fautive et le nombre de lignes où la
+    substitution (U+FFFD) a eu lieu. Deux signes d'un changement d'encodage
+    sont aussi signalés : une marque d'ordre des octets (BOM) UTF-8 en tête,
+    et, pour un contrat en encodage à un octet (cp1252), un fichier non ASCII
+    qui se décode entièrement en UTF-8, ce que du texte cp1252 réel ne fait
+    pratiquement jamais (``é`` vaut un seul octet 0xE9, invalide en UTF-8),
+    alors que l'inverse passerait inaperçu.
     """
     encodage = lecture.contrat.format.encodage
     if octets.startswith(codecs.BOM_UTF8):
@@ -91,10 +101,18 @@ def _decoder(lecture: Lecture, octets: bytes) -> str:
     except UnicodeDecodeError as exc:
         ligne = octets.count(b"\n", 0, exc.start) + 1
         fautifs = octets[exc.start : exc.end].hex(" ")
+        texte = octets.decode(encodage, errors="replace")
+        touchees = sum(1 for morceau in texte.split("\n") if "\ufffd" in morceau)
+        pluriel = "s" if touchees > 1 else ""
         _signaler(
-            lecture, ligne, None, Regle.ENCODAGE, f"octets {fautifs} illisibles en {encodage}"
+            lecture,
+            ligne,
+            None,
+            Regle.ENCODAGE,
+            f"octets {fautifs} illisibles en {encodage}"
+            f" ({touchees} ligne{pluriel} touchée{pluriel})",
         )
-        return octets.decode(encodage, errors="replace")
+        return texte
     if _codec_un_octet(encodage) and not octets.isascii() and _se_decode_en_utf8(octets):
         _signaler(
             lecture,
@@ -185,16 +203,7 @@ def verifier_valeur(type_: TypeValeur, valeur: str) -> Regle | None:
         case TypeNom.ENTIER:
             return None if _entier(valeur) else Regle.ENTIER_ILLISIBLE
         case TypeNom.DECIMAL:
-            partie_entiere, virgule, decimales = valeur.partition(",")
-            if (
-                virgule
-                and _entier(partie_entiere)
-                and decimales.isdigit()
-                and decimales.isascii()  # « ²³ » passe isdigit, comme pour _entier
-                and len(decimales) == type_.decimales
-            ):
-                return None
-            return Regle.DECIMAL_ILLISIBLE
+            return None if forme_decimale(type_, valeur) is not None else Regle.DECIMAL_ILLISIBLE
         case TypeNom.DATE:
             return _verifier_date(type_, valeur)
         case TypeNom.BOOLEEN:
@@ -218,6 +227,45 @@ def verifier_valeur(type_: TypeValeur, valeur: str) -> Regle | None:
 def _entier(valeur: str) -> bool:
     chiffres = valeur[1:] if valeur.startswith("-") else valeur
     return chiffres.isdigit() and chiffres.isascii()
+
+
+def forme_decimale(type_: TypeValeur, valeur: str) -> str | None:
+    """La forme canonique d'un décimal (« 12,50 » → « 12.50 »), ou None s'il est illisible.
+
+    La virgule est le séparateur décimal, suivie d'exactement ``decimales``
+    chiffres ASCII (« ²³ » passe ``isdigit``, comme pour ``_entier``). Quand le
+    type déclare ``milliers`` (contrat v1, ADR 0005), la partie entière peut
+    aussi s'écrire par groupes de trois chiffres (« 1,003,48 » → « 1003.48 »).
+    La forme canonique n'a ni séparateur de milliers ni zéro de tête ; le signe
+    est gardé dès qu'un chiffre n'est pas nul (« -0,50 » → « -0.50 »), et
+    « -0,00 » devient « 0.00 ».
+    """
+    partie_entiere, virgule, decimales = valeur.rpartition(",")
+    if not virgule or len(decimales) != type_.decimales or not _entier(decimales):
+        return None
+    if decimales.startswith("-"):
+        return None
+    if _entier(partie_entiere):
+        chiffres = partie_entiere
+    elif type_.milliers is not None and _motif_milliers(type_.milliers).fullmatch(partie_entiere):
+        chiffres = partie_entiere.replace(type_.milliers, "")
+    else:
+        return None
+    return f"{_partie_entiere_canonique(chiffres, decimales)}.{decimales}"
+
+
+@cache
+def _motif_milliers(milliers: str) -> re.Pattern[str]:
+    """Une partie entière par groupes de trois chiffres ASCII, au moins un séparateur."""
+    return re.compile(rf"-?[0-9]{{1,3}}(?:{re.escape(milliers)}[0-9]{{3}})+")
+
+
+def _partie_entiere_canonique(chiffres: str, decimales: str) -> str:
+    """« 007 » → « 7 » ; le « - » reste si le nombre n'est pas nul (« -0,50 » garde son signe)."""
+    negatif = chiffres.startswith("-")
+    entiers = chiffres.removeprefix("-").lstrip("0") or "0"
+    nul = entiers == "0" and set(decimales) <= {"0"}
+    return f"-{entiers}" if negatif and not nul else entiers
 
 
 def _verifier_date(type_: TypeValeur, valeur: str) -> Regle | None:

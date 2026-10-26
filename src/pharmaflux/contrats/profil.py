@@ -2,7 +2,9 @@
 
 Tout est mesuré sur les chaînes telles qu'elles sont dans le fichier ; rien
 n'est converti pour de bon (les dates et les nombres ne sont lus que pour
-donner un minimum et un maximum). Les liens vers d'autres fichiers sont des
+donner un minimum et un maximum, par la même lecture que
+``normalisation``, qui admet la virgule des milliers quand le contrat la
+déclare). Les liens vers d'autres fichiers sont des
 taux de correspondance, jamais des anomalies (addendum 1 de la mission 01).
 """
 
@@ -27,7 +29,8 @@ from pharmaflux.contrats.modele import (
     TypeNom,
     TypeValeur,
 )
-from pharmaflux.contrats.verification import Lecture, verifier, verifier_valeur
+from pharmaflux.contrats.normalisation import normaliser_valeur
+from pharmaflux.contrats.verification import Lecture, verifier
 
 EXEMPLES_PAR_REGLE = 5
 SEUIL_REPARTITION = 30  # au plus tant de valeurs distinctes : répartition complète
@@ -204,10 +207,12 @@ def _lire_nombre(type_: TypeValeur, valeur: str) -> Decimal | None:
 
     ``Decimal`` seul lirait « 1e9 », « Infinity » ou « NaN » (qui ne se trie pas) :
     ces valeurs sont des anomalies comptées (``decimal_illisible``), pas des bornes.
+    La forme canonique (« 1,003,48 » → « 1003.48 » avec ``milliers``) se lit telle quelle.
     """
-    if verifier_valeur(type_, valeur) is not None:
+    normalisee = normaliser_valeur(type_, valeur)
+    if normalisee.regle is not None:
         return None
-    return Decimal(valeur.replace(",", "."))
+    return Decimal(normalisee.valeur)
 
 
 def _ordres_dates(contrat: Contrat, lecture: Lecture) -> list[OrdreDates]:

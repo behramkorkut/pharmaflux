@@ -75,6 +75,30 @@ donnée réelle.
 | `mitm_anomalies.txt` | `CIS_MITM.txt`, lignes 1 à 3 | 2 : lien vers `exemple.invalid` → `hote_inconnu` ; 3 : lien `fiche BDPM`, ATC `A02` → `url_illisible`, `code_illisible` ; pas de retour final (toléré) |
 | `liens_ct_bom.txt` | `HAS_LiensPageCT_bdpm.txt`, lignes 1 à 3 | marque d'ordre des octets UTF-8 en tête → `encodage` |
 
+## `evenements/` — archives fabriquées pour la détection des changements (mission 02)
+
+Suites d'archives construites **à partir de lignes réelles** des fixtures
+`bdpm/` ci-dessus (octets conservés : UTF-8 LF pour les présentations,
+cp1252 CRLF pour la disponibilité), puis altérées à la main pour qu'une
+comparaison donne chaque type d'événement et que le garde-fou de volume
+rencontre chaque cas. Ce ne sont pas des extraits de la BDPM : rien de ce
+qu'ils contiennent ne doit être cité comme une donnée réelle. Les tests les
+archivent sous des noms d'archive fixés (24 au 26/10/2026) pour jouer le
+retour A → B → A, l'oscillation A → B → A → B, la perte confirmée ou non.
+Le cas bloquant réutilise `contrats/presentations_anomalies.txt`.
+
+| Fichier | Base réelle | Altérations | Ce que la comparaison doit donner |
+|---|---|---|---|
+| `presentations_a.txt` | `CIS_CIP_bdpm.txt`, lignes 1 à 8 et 41 à 49 (17 lignes) | aucune | 17 `creee` initiales (une avec `date_hors_plage`, deux prix `1,466,29` lus `1466.29`) |
+| `presentations_b.txt` | `presentations_a.txt` | ligne 3 (CIP13 `3400936963504`) retirée ; ligne 2 (`3400949497706`) : prix `68,68` → `69,00`, prix public `71,44` → `73,76` ; ligne 7 (`3400930116791`) : taux `15 %` → `15%` ; ligne 9 de `CIS_CIP_bdpm.txt` (`3400949444137`) ajoutée en fin | de A vers B : 1 `supprimee`, 1 `modifiee` (`prix_medicament`, `prix_public`), 1 `creee`, et **rien** pour la graphie du taux |
+| `presentations_vide.txt` | — | 0 octet | écarté « vide », aucun événement (cas du 26/10 à 14:17) |
+| `presentations_perte.txt` | `presentations_a.txt`, lignes 1 à 8 | 9 lignes retirées (perte de 52,9 %) | en attente, puis confirmé ou écarté selon la suite |
+| `dispo_a.txt` | `CIS_CIP_Dispo_Spec.txt`, lignes 41 à 47 (46 et 47 identiques) | aucune | 7 `creee` initiales, la ligne en doublon aux rangs 1 et 2 |
+| `dispo_b.txt` | `dispo_a.txt` | ligne 47 (le doublon) retirée ; ligne 44 (CIS `66890524`) : date de début `01/07/2027` → `01/09/2027` | de A vers B : `supprimee` de rang 2 du doublon, `supprimee` puis `creee` de la ligne changée, pas de `modifiee` |
+| `dispo_triple.txt` | `dispo_a.txt` | ligne 47 (le doublon, CIS `67122698`) répétée une fois de plus : trois occurrences (8 lignes) | depuis `dispo_simple.txt` : `creee` de rangs 2 puis 3 de la même ligne (rang croissant) ; vers `dispo_b.txt` : `supprimee` de rangs 3 puis 2, plus le changement de date de B |
+| `dispo_simple.txt` | `dispo_a.txt` | ligne 47 (le doublon) retirée : une seule occurrence (6 lignes) | depuis `dispo_triple.txt` : `supprimee` de rangs 3 puis 2 (rang décroissant), un passage `inchange` la confirme ensuite |
+| `presentations_perte_forte.txt` | `presentations_perte.txt`, lignes 1 à 4 | 4 lignes retirées sur 8 | après `presentations_a.txt` : perte de 76,5 %, en attente, écartée dès que `presentations_perte.txt` revient ; après `presentations_perte.txt` : perte de 50 %, en attente, et confirme la perte précédente (deux attentes qui se suivent, dans les deux sens) |
+
 ## `evaluation/` — jeu de questions d'essai
 
 `questions-essai.toml` : huit questions, un cas par verdict de

@@ -106,6 +106,10 @@ class TableStricte:
                 raise self._refuser(cle, "une chaîne")
         return {cle: valeur for cle, valeur in restants.items() if isinstance(valeur, str)}
 
+    def cles_restantes(self) -> frozenset[str]:
+        """Les clés pas encore consommées, sans les retirer."""
+        return frozenset(self._restants)
+
     def terminer(self) -> None:
         if self._restants:
             inconnues = ", ".join(sorted(self._restants))

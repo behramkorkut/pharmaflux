@@ -55,7 +55,9 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 ## Contrats de schéma et lecture du bronze (mission 01)
 
 - **Un contrat TOML par fichier** (`src/pharmaflux/contrats/bdpm/<nom>.toml`,
-  version `v0`) : encodage, fin de ligne, colonnes typées (neuf types,
+  version `v0`, et `v1` pour les présentations depuis la mission 02 :
+  virgule des milliers des prix et graphie canonique des taux, ADR 0005) :
+  encodage, fin de ligne, colonnes typées (neuf types,
   ADR 0002), clé déclarée unique ou non avec sa raison, liens de mesure
   vers d'autres fichiers, documentation PDF et archive de référence avec
   leurs sha256. Le chargeur est strict : toute clé inconnue est refusée.
@@ -77,6 +79,43 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
   quarante questions dont la réponse attendue est lue dans une archive
   précise par la clé et les colonnes du contrat ; `pharmaflux questions
   verifier` la recalcule. Les lignes attendues sont brutes elles aussi.
+
+## Du bronze aux événements (mission 02)
+
+- **Normalisation** (`contrats/normalisation.py`, ADR 0005) : une valeur
+  conforme prend sa forme canonique en chaîne (date ISO, décimal à point,
+  `true`/`false`, graphie canonique d'une énumération, espaces de bord
+  retirés) ; une valeur que le type ne lit pas reste brute avec sa règle ;
+  une anomalie de forme ou de vraisemblance (`espace_parasite`,
+  `date_hors_plage`) laisse passer la forme canonique et reste consignée.
+  La forme vient du type et du contrat (`milliers`, `canonique`), jamais du
+  code seul. Les brutes restent dans le bronze et dans chaque `Ligne`.
+- **Snapshot** (`evenements/snapshot.py`) : une archive lue une fois par son
+  contrat, dictionnaire clé normalisée → ligne, ou multiensemble de lignes
+  pour SMR, ASMR et Dispo_Spec ; **écarté** avec son motif sur une
+  anomalie bloquante ou une clé normalisée ambiguë, jamais une exception ;
+  un bilan par archive (lignes, entités, anomalies, graphies).
+- **Événements** (`evenements/schema.py`, `comparaison.py`, ADR 0006) :
+  `creee`, `modifiee`, `supprimee`, schéma v1 tout en chaînes, identifiant
+  sha256 sur les chemins relatifs des deux archives, une ligne JSON stable
+  par événement ; une `creee` par entité à l'état initial. Rien ne dépend de
+  l'ordre d'un objet JSON : l'identité et le tri prennent les colonnes dans
+  l'ordre alphabétique de leur nom.
+- **Garde-fou de volume** (`evenements/volume.py`) : le vide et le bloquant
+  sont écartés sans appel ; une perte de plus de 1 % des lignes met
+  l'archive en attente, confirmée par un passage inchangé du manifeste ou
+  par l'archive suivante ; rien n'émet des milliers de `supprimee` sur une
+  réponse incomplète (cas réel du 26/10/2026).
+- **`pharmaflux evenements`** (`evenements/rejeu.py`) : rejeu complet ou
+  `--reprendre`, sortie par archive (`evenements/<entite>/*.jsonl`,
+  `bilans/<entite>/*.json`, `etat.json`), écriture atomique dans l'ordre
+  événements, bilan, état ; les snapshots ne sont jamais sérialisés, la
+  reprise les recalcule depuis leur archive ; `--reprendre` refuse après un
+  changement de version de contrat. Deux rejeux donnent les mêmes octets,
+  une reprise après n'importe quel point d'arrêt aussi, et appliquer les
+  événements au vide redonne le dernier snapshot retenu (tests).
+- **Sortie par défaut** : `data/evenements/`, hors git ; jamais sous la
+  racine de l'archive, qui ne s'écrit pas.
 
 ## Pièges connus
 
@@ -105,7 +144,7 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 | Quoi | Où |
 |---|---|
 | Spécifications (PRD) | `01_Specifications/` |
-| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` |
+| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` |
 | Tests et fixtures | `tests/`, `tests/fixtures/` |
 | Planification de la collecte (systemd, rapatriement) | `infra/planification/` |
 | Décisions d'architecture | `docs/adr/` (gabarit : `0000-modele.md`) |

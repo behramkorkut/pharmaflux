@@ -282,7 +282,8 @@ def evenements(
             chemin, sortie, contrats, selection, reprendre=reprendre, journal=_journal_evenements
         )
     except rejeu.ReprendreImpossible as exc:
-        typer.echo(f"reprise impossible : {exc}", err=True)
+        titre = "reprise impossible" if reprendre else "rejeu impossible"
+        typer.echo(f"{titre} : {exc}", err=True)
         raise typer.Exit(code=2) from exc
     for bilan_ in rapport.resumes:
         types = ", ".join(f"{t} {n}" for t, n in sorted(bilan_.evenements.items())) or "aucun"

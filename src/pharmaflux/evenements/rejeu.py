@@ -49,7 +49,9 @@ Journal = Callable[[str], None]
 
 
 class ReprendreImpossible(Exception):  # noqa: N818 (nom français voulu)
-    """La reprise ne peut pas donner la sortie d'un rejeu complet : il faut le relancer."""
+    """La reprise ne peut pas donner la sortie d'un rejeu complet, ou ``etat.json`` est
+    illisible (dans les deux modes, puisqu'un rejeu complet le relit pour garder les autres
+    entités) : le message dit quoi faire, et rien n'est effacé."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,11 +281,12 @@ def _lire_etat(sortie: Path) -> dict[str, EtatEntite]:
     chemin = sortie / NOM_ETAT
     if not chemin.is_file():
         return {}
+    conseil = f"supprime {NOM_ETAT} ou choisis une autre sortie"
     try:
         brut = json.loads(chemin.read_text(encoding="utf-8"))
         if brut["version"] != VERSION_ETAT:
             raise ReprendreImpossible(
-                f"{chemin} : version {brut['version']}, attendu {VERSION_ETAT}"
+                f"{chemin} : version {brut['version']}, attendu {VERSION_ETAT} : {conseil}"
             )
         return {
             ident: EtatEntite(
@@ -295,9 +298,7 @@ def _lire_etat(sortie: Path) -> dict[str, EtatEntite]:
             for ident, e in brut["entites"].items()
         }
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
-        raise ReprendreImpossible(
-            f"{chemin} : état illisible ({exc!r}) : relance sans --reprendre"
-        ) from exc
+        raise ReprendreImpossible(f"{chemin} : état illisible ({exc!r}) : {conseil}") from exc
 
 
 @dataclass(slots=True)

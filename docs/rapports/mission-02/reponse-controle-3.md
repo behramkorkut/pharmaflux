@@ -60,3 +60,13 @@ correctif ci-dessus. Rien à ajouter sur la proposition PRD §6.3.
   L'archive est intacte : 21 fichiers, aucun modifié.
 - Non rejoués : `profil` et `questions verifier` (ni contrat ni
   vérification touchés), shellcheck (aucun `.sh` touché).
+
+## Retouche après le contrôle des correctifs (`ee51c88`)
+
+Message de l'état illisible : « supprime etat.json ou choisis une autre
+sortie » dans les deux cas (JSON illisible, version inconnue), et la
+commande titre « rejeu impossible » hors `--reprendre` ; un état illisible
+n'est jamais traité comme vide. Test
+`test_etat_illisible_sans_reprendre_dit_quoi_faire_et_n_efface_rien` :
+code 2, le conseil, plus « relance sans --reprendre », rien d'effacé, et
+le conseil suivi redonne la référence. 401 tests, ruff, mypy verts.

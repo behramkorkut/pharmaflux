@@ -264,6 +264,28 @@ def test_reprendre_refuse_si_le_contrat_a_change(bronze_complet: Path, tmp_path:
         _executer(bronze_complet, sortie, reprendre=True)
 
 
+def test_etat_illisible_sans_reprendre_dit_quoi_faire_et_n_efface_rien(
+    bronze_complet: Path, tmp_path: Path, reference: dict[str, bytes]
+) -> None:
+    """Contrôle 3 bis : le conseil ne renvoie pas au rejeu complet qu'on vient de lancer."""
+    sortie = tmp_path / "sortie"
+    _executer(bronze_complet, sortie)
+    etat_chemin = sortie / "etat.json"
+    etat_chemin.write_text("{pas du json", encoding="utf-8")
+    with pytest.raises(ReprendreImpossible, match="choisis une autre sortie"):
+        _executer(bronze_complet, sortie)
+    resultat = CliRunner().invoke(
+        application, ["evenements", "--racine", str(bronze_complet), "--sortie", str(sortie)]
+    )
+    assert resultat.exit_code == 2 and "rejeu impossible" in resultat.output
+    assert "relance sans --reprendre" not in resultat.output
+    intact = {c: o for c, o in _arbre(sortie).items() if c != "etat.json"}
+    assert intact == {c: o for c, o in reference.items() if c != "etat.json"}, "rien n'est effacé"
+    etat_chemin.unlink()
+    _executer(bronze_complet, sortie)
+    assert _arbre(sortie) == reference, "le conseil suivi, le rejeu complet redonne la référence"
+
+
 def test_archive_illisible_arrete_le_fichier_et_sort_non_nul(tmp_path: Path) -> None:
     racine, sortie = tmp_path / "bronze", tmp_path / "sortie"
     peupler(racine, SUITE[:3])

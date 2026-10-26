@@ -334,3 +334,120 @@ rapatriée après la fusion, se suivent sans anomalie :
   utilisation de l'API Claude.
 - **Pas d'usage des VPS d'Alamel**, et rien qui touche aux conteneurs
   d'Alamel du colima ni à la pré-production du VPS-1.
+
+## Addendum 1 — §0 tranché (IeC, 27/10/2026)
+
+Réponse lue : `docs/rapports/mission-03/points-a-trancher.md` (commit
+`8c2017e`). Le §0 est solide : les mesures de A désignent un seul
+coupable, la sérialisation des 32 439 `creee` de `bdpm.compositions`, et
+la proposition B garde l'identité à l'octet par construction. Les dix
+questions sont tranchées ci-dessous. Ce qui n'est pas repris ici est
+accepté tel que tu l'as proposé.
+
+**Faits ajoutés par l'IeC.**
+- **Compose.** `docker compose version` donne 5.1.4, la ligne v2 : `--wait`
+  et les profils sont disponibles.
+- **Aucune image Redpanda** n'est encore sur le poste.
+- **Le refus de `which docker`** est un faux positif du filet que j'ai
+  ajouté au garde-fou. Le correctif est soumis à beko : `which`, `whereis`
+  et `type` deviennent des commandes de lecture, et `docker --version`
+  passe. D'ici là, n'utilise ni l'un ni l'autre : la version de Compose est
+  ci-dessus.
+
+**Décisions sur les questions.**
+
+1. **Mémoire (B).** Cible de **160 Mo résidents au plus** pour le rejeu
+   complet, mesurée par `/usr/bin/time -l` comme à la mission 02. Le test
+   `tracemalloc` en ratio est retenu : snapshots fabriqués dans le test,
+   surplus d'écriture sous M / 2. Il vérifie la **structure** ; le rapport
+   garde la mesure résidente. `Suivi.resultats` est retiré au palier 1
+   (K.1). `Resultat.evenements()` recalcule à la demande, comme tu le
+   proposes.
+2. **Dépendances (C).** `confluent-kafka` sans extras, en dépendance de
+   production, avec un stub local dans `stubs/` si ses annotations ne
+   suffisent pas à `mypy --strict`. `jsonschema` en dépendance de **test**
+   seulement (groupe `dev`). Tu vérifies les roues et les annotations au
+   début du palier 2 ; si l'une manque, tu le dis avant de coder.
+3. **Valeur du message (C).** La valeur est **nue** : la ligne JSONL sans
+   son `\n`, à l'octet près, avec l'identifiant de schéma dans un en-tête.
+   Le bus transporte l'événement de la mission 02 sans le transformer. Le
+   registre sert à la compatibilité et à la documentation. L'ADR 0007 dit
+   en une phrase ce que ce choix coûte : un outil qui attend le format
+   Confluent ne décode pas par le registre.
+4. **Compatibilité (C).** `BACKWARD_TRANSITIVE`, avec l'historique des
+   schémas publiés dans le dépôt, que la CI enregistre dans l'ordre avant
+   le schéma courant. Un changement incompatible est une nouvelle
+   `version_schema`, donc un nouveau topic : jamais une version de plus du
+   même sujet. Le test qui épingle le sha256 du schéma est retenu.
+5. **Topics et clés (D).**
+   - noms : `pharmaflux.<entite>.v1` et `pharmaflux.echecs.v1` ;
+   - clé du message : l'**objet JSON `cle`**, compact, clés triées ;
+   - **3 partitions** figées par l'ADR 0007 ;
+   - partitionneur `murmur2_random` ;
+   - horodatage du message : **`date_observation`** (`CreateTime`) ;
+   - rétention sans limite (`retention.ms = -1`, `retention.bytes = -1`),
+     jamais de compactage ;
+   - les en-têtes de D.
+
+   Une condition : la rétention infinie est **posée par le projet** à la
+   création du topic, et `verifier-bus` la vérifie. Avec des horodatages
+   d'octobre 2026, une rétention par défaut effacerait des messages un
+   jour, sans bruit.
+6. **Publication (E).**
+   - L'état de publication garde la liste des fichiers publiés (sha256,
+     comptes). Il est écrit entier puis renommé, après l'accusé de
+     réception.
+   - Un fichier publié dont le sha256 a changé fait **refuser**
+     `publier`, sans option de forçage. La voie documentée est de rebâtir
+     le bus.
+   - Codes de sortie : **1** si le courtier est injoignable ou si la
+     livraison échoue ; **2** si l'état est illisible ou si un fichier a
+     changé ; **3** si la file des messages en échec a reçu au moins un
+     message. Un échec est visible, jamais absorbé.
+   - Pas de transaction Kafka : ton analyse est juste. Les consommateurs
+     dédoublonnent par `id`, comme le PRD l'exige.
+7. **Bilans (F) : au Lot 5, pas maintenant.** Les bilans restent des
+   fichiers. Le Lot 5 décidera de leur topic avec les alertes : il aura
+   besoin d'un consommateur, ce que cette mission n'a pas. La mission garde
+   ainsi un seul publieur, d'événements, et une seule file. Le reste de F
+   est retenu :
+   - ce qui va dans la file : `illisible` et `trop_gros`, avec troncature
+     à 64 Ko ;
+   - le format du message en échec ;
+   - `LogAppendTime` sur ce seul topic ;
+   - la publication continue après un échec, et s'arrête si le courtier
+     est injoignable.
+8. **Vérification (G).** Double référence retenue. Par défaut, le flux de
+   fichiers, que la CI sait faire. Avec `--racine`, le snapshot recalculé
+   depuis l'archive, pour la démonstration. Lecture depuis le début, sans
+   commit d'offset ; la fin est détectée par les offsets de fin.
+9. **Compose (H).**
+   - Ports `127.0.0.1` : 19092, 18081, 18082 et 19644.
+   - Projet `pharmaflux` dans le fichier et dans chaque commande.
+   - Volume nommé `pharmaflux-redpanda`.
+   - Mode `dev-container`, `--memory 768M`, `mem_limit: 1g`. Le relâchement
+     de la durabilité est dit dans l'ADR 0007.
+   - Console sous un profil `console`, qui ne démarre pas par défaut.
+   - Pas de `Makefile`.
+   - **L'étiquette** : beko choisit la dernière version stable de Redpanda
+     et de la console au premier `pull`, et te les donne. Tu les écris dans
+     le compose. Jusque-là, le palier 2 n'écrit rien qui dépende de
+     l'étiquette.
+10. **CI (I).** Le job `integration` passe par le fichier compose du dépôt,
+    avec `up -d --wait`, et non par un `services:` d'Actions : une seule
+    configuration pour le Mac et la CI. Le job actuel ne change pas. Ton
+    plan de vérification avant le push est retenu, et le rapport du
+    palier 3 nomme les deux écarts possibles entre le Mac et la CI :
+    l'architecture et la version de Compose.
+
+**Décisions de l'ordre ajustées.**
+- **La décision 4 n'a plus de topic des bilans** (question 7).
+- **Les tests d'intégration ne lisent que les fixtures** (I, point 2).
+- **Les topics de test** portent un suffixe unique et sont supprimés à la
+  fin.
+- **Le palier 1 se fait sans Docker** : il est en Python pur, et tu n'y
+  lances aucune commande `docker`.
+
+**Suite.** Commence le palier 1 : vérifications, rapport, un commit, puis
+arrête-toi. Avant le palier 2, demande à beko les étiquettes et le premier
+`pull`.

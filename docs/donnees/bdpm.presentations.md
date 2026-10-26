@@ -3,19 +3,18 @@
 Présentations (boîtes), prix et taux de remboursement des spécialités.
 
 - **Archive** : `bronze/bdpm/CIS_CIP_bdpm.txt/2026-10-24/20261024T231712Z__a6da566e8036.txt.gz`, sha256 `a6da566e803671a14e403c19a6983c79ce284ecadf947742dafd66a5d72bb0b2` (archive de référence du contrat).
-- **Contrat** : `src/pharmaflux/contrats/bdpm/presentations.toml` v0, documentation BDPM §3.2.
-- **Produit** par `pharmaflux profil --markdown` le 2026-10-26 13:32Z.
+- **Contrat** : `src/pharmaflux/contrats/bdpm/presentations.toml` v1, documentation BDPM §3.2.
+- **Produit** par `pharmaflux profil --markdown` le 2026-10-26 21:01Z.
 - Données de la BDPM (base-donnees-publique.medicaments.gouv.fr), reproduites telles que reçues, sans altération : les valeurs citées sont des extraits bruts de l'archive.
 
 ## Conformité au contrat
 
 20 896 lignes non vides, 20 896 bien formées (13 colonnes, utf-8, LF) ; **aucune anomalie bloquante**.
 
-| règle             | bloquante | nombre | exemples (cinq au plus : ligne, colonne, valeur brute)                                                                                                                                                                                                                                                     |
-|-------------------|-----------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| decimal_illisible | non       | 995    | l. 50, prix_medicament : `1,466,29` ; l. 50, prix_public : `1,469,05` ; l. 78, prix_medicament : `7,518,58` ; l. 78, prix_public : `7,519,60` ; l. 125, prix_medicament : `3,982,28`                                                                                                                       |
-| date_hors_plage   | non       | 52     | l. 73, date_declaration_commercialisation : `19/01/1949` ; l. 167, date_declaration_commercialisation : `19/01/1927` ; l. 514, date_declaration_commercialisation : `19/01/1947` ; l. 1302, date_declaration_commercialisation : `19/01/1925` ; l. 1634, date_declaration_commercialisation : `19/01/1936` |
-| espace_parasite   | non       | 3      | l. 5037, libelle_presentation : ` 7 plaquette(s) PVC-Aluminium de 16 comprimé(s)` ; l. 13773, libelle_presentation : ` plaquette(s) aluminium PVC-Aluminium de 28 comprimés` ; l. 17355, libelle_presentation : ` 1 dispositif en plastique contenant 60 récipients unidoses (Aluminium/OPA/PVC)`          |
+| règle           | bloquante | nombre | exemples (cinq au plus : ligne, colonne, valeur brute)                                                                                                                                                                                                                                                     |
+|-----------------|-----------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| date_hors_plage | non       | 52     | l. 73, date_declaration_commercialisation : `19/01/1949` ; l. 167, date_declaration_commercialisation : `19/01/1927` ; l. 514, date_declaration_commercialisation : `19/01/1947` ; l. 1302, date_declaration_commercialisation : `19/01/1925` ; l. 1634, date_declaration_commercialisation : `19/01/1936` |
+| espace_parasite | non       | 3      | l. 5037, libelle_presentation : ` 7 plaquette(s) PVC-Aluminium de 16 comprimé(s)` ; l. 13773, libelle_presentation : ` plaquette(s) aluminium PVC-Aluminium de 28 comprimés` ; l. 17355, libelle_presentation : ` 1 dispositif en plastique contenant 60 récipients unidoses (Aluminium/OPA/PVC)`          |
 
 ## Clé
 
@@ -34,8 +33,8 @@ Présentations (boîtes), prix et taux de remboursement des spécialités.
 | 7  | code_cip13                         | code        | oui         | 0 (0,0 %)       | 20 896     | —          | —          |
 | 8  | agrement_collectivites             | enumeration | oui         | 0 (0,0 %)       | 2          | —          | —          |
 | 9  | taux_remboursement                 | liste       | non         | 7 272 (34,8 %)  | 9          | —          | —          |
-| 10 | prix_medicament                    | decimal     | non         | 7 272 (34,8 %)  | 2 570      | 0,66       | 999,20     |
-| 11 | prix_public                        | decimal     | non         | 7 272 (34,8 %)  | 2 589      | 1,68       | 993,51     |
+| 10 | prix_medicament                    | decimal     | non         | 7 272 (34,8 %)  | 2 570      | 0,66       | 66,596,25  |
+| 11 | prix_public                        | decimal     | non         | 7 272 (34,8 %)  | 2 589      | 1,68       | 66,597,27  |
 | 12 | honoraires_dispensation            | decimal     | non         | 7 272 (34,8 %)  | 2          | 1,02       | 2,76       |
 | 13 | indications_remboursement          | texte       | non         | 20 098 (96,2 %) | 245        | —          | —          |
 

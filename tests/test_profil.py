@@ -47,10 +47,10 @@ def test_profil_de_chaque_fixture(racine_peuplee: Path) -> None:
 
     presentations = par_identifiant["bdpm.presentations"]
     regles = {g.regle: g.nombre for g in presentations.anomalies}
-    assert regles == {Regle.DECIMAL_ILLISIBLE: 4, Regle.DATE_HORS_PLAGE: 2}
+    assert regles == {Regle.DATE_HORS_PLAGE: 2}, "les prix à virgule des milliers se lisent (v1)"
     prix = next(c for c in presentations.colonnes if c.nom == "prix_medicament")
-    assert prix.minimum is not None and "," in prix.minimum and prix.maximum is not None
-    assert prix.maximum.count(",") == 1, "« 1,466,29 » est illisible, donc hors bornes"
+    assert prix.minimum is not None and prix.minimum.count(",") == 1
+    assert prix.maximum == "7,518,58", "lu 7518.58 pour les bornes, rendu tel qu'écrit"
     (lien_cis,) = presentations.liens
     assert lien_cis.vers == "bdpm.specialites" and lien_cis.archive_cible is not None
     assert lien_cis.lignes == 49 and lien_cis.distinctes_trouvees <= lien_cis.distinctes
@@ -141,7 +141,8 @@ def test_rendu_markdown(racine_peuplee: Path) -> None:
     assert f"sha256 `{profil.sha256}`" in texte and "le 2026-10-26 12:00Z" in texte
     assert "le contrat a été vérifié sur `bronze/bdpm/CIS_CIP_bdpm.txt/2026-10-24/" in texte
     assert "**aucune anomalie bloquante**" in texte
-    assert "| decimal_illisible" in texte and "`1,466,29`" in texte
+    assert "| date_hors_plage" in texte and "`29/11/2924`" in texte
+    assert "decimal_illisible" not in texte and "| 7,518,58" in texte, "borne lue grâce à milliers"
     assert "**taux_remboursement**" in texte and "| 65 %" in texte
     assert "## Liens vers d'autres fichiers" in texte and "bdpm.specialites.code_cis" in texte
     assert "## Ordre des dates" not in texte, "une seule colonne de date"

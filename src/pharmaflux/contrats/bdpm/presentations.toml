@@ -1,9 +1,13 @@
-# Contrat de schéma v0 (mission 01). On constate, on ne corrige pas (PRD §6.2).
-# Un « motif » doit couvrir toute la valeur. Les énumérations listent les
-# graphies telles qu'elles sont dans le fichier : la normalisation est au Lot 1.
-# Les plages de dates servent à signaler une date manifestement fausse
-# (date_hors_plage, non bloquante), jamais à la corriger.
-version = "v0"
+# Contrat de schéma v1 (mission 02, ADR 0005). On constate, on ne corrige pas
+# (PRD §6.2). Un « motif » doit couvrir toute la valeur. Les énumérations
+# listent les graphies telles qu'elles sont dans le fichier ; la v1 ajoute une
+# table « canonique » (graphie → forme canonique, pour la normalisation) et le
+# paramètre « milliers » des prix, chacun avec sa raison. Les plages de dates
+# servent à signaler une date manifestement fausse (date_hors_plage, non
+# bloquante), jamais à la corriger.
+# v0 : archive du 24/10/2026, mission 01. v1 : canonique des taux, milliers des
+# prix ; rien d'autre ne change.
+version = "v1"
 identifiant = "bdpm.presentations"
 fichier = "CIS_CIP_bdpm.txt"
 description = "Présentations (boîtes), prix et taux de remboursement des spécialités"
@@ -84,34 +88,53 @@ valeurs = ["oui", "non", "inconnu"]
 obligatoire = true
 description = "Agrément aux collectivités ; « inconnu » est documenté mais absent le 24/10"
 
+# Raison de « canonique » : l'espace ne change pas le sens du taux ; sur les
+# trois archives du 24 et du 26/10/2026, aucun CIP13 ne change de graphie d'une
+# archive à l'autre (2 545 valeurs avec espace sur 13 624). La forme retenue est
+# la graphie majoritaire, sans espace (§0 B.1 de la mission 02).
 [[colonnes]]
 nom = "taux_remboursement"
 type = "liste"
 separateur = ";"
-de = { type = "enumeration", valeurs = ["65%", "65 %", "100%", "100 %", "30%", "30 %", "15%", "15 %", "35%"] }
 obligatoire = false
 description = "Taux de remboursement, plusieurs valeurs séparées par « ; » ; neuf graphies observées, avec ou sans espace"
 
+[colonnes.de]
+type = "enumeration"
+valeurs = ["65%", "65 %", "100%", "100 %", "30%", "30 %", "15%", "15 %", "35%"]
+canonique = { "65 %" = "65%", "100 %" = "100%", "30 %" = "30%", "15 %" = "15%" }
+
+# Raison de « milliers » : la documentation BDPM (§3.2) dit « en euro » sans
+# définir de format ; la BDPM écrit les prix ≥ 1 000 € avec une virgule des
+# milliers (« 1,003,48 », 497 prix et 498 prix publics le 24/10/2026). La
+# lecture est vérifiée par une contrainte interne mesurée sur l'archive du
+# 26/10 : prix public = prix + honoraires sur les 13 125 lignes sans séparateur
+# et sur 495 des 498 lignes avec ; les 3 écarts (2 centimes) sont dans la
+# source. Aucune autre lecture ne rend ces lignes cohérentes (§0 B.3 de la
+# mission 02, addendum 1).
 [[colonnes]]
 nom = "prix_medicament"
 type = "decimal"
 decimales = 2
+milliers = ","
 obligatoire = false
-description = "Prix du médicament en euro ; au-delà de 1 000 € le fichier écrit « 1,003,48 » (497 lignes le 24/10, decimal_illisible)"
+description = "Prix du médicament en euro ; au-delà de 1 000 € le fichier écrit « 1,003,48 » (497 lignes le 24/10), lu grâce à « milliers »"
 
 [[colonnes]]
 nom = "prix_public"
 type = "decimal"
 decimales = 2
+milliers = ","
 obligatoire = false
-description = "Prix public France en euro, honoraires compris ; même graphie des milliers"
+description = "Prix public France en euro, honoraires compris ; même graphie des milliers (498 lignes le 24/10)"
 
 [[colonnes]]
 nom = "honoraires_dispensation"
 type = "decimal"
 decimales = 2
+milliers = ","
 obligatoire = false
-description = "Honoraires de dispensation en euro"
+description = "Honoraires de dispensation en euro ; jamais au-delà de 1 000 €, « milliers » déclaré par cohérence avec les deux autres prix"
 
 [[colonnes]]
 nom = "indications_remboursement"

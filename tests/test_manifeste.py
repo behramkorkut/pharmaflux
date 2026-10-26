@@ -123,13 +123,55 @@ def test_etat_connu_retient_empreintes_et_collectes_du_jour(racine: Path) -> Non
     aujourdhui_autre.identifiant = "openmedic.metadonnees"
     aujourdhui_autre.statut = "inchange"
     aujourdhui_autre.empreinte_comparaison = "e3"
-    for enregistrement in (hier_ok, aujourdhui_erreur, aujourdhui_autre):
+    aujourdhui_signalee = _enregistrement("p4")
+    aujourdhui_signalee.identifiant = "bdpm.documentation_formats"
+    aujourdhui_signalee.statut = "erreur"
+    aujourdhui_signalee.erreur = "lien_change: X_v6.pdf (catalogue : X_v5.pdf)"
+    aujourdhui_signalee.empreinte_comparaison = "e4"
+    aujourdhui_signalee.chemin_archive = "bronze/bdpm/X_v6.pdf/a.gz"
+    for enregistrement in (hier_ok, aujourdhui_erreur, aujourdhui_autre, aujourdhui_signalee):
         manifeste.ajouter(racine, enregistrement)
     connu = manifeste.etat_connu(racine, "2026-10-24")
-    assert connu.empreintes == {"bdpm.specialites": "e1", "openmedic.metadonnees": "e3"}
-    assert connu.collectes_du_jour == {"openmedic.metadonnees"}, "l'erreur du jour ne compte pas"
+    assert connu.empreintes == {
+        "bdpm.specialites": "e1",
+        "openmedic.metadonnees": "e3",
+        "bdpm.documentation_formats": "e4",
+    }
+    assert connu.collectes_du_jour == {"openmedic.metadonnees", "bdpm.documentation_formats"}, (
+        "l'erreur du jour ne compte pas, le signalement (C1 de la mission 01) si"
+    )
     assert manifeste.etat_connu(racine / "vide", "2026-10-24") == manifeste.EtatConnu()
     assert not (racine / "vide").exists()
+
+
+@pytest.mark.parametrize(
+    ("erreur", "empreinte", "attendu"),
+    [
+        ("lien_absent", "e", True),
+        ("lien_change: X_v6.pdf (catalogue : X_v5.pdf)", "e", True),
+        ("lien_absent ; lien_change: X_v6.pdf (catalogue : X_v5.pdf)", "e", True),
+        ("HTTP 404 ; lien_absent", "e", False),
+        ("HTTP 503", None, False),
+        ("ConnectTimeout", None, False),
+        ("inattendue: RuntimeError: boum", "e", False),
+        ("empreinte_impossible: RuntimeError: boum", "e", False),
+        ("analyse_impossible: forme inattendue", "e", False),
+        ("archive_existante", "e", False),
+        ("ecriture: disque plein", "e", False),
+        ("lien_absent", None, False),
+        (None, "e", False),
+    ],
+)
+def test_vaut_collecte_ne_retient_que_les_signalements(
+    erreur: str | None, empreinte: str | None, attendu: bool
+) -> None:
+    """C1 (mission 01) : seuls les ``MOTIFS_SIGNALEMENT``, empreinte connue, valent collecte."""
+    ligne = _enregistrement("p1")
+    ligne.statut = "erreur"
+    ligne.erreur = erreur
+    ligne.empreinte_comparaison = empreinte
+    assert ligne.vaut_collecte is attendu
+    assert _enregistrement("p0").vaut_collecte, "une ligne sans erreur vaut toujours collecte"
 
 
 def test_parcourir_applique_les_regles_de_lecture(

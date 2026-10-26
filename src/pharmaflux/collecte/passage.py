@@ -30,7 +30,19 @@ from pharmaflux.collecte.catalogue import (
     entrees_suivies_par_la_page,
 )
 from pharmaflux.collecte.empreintes import empreinte_comparaison, sha256_hex
-from pharmaflux.collecte.manifeste import Enregistrement, Statut
+from pharmaflux.collecte.manifeste import (
+    MOTIF_ANALYSE_IMPOSSIBLE,
+    MOTIF_ARCHIVE_EXISTANTE,
+    MOTIF_ECRITURE,
+    MOTIF_EMPREINTE_IMPOSSIBLE,
+    MOTIF_INATTENDUE,
+    MOTIF_LIEN_ABSENT,
+    MOTIF_LIEN_CHANGE,
+    MOTIF_LIEN_NOUVEAU,
+    SEPARATEUR_MOTIFS,
+    Enregistrement,
+    Statut,
+)
 from pharmaflux.collecte.page import AnalyseImpossible, LienTelechargement, analyser_page
 from pharmaflux.collecte.telechargement import ErreurTelechargement, Telechargeur
 
@@ -38,13 +50,8 @@ journal = logging.getLogger("pharmaflux.collecte")
 
 PAUSE_SECONDES = 2.0
 FORMAT_PASSAGE_ID = "%Y%m%dT%H%M%SZ"
-
-MOTIF_LIEN_ABSENT = "lien_absent"
-MOTIF_LIEN_NOUVEAU = "lien_nouveau"
-MOTIF_LIEN_CHANGE = "lien_change"
-MOTIF_ARCHIVE_EXISTANTE = "archive_existante"
-MOTIF_EMPREINTE_IMPOSSIBLE = "empreinte_impossible"
-MOTIF_INATTENDUE = "inattendue"
+# Les motifs d'erreur (MOTIF_*) sont définis dans ``manifeste`` : c'est lui qui
+# décide ce qu'une ligne en erreur vaut (``Enregistrement.vaut_collecte``).
 
 
 def maintenant_utc() -> datetime:
@@ -209,7 +216,7 @@ def _collecter(contexte: _Contexte, entree: Entree) -> tuple[Enregistrement, byt
         # Forme inattendue : on archive quand même (l'archive est irremplaçable),
         # mais la ligne est en erreur pour que quelqu'un regarde. L'empreinte
         # retombe sur les octets : un contenu identique n'est pas réarchivé.
-        enregistrement.erreur = f"analyse_impossible: {exc}"
+        enregistrement.erreur = f"{MOTIF_ANALYSE_IMPOSSIBLE}: {exc}"
         empreinte = sha256
     except Exception as exc:
         # Défaut du collecteur lui-même (cas imprévu) : même traitement, car
@@ -229,7 +236,7 @@ def _collecter(contexte: _Contexte, entree: Entree) -> tuple[Enregistrement, byt
     except ArchiveExistante:
         enregistrement.erreur = MOTIF_ARCHIVE_EXISTANTE
     except OSError as exc:
-        enregistrement.erreur = f"ecriture: {exc}"
+        enregistrement.erreur = f"{MOTIF_ECRITURE}: {exc}"
     else:
         enregistrement.chemin_archive = chemin.relative_to(contexte.racine).as_posix()
         if enregistrement.erreur is None:
@@ -246,9 +253,11 @@ def _signaler(enregistrement: Enregistrement, motif: str) -> None:
     """Passe la ligne en erreur sans rien perdre : archive écrite, motif déjà présent.
 
     Les motifs s'enchaînent (``HTTP 404 ; lien_absent``) au lieu de s'écraser.
+    Si tous sont des signalements (``manifeste.MOTIFS_SIGNALEMENT``), la ligne
+    vaut encore collecte du jour : une entrée quotidienne ne repasse pas.
     """
     enregistrement.statut = Statut.ERREUR
-    enregistrement.erreur = " ; ".join(filter(None, (enregistrement.erreur, motif)))
+    enregistrement.erreur = SEPARATEUR_MOTIFS.join(filter(None, (enregistrement.erreur, motif)))
 
 
 def _marquer_inattendue(

@@ -12,6 +12,7 @@ from pharmaflux.collecte import manifeste
 from pharmaflux.collecte.archive import chemin_archive, ecrire_archive
 from pharmaflux.collecte.catalogue import CATALOGUE, SITE_BDPM, ModeEmpreinte
 from pharmaflux.collecte.empreintes import sha256_hex
+from pharmaflux.collecte.etat import calculer_etat
 from pharmaflux.collecte.manifeste import CHAMPS, Statut
 from tests.conftest import Horloge, Lanceur, ServeurSimule, contenu_fixture, entree
 
@@ -457,6 +458,46 @@ def test_documentation_suit_le_lien_de_la_page(
     assert bilan.code_sortie == 1
 
 
+def test_documentation_changee_collectee_une_fois_par_jour(
+    lancer: Lanceur, serveur: ServeurSimule, racine: Path, horloge: Horloge
+) -> None:
+    """Mission 01, C1 : un ``lien_change`` vaut collecte du jour, le PDF n'est pris qu'une fois."""
+    serveur.remplacer_contenu(PAGE.url, PAGE_DOC_V6)
+    serveur.scenariser(URL_DOC_V6, (200, contenu_fixture(DOCUMENTATION), {}))
+    lancer([PAGE, DOCUMENTATION])
+    horloge.avancer(hours=1)
+    bilan = lancer([PAGE, DOCUMENTATION])
+    assert [e.identifiant for e in bilan.enregistrements] == [PAGE.identifiant], (
+        "la documentation est sautée comme toute entrée quotidienne déjà collectée"
+    )
+    assert serveur.requetes_vers(URL_DOC_V6) == 1
+    assert len(_archives(racine, DOC_V6)) == 1
+    assert bilan.code_sortie == 0
+    etat = calculer_etat(manifeste.parcourir(racine), horloge.maintenant())
+    (doc,) = [ligne for ligne in etat.lignes if ligne.identifiant == DOCUMENTATION.identifiant]
+    assert doc.dernier_statut == "erreur" and "lien_change:" in str(doc.derniere_erreur), (
+        "l'alerte reste visible dans etat"
+    )
+    horloge.avancer(days=1)
+    _, lendemain = lancer([PAGE, DOCUMENTATION]).enregistrements
+    assert lendemain.statut == "erreur" and str(lendemain.erreur).startswith("lien_change:")
+    assert lendemain.chemin_archive is None, "même contenu le lendemain : pas de réarchivage"
+    assert serveur.requetes_vers(URL_DOC_V6) == 2
+
+
+def test_erreur_de_telechargement_ne_vaut_pas_collecte_meme_avec_un_signalement(
+    lancer: Lanceur, serveur: ServeurSimule, horloge: Horloge
+) -> None:
+    """C1 : ``HTTP 404 ; lien_change`` reste une erreur, l'entrée quotidienne repasse."""
+    serveur.remplacer_contenu(PAGE.url, PAGE_DOC_V6)
+    serveur.scenariser(URL_DOC_V6, (404, b"", {}))
+    _, doc = lancer([PAGE, DOCUMENTATION]).enregistrements
+    assert doc.http_statut == 404 and str(doc.erreur).startswith("HTTP 404 ; lien_change:")
+    horloge.avancer(hours=1)
+    assert lancer([PAGE, DOCUMENTATION]).compter(Statut.ERREUR) == 1, "l'entrée est retentée"
+    assert serveur.requetes_vers(URL_DOC_V6) == 2
+
+
 def test_nouvelle_version_du_pdf_n_est_pas_un_lien_nouveau_a_chaque_passage(
     lancer: Lanceur, serveur: ServeurSimule
 ) -> None:
@@ -475,6 +516,19 @@ def test_documentation_absente_de_la_page(lancer: Lanceur, serveur: ServeurSimul
     assert doc.statut == "erreur" and doc.erreur == "lien_absent" and doc.chemin_archive
     assert nouveau.fichier == "Autre_document.pdf" and nouveau.identifiant is None
     assert str(nouveau.erreur).startswith("lien_nouveau:"), "un PDF inconnu est un lien nouveau"
+
+
+def test_documentation_absente_collectee_une_fois_par_jour(
+    lancer: Lanceur, serveur: ServeurSimule, horloge: Horloge
+) -> None:
+    """C1 : ``lien_absent`` sur une entrée quotidienne vaut aussi collecte du jour."""
+    page = contenu_fixture(PAGE).replace(DOCUMENTATION.fichier.encode(), b"Autre_document.pdf")
+    serveur.remplacer_contenu(PAGE.url, page)
+    lancer([PAGE, DOCUMENTATION])
+    horloge.avancer(hours=1)
+    bilan = lancer([PAGE, DOCUMENTATION])
+    assert [e.identifiant for e in bilan.enregistrements] == [PAGE.identifiant, None]
+    assert serveur.requetes_vers(DOCUMENTATION.url) == 1
 
 
 def test_deux_versions_du_pdf_sur_la_page(lancer: Lanceur, serveur: ServeurSimule) -> None:

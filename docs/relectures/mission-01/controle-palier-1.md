@@ -2,8 +2,8 @@
 
 **Commit contrôlé** : `51a55e5`. **Verdict** : palier 1 accepté, avec
 **un correctif** (C1) à livrer dans un commit à part avant le rapport du
-palier 2. La décision 11 reste **suspendue à la mesure de beko** sur le
-VPS : score d'exposition sous 3 et passage manuel sans erreur.
+palier 2. La décision 11 est validée par la mesure de beko sur le VPS
+(ci-dessous) : score d'exposition **1,3**, passage manuel sans erreur.
 
 ## Vérifications rejouées
 
@@ -23,6 +23,22 @@ Sur la copie rapatriée du Mac, en lecture seule :
 - `bronze.lister` parcourt les quatorze entrées du catalogue : 16 archives,
   aucun `NomArchiveInvalide`, et la dernière archive de chaque entrée se
   décompresse.
+
+## Mesure sur le VPS (beko, 26/10/2026, 00:28 UTC)
+
+Branche déployée selon l'étape 7 du README, variante « branche de mission »,
+unités réinstallées, passage manuel hors minuteur :
+
+- passage `20261026T002839Z` : 0 nouveau, 12 inchangés, **0 erreur** ; les
+  deux entrées quotidiennes sont `déjà collectée aujourd'hui` ;
+- journal au format UTC (`2026-10-26T00:28:39Z INFO …`), décision 9 ;
+- `Mem peak` 42,8 Mo, 1,155 s de CPU, comme sous l'unité de la mission 00 ;
+- `systemd-analyze security` : **1,3 OK**, contre 6,3 avant le durcissement.
+  `MemoryDenyWriteExecute=true` est donc conservé, et `PrivateUsers=true`
+  reste inutile.
+
+Le VPS tourne sur la branche de mission jusqu'à la fusion ; il reviendra
+sur `main` ensuite (étape 4).
 
 ## Sur le fond
 
@@ -88,6 +104,4 @@ une collecte quotidienne normale, et l'erreur reste visible dans `etat`.
 
 ## Suite
 
-Réponds au C1 dans le rapport du palier 2. Commite ce fichier tel quel. Si beko te transmet
-une ligne du journal du VPS, retire par un nouveau commit la directive en
-cause, `MemoryDenyWriteExecute` d'abord. Sinon, passe au palier 2.
+Réponds au C1 dans le rapport du palier 2. Commite ce fichier tel quel, puis passe au palier 2.

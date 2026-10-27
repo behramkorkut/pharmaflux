@@ -91,7 +91,11 @@ LECTURE = {
     "which",
     "whereis",
     "type",
+    "find",
 }
+# Actions de find qui écrivent (-delete, -fprint…) ou lancent une autre commande (-exec, -ok).
+FIND_ECRIT = ("-delete", "-fprint", "-fls")
+FIND_EXECUTE = ("-exec", "-ok")
 # awk n'y est pas : print > fichier et system() en font un outil d'écriture.
 # Exécutions permises sous un chemin réservé : les tests des garde-fous.
 TESTS_GARDE_FOUS = (
@@ -300,6 +304,9 @@ def _jetons(ligne: str) -> list[str]:
 def segments(commande: str) -> list[tuple[list[str], list[str]]]:
     """Rend, pour chaque commande simple : (mots, cibles des redirections en écriture)."""
     resultat: list[tuple[list[str], list[str]]] = []
+    # « \ » en fin de ligne continue la commande : recoller avant de couper en lignes,
+    # sinon « git \⏎ push » donnerait deux commandes, « git » puis « push ».
+    commande = re.sub(r"\\\r?\n", " ", commande)
     for ligne in commande.split("\n"):
         mots: list[str] = []
         cibles: list[str] = []
@@ -450,9 +457,17 @@ def verifier_conteneurs(tete: str, mots: list[str]) -> None:
         )
 
 
+def execute_par_option(mots: list[str]) -> bool:
+    """find -exec, -execdir, -ok, -okdir : la commande lancée échappe au jugement par tête."""
+    return Path(mots[0]).name == "find" and any(a.startswith(FIND_EXECUTE) for a in mots[1:])
+
+
 def ecrit_par_option(mots: list[str]) -> bool:
-    """Une commande de LECTURE qui écrit quand même : sed -i, sort -o, uniq ENTREE SORTIE."""
-    tete, args = mots[0], mots[1:]
+    """Une commande de LECTURE qui écrit quand même : sed -i, sort -o, uniq ENTREE SORTIE,
+    find -delete, -fprint, -fls, ou -exec (qui peut tout faire)."""
+    tete, args = Path(mots[0]).name, mots[1:]
+    if tete == "find":
+        return execute_par_option(mots) or any(a.startswith(FIND_ECRIT) for a in args)
     if tete == "sed":
         return any(a.startswith("-i") or a == "--in-place" for a in args)
     if tete == "sort":
@@ -476,11 +491,13 @@ def verifier_bash(role: str, commande: str) -> None:
     for mots, cibles in segments(nette):
         tete = Path(mots[0]).name
         # Filet : git caché derrière bash -c, xargs, eval…
-        if tete != "git" and tete not in LECTURE:
+        # Une commande de lecture est exemptée du filet, sauf si elle en lance une autre.
+        lit_seulement = tete in LECTURE and not execute_par_option(mots)
+        if tete != "git" and not lit_seulement:
             cache = GIT_ECRIT_BRUT.search(" ".join(mots[1:]))
             if cache:
                 raise Refus(f"opération git « {cache.group(1)} » interdite aux agents.")
-        if tete not in ("docker", "docker-compose", "colima") and tete not in LECTURE:
+        if tete not in ("docker", "docker-compose", "colima") and not lit_seulement:
             cache = CONTENEURS_BRUT.search(" ".join(mots[1:]))
             if cache:
                 raise Refus(

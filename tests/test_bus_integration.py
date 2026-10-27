@@ -20,12 +20,15 @@ import pytest
 from confluent_kafka import Consumer, TopicPartition
 
 from pharmaflux.bus import enveloppe as env
-from pharmaflux.bus import publication
+from pharmaflux.bus import publication, verification
 from pharmaflux.bus.client import (
+    CONFIG_ECHECS,
+    CONFIG_EVENEMENTS,
     COURTIER_PAR_DEFAUT,
     VARIABLE_COURTIER,
     BusKafka,
     CourtierInjoignable,
+    LecteurKafka,
     Livraison,
 )
 from pharmaflux.bus.registre import (
@@ -39,6 +42,7 @@ from pharmaflux.bus.registre import sujet as sujet_de
 from pharmaflux.evenements import schema
 from pharmaflux.evenements.comparaison import appliquer, etat_du_snapshot
 from tests.test_bus import DISPO, PRESENTATIONS, _snap, _sortie
+from tests.test_bus_verification import BusCoupe, _lignes
 
 pytestmark = pytest.mark.integration
 
@@ -82,6 +86,23 @@ def registre(bus: BusKafka, prefixe: str) -> Iterator[Registre]:
     bus.supprimer_topics(topics)
 
 
+@pytest.fixture
+def lecteur() -> Iterator[LecteurKafka]:
+    lecteur_ = LecteurKafka(COURTIER)
+    yield lecteur_
+    lecteur_.close()
+
+
+def _verifier(lecteur: LecteurKafka, sortie: Path, prefixe: str) -> verification.Rapport:
+    return verification.verifier(
+        lecteur,
+        [PRESENTATIONS, DISPO],
+        verification.reference_fichiers(sortie),
+        description_reference="fichiers",
+        prefixe=prefixe,
+    )
+
+
 def _relire(topic: str) -> list[dict[str, object]]:
     """Tous les messages du topic depuis le début, partition par partition, sans commit."""
     consommateur = Consumer(
@@ -123,7 +144,7 @@ def _relire(topic: str) -> list[dict[str, object]]:
 
 
 def test_publication_complete_sur_le_courtier(
-    bus: BusKafka, registre: Registre, prefixe: str, tmp_path: Path
+    bus: BusKafka, registre: Registre, lecteur: LecteurKafka, prefixe: str, tmp_path: Path
 ) -> None:
     sortie, n_pres, n_dispo = _sortie(tmp_path)
     rapport = publication.executer(sortie, bus, registre, prefixe=prefixe)
@@ -165,6 +186,51 @@ def test_publication_complete_sur_le_courtier(
     b = _snap(PRESENTATIONS, "presentations_b.txt", "1517")
     assert appliquer({}, evenements) == etat_du_snapshot(b)
     assert _relire(env.topic_echecs(prefixe)) == []
+    # verifier-bus : aucune différence, aucun doublon, la rétention posée par le projet (déc. 5).
+    rapport = _verifier(lecteur, sortie, prefixe)
+    assert rapport.code_sortie == 0 and rapport.doublons == 0, [
+        t.differences for t in rapport.topics
+    ]
+    assert [t.messages for t in rapport.topics] == [n_pres, n_dispo, 0]
+    assert [t.configuration for t in rapport.topics] == [
+        CONFIG_EVENEMENTS,
+        CONFIG_EVENEMENTS,
+        CONFIG_ECHECS,
+    ], "le courtier rend ce que le projet a posé à la création"
+    assert [t.partitions for t in rapport.topics] == [3, 3, 1]
+
+
+@pytest.mark.parametrize("coupure", [0, 1, 2])
+def test_publication_coupee_puis_reprise(
+    bus: BusKafka,
+    registre: Registre,
+    lecteur: LecteurKafka,
+    prefixe: str,
+    tmp_path: Path,
+    coupure: int,
+) -> None:
+    """Décision 6 : coupée pendant chaque fichier, puis --reprendre ; doublons du seul republié."""
+    sortie, _, _ = _sortie(tmp_path)
+    fichiers = publication.lister_fichiers(sortie)
+    with pytest.raises(publication.LivraisonEchouee, match="sans accusé"):
+        publication.executer(sortie, BusCoupe(bus, coupure), registre, prefixe=prefixe)
+    reprise = publication.executer(sortie, bus, registre, reprendre=True, prefixe=prefixe)
+    assert reprise.code_sortie == 0
+    rapport = _verifier(lecteur, sortie, prefixe)
+    assert rapport.code_sortie == 0, [t.differences for t in rapport.topics]
+    entite, chemin = fichiers[coupure]
+    lignes = _lignes(sortie / chemin)
+    par_fichier = {f: n for t in rapport.topics for f, n in t.doublons_par_fichier.items()}
+    assert par_fichier == {chemin: lignes} and rapport.doublons == lignes
+    # Les doublons sont des copies exactes : même valeur, même clé, même horodatage.
+    par_id: dict[object, list[tuple[object, object, object]]] = {}
+    for m in _relire(env.nom_topic(entite, prefixe)):
+        en_tetes = m["en_tetes"]
+        assert isinstance(en_tetes, dict)
+        par_id.setdefault(en_tetes["id"], []).append((m["valeur"], m["cle"], m["horodatage"]))
+    doubles = [v for v in par_id.values() if len(v) == 2]
+    assert len(doubles) == lignes and all(a == b for a, b in doubles)
+    assert all(len(v) <= 2 for v in par_id.values())
 
 
 def test_un_message_impubliable_va_dans_la_file_et_la_suite_est_publiee(

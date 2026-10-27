@@ -17,12 +17,22 @@ leur configuration : **rétention sans limite**, jamais de compactage,
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import uuid
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from confluent_kafka import KafkaError, KafkaException, Message, Producer
+from confluent_kafka import (
+    OFFSET_BEGINNING,
+    Consumer,
+    KafkaError,
+    KafkaException,
+    Message,
+    Producer,
+    TopicPartition,
+)
 from confluent_kafka.admin import AdminClient
+from confluent_kafka.admin._config import ConfigResource  # pas réexporté explicitement
 from confluent_kafka.cimpl import NewTopic
 
 from pharmaflux.bus.enveloppe import Enveloppe
@@ -34,6 +44,7 @@ PARTITIONS_ECHECS = 1
 TAILLE_MAX_MESSAGE = 1_048_576  # octets, la limite par défaut de Redpanda et de Kafka
 DELAI_LIVRAISON_S = 120
 PROPAGATION_TOPIC_MS = 30_000  # défaut de librdkafka : délai avant « topic inconnu »
+PRECHARGEMENT_KO = 8_192  # 8 Mo de messages d'avance par consommateur de verifier-bus
 DELAI_COURTIER_S = 5.0
 
 RETENTION_SANS_LIMITE = {
@@ -112,6 +123,49 @@ def configuration_producteur(
     }
 
 
+@dataclass(frozen=True, slots=True)
+class MessageLu:
+    """Un message relu : la valeur à l'octet, les en-têtes, l'horodatage du courtier."""
+
+    topic: str
+    partition: int
+    offset: int
+    cle: bytes
+    valeur: bytes
+    en_tetes: dict[str, bytes]
+    horodatage_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class EtatTopic:
+    """Ce que le courtier dit d'un topic : ses partitions et les clés de configuration vérifiées."""
+
+    nom: str
+    partitions: int
+    configuration: dict[str, str]
+
+
+CLES_VERIFIEES = tuple(CONFIG_EVENEMENTS)  # ce que le projet pose à la création (décision 5)
+
+
+class Lecteur(Protocol):
+    """Ce que ``verifier-bus`` demande au courtier ; simulé dans les tests unitaires."""
+
+    def decrire_topic(self, nom: str) -> EtatTopic | None:
+        """Partitions et configuration du topic ; None s'il n'existe pas."""
+
+    def lire(self, nom: str) -> Iterator[MessageLu]:
+        """Tous les messages depuis le début, partition par partition, jusqu'aux offsets de fin."""
+
+
+def _lister_topics(admin: AdminClient, courtier: str, delai_s: float) -> list[str]:
+    try:
+        metadonnees = admin.list_topics(timeout=delai_s)
+    except KafkaException as exc:
+        raise CourtierInjoignable(f"{courtier} : {_texte(exc)}") from exc
+    return sorted(metadonnees.topics)
+
+
 class BusKafka:
     """Le bus réel : un ``Producer`` et un ``AdminClient`` de confluent-kafka."""
 
@@ -122,11 +176,7 @@ class BusKafka:
 
     def verifier_courtier(self, delai_s: float = DELAI_COURTIER_S) -> list[str]:
         """Les topics du courtier, ou ``CourtierInjoignable`` s'il ne répond pas dans le délai."""
-        try:
-            metadonnees = self._admin.list_topics(timeout=delai_s)
-        except KafkaException as exc:
-            raise CourtierInjoignable(f"{self.courtier} : {_texte(exc)}") from exc
-        return sorted(metadonnees.topics)
+        return _lister_topics(self._admin, self.courtier, delai_s)
 
     def preparer_topics(self, definitions: list[DefinitionTopic]) -> None:
         existants = set(self.verifier_courtier())
@@ -195,6 +245,105 @@ class BusKafka:
                     raise CourtierInjoignable(
                         f"suppression du topic {nom} : {_texte(exc)}"
                     ) from exc
+
+
+class LecteurKafka:
+    """Relit les topics depuis le début, sans groupe actif ni commit d'offset (décision 8).
+
+    Le consommateur s'assigne lui-même les partitions du topic et s'arrête,
+    pour chacune, à l'offset de fin lu avant de commencer : ce que ``publier``
+    écrirait pendant la lecture n'est pas compté, et rien n'est laissé sur le
+    courtier. L'ordre est celui de chaque partition, donc de chaque clé.
+    """
+
+    def __init__(self, courtier: str, *, delai_s: float = DELAI_COURTIER_S) -> None:
+        self.courtier = courtier
+        self.delai_s = delai_s
+        self._admin = AdminClient({"bootstrap.servers": courtier})
+        self._consommateur = Consumer(
+            {
+                "bootstrap.servers": courtier,
+                "group.id": f"pharmaflux-verifier-bus-{uuid.uuid4().hex[:8]}",
+                "enable.auto.commit": False,
+                "auto.offset.reset": "earliest",
+                # Préchargement borné : 64 Mo par défaut, inutile pour relire et appliquer
+                "queued.max.messages.kbytes": PRECHARGEMENT_KO,
+            }
+        )
+
+    def verifier_courtier(self, delai_s: float = DELAI_COURTIER_S) -> list[str]:
+        return _lister_topics(self._admin, self.courtier, delai_s)
+
+    def decrire_topic(self, nom: str) -> EtatTopic | None:
+        try:
+            metadonnees = self._admin.list_topics(timeout=self.delai_s)
+        except KafkaException as exc:
+            raise CourtierInjoignable(f"{self.courtier} : {_texte(exc)}") from exc
+        topic = metadonnees.topics.get(nom)
+        if topic is None or topic.error is not None:
+            return None
+        (avenir,) = self._admin.describe_configs([ConfigResource("topic", nom)]).values()
+        try:
+            entrees = avenir.result()
+        except KafkaException as exc:
+            raise CourtierInjoignable(f"configuration de {nom} : {_texte(exc)}") from exc
+        configuration = {cle: str(entrees[cle].value) for cle in CLES_VERIFIEES if cle in entrees}
+        return EtatTopic(nom, len(topic.partitions), configuration)
+
+    def lire(self, nom: str) -> Iterator[MessageLu]:
+        """Toutes les partitions à la fois, chacune dans l'ordre de ses offsets, jusqu'à sa fin."""
+        try:
+            metadonnees = self._admin.list_topics(timeout=self.delai_s)
+            fins: dict[int, int] = {}
+            for partition in sorted(metadonnees.topics[nom].partitions):
+                debut, fin = self._consommateur.get_watermark_offsets(
+                    TopicPartition(nom, partition), timeout=self.delai_s
+                )
+                if fin > debut:
+                    fins[partition] = fin
+            if not fins:
+                return
+            self._consommateur.assign(
+                [TopicPartition(nom, partition, OFFSET_BEGINNING) for partition in fins]
+            )
+            restantes = dict(fins)
+            while restantes:
+                message = self._consommateur.poll(self.delai_s)
+                if message is None:
+                    raise CourtierInjoignable(
+                        f"{nom} : rien reçu en {self.delai_s} s, partitions encore attendues"
+                        f" {sorted(restantes)}"
+                    )
+                erreur = message.error()
+                if erreur is not None:
+                    raise CourtierInjoignable(f"{nom} : {erreur.str()}")
+                numero, offset = message.partition(), message.offset()
+                assert numero is not None and offset is not None
+                if offset >= fins[numero]:
+                    continue  # publié pendant la lecture : hors de la photo prise au départ
+                if offset + 1 >= fins[numero]:
+                    restantes.pop(numero, None)
+                brutes = message.headers() or []
+                paires = brutes.items() if isinstance(brutes, dict) else brutes
+                yield MessageLu(
+                    topic=nom,
+                    partition=numero,
+                    offset=offset,
+                    cle=message.key() or b"",
+                    valeur=message.value() or b"",
+                    en_tetes={c: _octets(v) for c, v in paires},
+                    horodatage_ms=message.timestamp()[1],
+                )
+            self._consommateur.unassign()
+        except KafkaException as exc:
+            raise CourtierInjoignable(f"lecture de {nom} : {_texte(exc)}") from exc
+
+    def close(self) -> None:
+        self._consommateur.close()
+
+
+def _octets(valeur: str | bytes | None) -> bytes:
+    return valeur if isinstance(valeur, bytes) else (valeur or "").encode()
 
 
 def _texte(exc: KafkaException) -> str:

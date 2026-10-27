@@ -413,6 +413,20 @@ def _source(identifiant: str) -> str:
     return identifiant.partition(".")[0]
 
 
+def dernier_retenu(racine: Path, sortie: Path, contrat: Contrat) -> Snapshot | None:
+    """Le dernier snapshot retenu d'une entité d'après ``etat.json``, relu depuis le bronze.
+
+    Pour ``verifier-bus --racine`` : la seconde référence, indépendante des
+    fichiers d'événements. None sans état pour l'entité, ou sans snapshot retenu.
+    """
+    etat = _lire_etat(sortie).get(contrat.identifiant)
+    if etat is None:
+        return None
+    archives = bronze.lister(racine, _source(contrat.identifiant), contrat.fichier)
+    par_chemin = {archive.relatif(racine): archive for archive in archives}
+    return _recalculer(contrat, racine, par_chemin, etat.dernier_retenu)
+
+
 def lire_evenements(sortie: Path, identifiant: str) -> Iterator[Evenement]:
     """Le flux d'une entité : ses fichiers d'événements dans l'ordre des noms, ligne à ligne."""
     dossier = sortie / DOSSIER_EVENEMENTS / identifiant

@@ -5,8 +5,9 @@ consigner). ``etat`` : ce que contient l'archive, d'après le manifeste.
 ``profil`` : une archive contre son contrat de schéma, anomalies et mesures.
 ``questions verifier`` : le jeu de questions de référence rejoué sur l'archive.
 ``evenements`` : du bronze aux événements, rejeu complet ou reprise.
-``publier`` : les fichiers d'événements sur le bus. ``schemas enregistrer`` :
-les schémas du dépôt dans le registre de Redpanda.
+``publier`` : les fichiers d'événements sur le bus. ``verifier-bus`` : les
+topics relus, dédoublonnés, appliqués et comparés à la référence. ``schemas
+enregistrer`` : les schémas du dépôt dans le registre de Redpanda.
 """
 
 from __future__ import annotations
@@ -24,13 +25,15 @@ import httpx
 import typer
 
 from pharmaflux import bronze
-from pharmaflux.bus import publication
+from pharmaflux.bus import publication, verification
 from pharmaflux.bus.client import (
     COURTIER_PAR_DEFAUT,
     VARIABLE_COURTIER,
     Bus,
     BusKafka,
     CourtierInjoignable,
+    Lecteur,
+    LecteurKafka,
 )
 from pharmaflux.bus.registre import (
     REGISTRE_PAR_DEFAUT,
@@ -61,6 +64,7 @@ RACINE_PAR_DEFAUT = Path.home() / "pharmaflux-data"
 # schémas ; None = le vrai réseau, le vrai Redpanda.
 fabriquer_transport: Callable[[], httpx.BaseTransport | None] = lambda: None  # noqa: E731
 fabriquer_bus: Callable[[str], Bus | None] = lambda _courtier: None  # noqa: E731
+fabriquer_lecteur: Callable[[str], Lecteur | None] = lambda _courtier: None  # noqa: E731
 fabriquer_transport_registre: Callable[[], httpx.BaseTransport | None] = (  # noqa: E731
     lambda: None
 )
@@ -390,6 +394,92 @@ def publier(
     for topic, nombre in sorted(rapport.topics.items()):
         typer.echo(f"  {topic} : {nombre} message(s)")
     typer.echo(f"durée : {rapport.duree_s:.1f} s ; état : {sortie / publication.NOM_PUBLICATION}")
+    raise typer.Exit(code=rapport.code_sortie)
+
+
+@application.command("verifier-bus")
+def verifier_bus(
+    sortie: Annotated[
+        Path,
+        typer.Option(
+            "--sortie",
+            help="Sortie de « evenements » : ses fichiers d'événements sont la référence par"
+            " défaut ; avec --racine, son etat.json désigne le dernier snapshot retenu.",
+            show_default=True,
+        ),
+    ] = SORTIE_PAR_DEFAUT,
+    courtier: OptionCourtier = None,
+    racine: Annotated[
+        Path | None,
+        typer.Option(
+            "--racine",
+            help="Compare au dernier snapshot retenu, recalculé depuis cette archive (lecture"
+            " seule), au lieu des fichiers d'événements.",
+        ),
+    ] = None,
+    fichier: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--fichier",
+            help="Identifiant (bdpm.presentations) ou nom de fichier (CIS_CIP_bdpm.txt), répétable."
+            " Les onze fichiers TSV par défaut.",
+        ),
+    ] = None,
+) -> None:
+    """Relit chaque topic depuis le début, dédoublonne par id, applique et compare à la référence.
+
+    Vérifie aussi la rétention sans limite et les partitions de chaque topic.
+    Codes de sortie : 1 courtier injoignable, 2 toute différence d'état ou de
+    configuration ; les doublons sont rapportés, pas comptés comme différence.
+    """
+    configurer_journal()
+    contrats = charger_tous()
+    selection = _selection_contrats(fichier, None, contrats)
+    if racine is None:
+        reference = verification.reference_fichiers(sortie)
+        description = f"fichiers d'événements de {sortie}"
+    else:
+        reference = verification.reference_archive(sortie, racine, contrats)
+        description = (
+            f"dernier snapshot retenu d'après {sortie / rejeu.NOM_ETAT}, recalculé depuis {racine}"
+        )
+    adresse = _courtier(courtier)
+    lecteur = fabriquer_lecteur(adresse) or LecteurKafka(adresse)
+    try:
+        rapport = verification.verifier(
+            lecteur,
+            selection,
+            reference,
+            description_reference=description,
+            journal=_journal_evenements,
+        )
+    except CourtierInjoignable as exc:
+        typer.echo(f"vérification interrompue : {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except rejeu.ReprendreImpossible as exc:
+        typer.echo(f"référence impossible : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    finally:
+        if isinstance(lecteur, LecteurKafka):
+            lecteur.close()
+    for topic in rapport.topics:
+        if topic.entite == "echecs":
+            ligne = f"{topic.topic:28} {topic.messages} message(s) dans la file"
+        else:
+            ligne = (
+                f"{topic.entite:28} {topic.messages} message(s), {topic.doublons} doublon(s) ;"
+                f" {topic.lignes_bus} ligne(s) sur le bus, {topic.lignes_reference} en référence"
+            )
+        configuration = ", ".join(f"{c}={v}" for c, v in topic.configuration.items())
+        ligne += f" ; {topic.partitions} partition(s), {configuration or 'configuration inconnue'}"
+        verdict = (
+            " ; conforme" if topic.conforme else " ; DIFFÉRENCE : " + " | ".join(topic.differences)
+        )
+        typer.echo(ligne + verdict)
+        for chemin, nombre in topic.doublons_par_fichier.items():
+            typer.echo(f"  doublons : {nombre} de {chemin}")
+    typer.echo(f"référence : {rapport.reference}")
+    typer.echo(f"durée : {rapport.duree_s:.1f} s")
     raise typer.Exit(code=rapport.code_sortie)
 
 

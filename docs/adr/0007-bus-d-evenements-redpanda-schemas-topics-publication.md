@@ -1,7 +1,7 @@
 # ADR-0007 — Bus d'événements : Redpanda local, client, schémas, topics, clés, publication idempotente, file des messages en échec
 
-**Statut :** proposé (palier 2 de la mission 03 ; la vérification, la reprise
-testée et la CI s'ajoutent au palier 3) · **Date :** 2026-10-27 ·
+**Statut :** accepté (mission 03 : proposé au palier 2, complété au palier 3
+par la vérification, la reprise testée et la CI) · **Date :** 2026-10-27 ·
 **Mission :** 03 · s'appuie sur l'ADR 0006 (événements)
 
 ## Contexte
@@ -108,6 +108,42 @@ la ligne brute tronquée à 64 Ko. La publication **continue** après un
 échec ; un courtier injoignable l'arrête. Les bilans restent des fichiers :
 leur topic est une décision du Lot 5, avec les alertes.
 
+**Vérification** (`bus/verification.py`, `pharmaflux verifier-bus`). Chaque
+topic est relu depuis le début, toutes ses partitions assignées à la fois,
+chacune dans l'ordre de ses offsets jusqu'à l'offset de fin lu au départ ;
+pas de groupe actif, pas de commit : rien n'est laissé sur le courtier, et ce
+que `publier` écrirait pendant la lecture n'est pas compté. Les messages sont
+dédoublonnés par `id` (le premier gagne, les suivants sont comptés avec le
+fichier qu'ils citent), appliqués au vide par lots, et l'état obtenu est
+réduit à une empreinte sha256 par identité de ligne **avant** que la
+référence ne soit calculée : un seul état complet en mémoire. Deux
+références : les fichiers d'événements de la sortie, appliqués dans l'ordre
+des noms (le défaut, ce que la CI sait faire avec les fixtures), et avec
+`--racine` le dernier snapshot retenu d'après `etat.json`, recalculé depuis
+l'archive, indépendant des fichiers. Le courtier est aussi interrogé sur ce
+que le projet pose à la création : `retention.ms` et `retention.bytes` à -1,
+`cleanup.policy` `delete`, `message.timestamp.type`, et le nombre de
+partitions. Toute différence, d'état ou de configuration, donne le code 2 ;
+un courtier injoignable, 1 ; les doublons sont rapportés sans être une
+différence : après une reprise, ils sont attendus.
+
+**Reprise testée et CI.** Les tests d'intégration
+(`tests/test_bus_integration.py`, marqueur `integration`, préfixe de topic
+unique par test, topics et sujets supprimés à la fin) rejouent contre le
+courtier : la publication complète puis `verifier-bus` (aucune différence,
+aucun doublon, la configuration lue est celle posée) ; la publication coupée
+pendant chacun des trois fichiers puis `--reprendre` (aucune différence ; les
+doublons viennent tous du fichier republié et sont des copies exactes, même
+valeur, même clé, même horodatage) ; le message impubliable vers la file ; le
+`produce` vers un topic non préparé, qui échoue sans rien créer. La CI a un
+second job, `integration` : le Redpanda du même fichier compose
+(`up -d --wait`), l'amorçage vérifié par `rpk cluster config get`, les
+schémas enregistrés sur un registre neuf (historique puis courant), les tests
+marqués, le journal du courtier en cas d'échec, `down -v` à la fin. Deux
+écarts possibles avec le Mac, affichés par le job : l'architecture (amd64
+contre arm64, images multi-architecture) et la version de Compose (le bloc
+`configs: content:` demande au moins la 2.23.1).
+
 ## Conséquences
 
 - Le Lot 2 lit onze topics ordonnés par médicament, dédoublonne par `id`
@@ -118,8 +154,17 @@ leur topic est une décision du Lot 5, avec les alertes.
   publication sur un bus en mémoire) tournent sans Docker ; les tests
   marqués `integration` demandent le Redpanda local et sont sautés sans lui,
   avec le motif ; `uv run pytest -q` attend 5 s de plus quand il est absent.
-- Le palier 3 ajoute `verifier-bus`, les tests de coupure et de reprise, le
-  job de CI, et complète cet ADR avec les mesures de la démonstration.
+- Mesures sur la copie du Mac (27/10/2026, onze fichiers, 164 099
+  événements) : rejeu complet en flux 8,3 s et 134 Mo résidents, `diff -r`
+  identique à la référence du code fusionné ; `publier` 164 099 messages sur
+  onze topics en 29,8 s et 59 Mo ; `verifier-bus` conforme, 0 doublon, 11 s
+  et 189 Mo (219 Mo avec `--racine`) ; `publier --reprendre` sans nouveau
+  fichier 0,4 s. La mémoire de `verifier-bus` vient pour moitié des tampons
+  du consommateur et de la fragmentation : l'entité la plus lourde seule
+  donne 164 Mo, et un état complet de `compositions` pèse 40 Mo tracés.
+- La mission est close quand `evenements --reprendre`, `publier --reprendre`
+  et `verifier-bus` se suivent sans anomalie : joué sur le Mac le 27/10/2026
+  (0 archive, 0 fichier, conforme).
 
 ## Options écartées
 
@@ -134,6 +179,9 @@ leur topic est une décision du Lot 5, avec les alertes.
 | une option `--forcer` pour republier un fichier modifié | un événement publié ne se réécrit pas ; rebâtir est explicite et visible |
 | `services:` de GitHub Actions pour Redpanda en CI | une seconde configuration du courtier, différente de celle du Mac ; le fichier compose sert aux deux (palier 3) |
 | un topic des bilans dès maintenant | pas de consommateur avant le Lot 5 ; un seul publieur et une seule file dans cette mission |
+| `verifier-bus` par un groupe de consommateurs et des offsets commités | laisserait une trace sur le courtier et une position à gérer ; relire depuis le début jusqu'aux offsets de fin est la vérification, pas une consommation |
+| lire une partition après l'autre | deux fois plus lent (18 s contre 11) pour rien : l'ordre qui compte est celui d'une clé, donc d'une partition |
+| comparer deux états complets | deux fois 40 Mo pour `compositions` ; une empreinte par ligne suffit pour dire quelles identités diffèrent |
 
 ## Références
 

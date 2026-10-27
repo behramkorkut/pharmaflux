@@ -117,6 +117,49 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 - **Sortie par défaut** : `data/evenements/`, hors git ; jamais sous la
   racine de l'archive, qui ne s'écrit pas.
 
+## Des événements au bus (mission 03)
+
+- **Écriture en flux** (`evenements/rejeu.py`, `comparaison.py`, ADR 0006
+  mis à jour) : chaque événement est écrit dès qu'il est produit, un seul
+  snapshot retenu vivant par entité, valeurs répétées partagées (comparées
+  avec `==`, jamais `is`) ; le rejeu complet de la copie du Mac tient en
+  118 à 143 Mo résidents (474 avant), sortie identique à l'octet.
+- **Courtier** (`docker-compose.yml`, ADR 0007) : Redpanda mono-nœud
+  épinglé, projet `pharmaflux`, ports sur `127.0.0.1` (19092, 18081, 18082,
+  19644), volume `pharmaflux-redpanda`, mode `dev-container`, console sous
+  profil ; propriétés de grappe par `.bootstrap.yaml` (bloc `configs`),
+  création automatique des topics coupée. Premier `pull` par beko ; les
+  agents n'ajoutent que `--pull never`. Le colima est partagé : on ne touche
+  qu'au projet `pharmaflux`.
+- **Enveloppe et topics** (`bus/enveloppe.py`, `bus/client.py`) : un topic
+  par entité, `pharmaflux.<entite>.v1`, 3 partitions, clé = objet JSON `cle`
+  compact trié, `murmur2_random`, valeur = la ligne JSONL **nue** à l'octet,
+  horodatage `date_observation` (`CreateTime`), en-têtes `id`, `schema_id`,
+  `entite`, `type`, `archive`, `fichier`, `producteur` ; rétention sans
+  limite posée à la création ; producteur idempotent, zstd, 1 Mo refusé au
+  `produce`. Le topic vient du dossier du fichier, jamais de la ligne.
+- **Schémas** (`bus/registre.py`, `bus/schemas/`) : JSON Schema draft-07 de
+  l'événement et du message en échec, un sujet par topic,
+  `BACKWARD_TRANSITIVE`, historique du dépôt enregistré avant le courant ;
+  l'identifiant voyage dans l'en-tête, et un même contenu a le même
+  identifiant sur tous les sujets.
+- **`pharmaflux publier`** (`bus/publication.py`) : fichiers dans l'ordre,
+  `publication.json` (sha256 des octets publiés, comptes) écrit après
+  l'accusé de réception de chaque fichier ; `--reprendre` ne publie que les
+  nouveaux ; un fichier publié modifié ou disparu fait refuser, sans
+  forçage ; codes 1, 2, 3 ; file `pharmaflux.echecs.v1` (`illisible`,
+  `trop_gros` tronqué à 64 Ko, `LogAppendTime`). Après une coupure, le
+  fichier en cours est republié entier : doublons de même `id`, même
+  contenu, même horodatage.
+- **`pharmaflux verifier-bus`** (`bus/verification.py`) : relecture depuis
+  le début sans commit d'offset, fin par les offsets, dédoublonnage par
+  `id`, `appliquer` au vide et comparaison à la référence (fichiers par
+  défaut ; `--racine` pour le dernier snapshot retenu, recalculé depuis
+  l'archive) ; vérifie rétention, politique, type d'horodatage et
+  partitions ; code 2 sur toute différence.
+- **Mission close** quand `evenements --reprendre`, `publier --reprendre`
+  et `verifier-bus` se suivent sans anomalie sur une copie rapatriée.
+
 ## Pièges connus
 
 - Deux sources changent d'octets sans changer de fond (ordre des lignes
@@ -144,7 +187,7 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 | Quoi | Où |
 |---|---|
 | Spécifications (PRD) | `01_Specifications/` |
-| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` |
+| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `schemas/` |
 | Tests et fixtures | `tests/`, `tests/fixtures/` |
 | Planification de la collecte (systemd, rapatriement) | `infra/planification/` |
 | Décisions d'architecture | `docs/adr/` (gabarit : `0000-modele.md`) |
@@ -155,7 +198,11 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 
 ## Outillage
 
-Python 3.12 géré par `uv` (`.python-version`), `httpx`, `typer` ; `ruff`
-(lint et format), `mypy --strict` sur `src/`, `pytest`. La CI
-(`.github/workflows/ci.yml`) rejoue les mêmes commandes plus les tests des
-garde-fous du circuit, en un seul job, sans appel réseau vers les sources.
+Python 3.12 géré par `uv` (`.python-version`), `httpx`, `typer`,
+`confluent-kafka` (la seule dépendance de production ajoutée par la mission
+03 ; `jsonschema` en test) ; `ruff` (lint et format), `mypy --strict` sur
+`src/`, `pytest` (marqueur `integration`). Redpanda et sa console viennent
+de `docker-compose.yml`. La CI (`.github/workflows/ci.yml`) a deux jobs :
+`verifier` rejoue les mêmes commandes plus les tests des garde-fous du
+circuit ; `integration` démarre le Redpanda du fichier compose et lance les
+tests marqués. Aucun appel réseau vers les sources.

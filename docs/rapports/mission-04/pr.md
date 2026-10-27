@@ -1,9 +1,8 @@
 # Mission 04 — rejeu accéléré et jeu de démo : `demo/archive` figé dans le dépôt, `demo rejouer`, `suivre`, `make demo`, CI
 
-Branche `mission-04-rejeu-accelere-et-demo`, 10 commits depuis `f1750dc`
-(le `main` du départ ; `main` a avancé depuis de trois commits sur des
-chemins réservés à l'IeC, sans conflit), §0 en `ab31fd3`, cette description
-en dernier. Ordre de mission : `docs/missions/mission-04-rejeu-accelere-et-demo.md`
+Branche `mission-04-rejeu-accelere-et-demo`, depuis `f1750dc` (le `main`
+du départ ; `main` a avancé depuis de trois commits sur des chemins réservés
+à l'IeC, sans conflit), §0 en `ab31fd3`, cette description en dernier. Ordre de mission : `docs/missions/mission-04-rejeu-accelere-et-demo.md`
 (addendum 1, `aceb5ba` sur `main`). Trois paliers acceptés par l'IeC, le
 troisième avec un correctif (`7c9e6a8`) ; trois contrôles de palier et le
 contrôle final commis tels quels dans `docs/relectures/mission-04/`.

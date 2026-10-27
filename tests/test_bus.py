@@ -20,7 +20,13 @@ from jsonschema import Draft7Validator, ValidationError
 
 from pharmaflux.bus import enveloppe as env
 from pharmaflux.bus import publication, registre
-from pharmaflux.bus.client import DefinitionTopic, Livraison, MessageTropGros, Rappel
+from pharmaflux.bus.client import (
+    CourtierInjoignable,
+    DefinitionTopic,
+    Livraison,
+    MessageTropGros,
+    Rappel,
+)
 from pharmaflux.bus.enveloppe import Enveloppe, Motif
 from pharmaflux.bus.publication import LivraisonEchouee, PublicationRefusee
 from pharmaflux.bus.registre import Registre, SchemaAbsent, enregistrer_tout
@@ -382,9 +388,15 @@ class BusSimule:
 
     taille_max: int = 10**9
     panne: str | None = None  # chaque livraison échoue avec ce motif
+    injoignable: bool = False  # le courtier est arrêté : rien ne répond
     topics: dict[str, DefinitionTopic] = field(default_factory=dict)
     messages: dict[str, list[Enveloppe]] = field(default_factory=dict)
     en_vol: list[tuple[Enveloppe, Rappel]] = field(default_factory=list)
+
+    def verifier_courtier(self, delai_s: float = 0.0) -> list[str]:
+        if self.injoignable:
+            raise CourtierInjoignable(f"aucun courtier sur simule:0 après {delai_s:.0f} s")
+        return list(self.topics)
 
     def preparer_topics(self, definitions: list[DefinitionTopic]) -> None:
         for definition in definitions:
@@ -658,6 +670,11 @@ def test_commandes_publier_et_schemas_enregistrer(
     assert deja.exit_code == 2 and "--reprendre" in deja.output, "état existant"
     reprise = lanceur.invoke(application, ["publier", "--sortie", str(sortie), "--reprendre"])
     assert reprise.exit_code == 0 and "(2 déjà), 0 message(s)" in reprise.output
+    # Rien de nouveau, mais le courtier est arrêté : code non nul quand même (décision 4).
+    monkeypatch.setattr(cli, "fabriquer_bus", lambda _courtier: BusSimule(injoignable=True))
+    arrete = lanceur.invoke(application, ["publier", "--sortie", str(sortie), "--reprendre"])
+    assert arrete.exit_code == 1, arrete.output
+    assert "publication interrompue : aucun courtier sur simule:0" in arrete.output
     en_panne = BusSimule(panne="Local: Broker transport failure")
     monkeypatch.setattr(cli, "fabriquer_bus", lambda _courtier: en_panne)
     initiales, _ = _evenements_presentations()

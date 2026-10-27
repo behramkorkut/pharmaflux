@@ -98,6 +98,7 @@ def executer(
     """Publie les fichiers de ``sortie`` qui ne le sont pas encore ; rend le résumé."""
     dire = journal or (lambda _: None)
     debut = time.monotonic()
+    bus.verifier_courtier()  # décision 4 : injoignable, code non nul, même sans rien à publier
     chemin_etat = sortie / NOM_PUBLICATION
     etat = lire_etat(chemin_etat)
     if etat and not reprendre:

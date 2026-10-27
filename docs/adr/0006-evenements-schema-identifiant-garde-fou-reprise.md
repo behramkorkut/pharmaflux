@@ -172,8 +172,10 @@ retenu.
 
 ## Mise à jour du 27/10/2026 — écriture en flux (mission 03, palier 1)
 
-**Décision.** La chaîne n'a plus de structure dont la taille dépend du
-nombre d'événements.
+**Décision.** Aucun événement n'est construit ni sérialisé avant d'être
+écrit ; seuls les squelettes, qui pointent vers les lignes des snapshots,
+dépendent encore du nombre d'événements (11 Mo tracés pour les 32 439
+créations des compositions).
 
 - `comparer` rend un **itérateur**. Il construit un squelette par
   événement (type, ligne avant, ligne après, rang, empreinte) avec sa clé

@@ -205,4 +205,5 @@ Python 3.12 géré par `uv` (`.python-version`), `httpx`, `typer`,
 de `docker-compose.yml`. La CI (`.github/workflows/ci.yml`) a deux jobs :
 `verifier` rejoue les mêmes commandes plus les tests des garde-fous du
 circuit ; `integration` démarre le Redpanda du fichier compose et lance les
-tests marqués. Aucun appel réseau vers les sources.
+tests marqués, un saut y étant un échec (`PHARMAFLUX_INTEGRATION_EXIGEE`).
+Aucun appel réseau vers les sources.

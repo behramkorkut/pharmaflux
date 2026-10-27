@@ -21,6 +21,7 @@ from pharmaflux.bus import publication, verification
 from pharmaflux.bus.client import (
     CONFIG_ECHECS,
     CONFIG_EVENEMENTS,
+    DELAI_COURTIER_S,
     Bus,
     DefinitionTopic,
     EtatTopic,
@@ -65,6 +66,9 @@ class BusCoupe:
     bus: Bus
     apres: int
     fichiers: int = 0
+
+    def verifier_courtier(self, delai_s: float = DELAI_COURTIER_S) -> list[str]:
+        return self.bus.verifier_courtier(delai_s)
 
     def preparer_topics(self, definitions: list[DefinitionTopic]) -> None:
         self.bus.preparer_topics(definitions)

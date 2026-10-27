@@ -96,8 +96,10 @@ jobs:
       - name: Schémas (historique puis courant, sur un registre neuf)
         run: uv run pharmaflux schemas enregistrer
 
-      - name: Tests d'intégration
+      - name: Tests d'intégration (ici, un saut est un échec : la variable l'exige)
         run: uv run pytest -q -m integration
+        env:
+          PHARMAFLUX_INTEGRATION_EXIGEE: "1"
 
       - name: Journal du courtier en cas d'échec
         if: failure()

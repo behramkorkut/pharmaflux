@@ -139,7 +139,9 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run
 
 La CI a deux jobs : `verifier`, ces commandes plus les tests des garde-fous
 du circuit, et `integration`, qui démarre le Redpanda du même fichier
-compose et lance les tests marqués.
+compose et lance les tests marqués avec la variable
+`PHARMAFLUX_INTEGRATION_EXIGEE` posée : là, un saut est un échec, un job
+vert a lancé les six tests.
 
 ## Méthode
 

@@ -2,10 +2,11 @@
 
 Marqués ``integration`` : sautés, et dit, quand aucun courtier ne répond sur
 ``PHARMAFLUX_COURTIER`` (défaut ``127.0.0.1:19092``, celui de
-``docker compose -p pharmaflux up -d``). Les topics et les sujets du registre
-portent un suffixe unique par test et sont supprimés à la fin. Seules les
-fixtures sont lues, jamais ``~/pharmaflux-data``, pour que la CI ait le même
-jeu que le Mac.
+``docker compose -p pharmaflux up -d``). En CI, la variable
+``PHARMAFLUX_INTEGRATION_EXIGEE`` fait de ce saut un échec : un job vert a
+lancé les tests. Les topics et les sujets du registre portent un suffixe
+unique par test et sont supprimés à la fin. Seules les fixtures sont lues,
+jamais ``~/pharmaflux-data``, pour que la CI ait le même jeu que le Mac.
 """
 
 from __future__ import annotations
@@ -48,16 +49,20 @@ pytestmark = pytest.mark.integration
 
 COURTIER = os.environ.get(VARIABLE_COURTIER, COURTIER_PAR_DEFAUT)
 REGISTRE = os.environ.get(VARIABLE_REGISTRE, REGISTRE_PAR_DEFAUT)
+VARIABLE_EXIGEE = "PHARMAFLUX_INTEGRATION_EXIGEE"  # posée par la CI : un saut devient un échec
 
 
 @pytest.fixture(scope="session")
 def bus() -> Iterator[BusKafka]:
-    """Le courtier, ou le saut de tous les tests d'intégration avec le motif."""
+    """Le courtier, ou le saut de tous les tests d'intégration avec le motif (échec en CI)."""
     bus_ = BusKafka(COURTIER)
     try:
         bus_.verifier_courtier(delai_s=5)
     except CourtierInjoignable as exc:
-        pytest.skip(f"aucun courtier sur {COURTIER} (docker compose -p pharmaflux up -d) : {exc}")
+        motif = f"aucun courtier sur {COURTIER} (docker compose -p pharmaflux up -d) : {exc}"
+        if os.environ.get(VARIABLE_EXIGEE):
+            pytest.fail(f"{VARIABLE_EXIGEE} est posée, le saut est un échec : {motif}")
+        pytest.skip(motif)
     yield bus_
     bus_.attendre(10)
 

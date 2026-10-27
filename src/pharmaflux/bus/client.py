@@ -95,6 +95,9 @@ Rappel = Callable[[Livraison], None]
 class Bus(Protocol):
     """Ce que la publication demande au courtier."""
 
+    def verifier_courtier(self, delai_s: float = DELAI_COURTIER_S) -> list[str]:
+        """Les topics du courtier, ou ``CourtierInjoignable`` s'il ne répond pas dans le délai."""
+
     def preparer_topics(self, definitions: list[DefinitionTopic]) -> None:
         """Crée les topics manquants avec leur configuration ; ceux qui existent sont gardés."""
 

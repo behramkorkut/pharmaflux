@@ -428,7 +428,8 @@ def verifier_bus(
 ) -> None:
     """Relit chaque topic depuis le début, dédoublonne par id, applique et compare à la référence.
 
-    Vérifie aussi la rétention sans limite et les partitions de chaque topic.
+    Vérifie aussi la rétention sans limite, la politique, le type d'horodatage
+    et les partitions de chaque topic.
     Codes de sortie : 1 courtier injoignable, 2 référence introuvable (refusée
     avant de lire le bus) ou toute différence d'état ou de configuration ; les
     doublons sont rapportés, pas comptés comme différence.

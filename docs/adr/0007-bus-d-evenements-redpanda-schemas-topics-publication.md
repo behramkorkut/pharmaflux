@@ -125,7 +125,11 @@ que le projet pose à la création : `retention.ms` et `retention.bytes` à -1,
 `cleanup.policy` `delete`, `message.timestamp.type`, et le nombre de
 partitions. Toute différence, d'état ou de configuration, donne le code 2 ;
 un courtier injoignable, 1 ; les doublons sont rapportés sans être une
-différence : après une reprise, ils sont attendus.
+différence : après une reprise, ils sont attendus. Une référence introuvable
+(pas de dossier d'événements dans la sortie, pas d'`etat.json` avec
+`--racine`) est refusée avant toute lecture du bus, code 2 : comparer à un
+état vide ferait croire à un bus faux, ou déclarerait conforme un topic vide ;
+une entité sans référence est dite en clair, son topic n'est pas relu.
 
 **Reprise testée et CI.** Les tests d'intégration
 (`tests/test_bus_integration.py`, marqueur `integration`, préfixe de topic

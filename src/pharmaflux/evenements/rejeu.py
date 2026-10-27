@@ -413,6 +413,12 @@ def _source(identifiant: str) -> str:
     return identifiant.partition(".")[0]
 
 
+def entites_suivies(sortie: Path) -> frozenset[str]:
+    """Les entités qu'``etat.json`` connaît ; vide sans fichier, ``ReprendreImpossible`` s'il est
+    illisible. Pour ``verifier-bus --racine`` : une entité absente n'a pas de référence."""
+    return frozenset(_lire_etat(sortie))
+
+
 def dernier_retenu(racine: Path, sortie: Path, contrat: Contrat) -> Snapshot | None:
     """Le dernier snapshot retenu d'une entité d'après ``etat.json``, relu depuis le bronze.
 

@@ -122,8 +122,9 @@ applique les événements et compare l'état obtenu aux fichiers d'événements
 de la sortie ou, avec `--racine`, au dernier snapshot retenu recalculé
 depuis l'archive ; il vérifie aussi la rétention sans limite, la politique
 `delete`, le type d'horodatage et les partitions de chaque topic. Toute
-différence donne le code 2 ; les doublons d'une reprise sont rapportés, avec
-le fichier dont ils viennent. Les tests qui ont besoin du courtier sont
+différence donne le code 2, comme une référence introuvable, refusée avant de
+lire le bus ; les doublons d'une reprise sont rapportés, avec le fichier dont
+ils viennent. Les tests qui ont besoin du courtier sont
 marqués `integration` et sautés sans lui :
 
 ```bash

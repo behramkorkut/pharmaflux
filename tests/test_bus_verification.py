@@ -10,6 +10,7 @@ l'accusé de réception jamais rendu : le cas de la coupure suivie de
 from __future__ import annotations
 
 import json
+import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -208,15 +209,56 @@ def test_les_deux_references_fichiers_et_archive(tmp_path: Path) -> None:
         assert all(
             t.lignes_bus == t.lignes_reference > 0 for t in rapport.topics if t.entite != "echecs"
         )
-    # Sans etat.json, la référence par l'archive est vide : la différence le dit.
+    # Une entité qu'etat.json ne connaît pas n'a pas de référence : dit en clair, topic non relu.
+    etat = json.loads((sortie / "etat.json").read_text(encoding="utf-8"))
+    del etat["entites"][DISPO]
+    (sortie / "etat.json").write_text(json.dumps(etat), encoding="utf-8")
+    _assert_entite_sans_reference(_verifier(bus, sortie, racine))
+    # Sans etat.json du tout, la référence est refusée avant de lire le bus.
     (sortie / "etat.json").unlink()
-    rapport = _verifier(bus, sortie, racine)
-    assert rapport.code_sortie == 2
-    assert all(
-        t.lignes_reference == 0 and "seulement sur le bus" in t.differences[0]
-        for t in rapport.topics
-        if t.entite != "echecs"
+    with pytest.raises(
+        verification.ReferenceIntrouvable, match=r"référence introuvable : .*etat\.json$"
+    ):
+        verification.reference_archive(sortie, racine, charger_tous())
+
+
+def _assert_entite_sans_reference(rapport: verification.Rapport) -> None:
+    pres, dispo, echecs = rapport.topics
+    assert rapport.code_sortie == 2 and pres.conforme and echecs.conforme
+    assert dispo.differences == (verification.SANS_REFERENCE,)
+    assert (dispo.messages, dispo.lignes_bus, dispo.lignes_reference) == (0, 0, 0), "non relu"
+    assert dispo.partitions == 3 and dispo.configuration == CONFIGURATION_ATTENDUE, (
+        "le topic est quand même décrit"
     )
+
+
+def test_une_entite_sans_fichier_d_evenements_est_dite_sans_reference(tmp_path: Path) -> None:
+    sortie, _, _ = _sortie(tmp_path)
+    bus = BusSimule()
+    _, r = _registre_pret()
+    assert publication.executer(sortie, bus, r).code_sortie == 0
+    shutil.rmtree(sortie / "evenements" / DISPO)
+    _assert_entite_sans_reference(_verifier(bus, sortie))
+
+
+def test_une_reference_introuvable_est_refusee_avant_de_lire_le_bus(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from pharmaflux import cli
+    from pharmaflux.cli import application
+
+    sortie = tmp_path / "sans-evenements"
+    sortie.mkdir()
+    with pytest.raises(verification.ReferenceIntrouvable, match="référence introuvable : "):
+        verification.reference_fichiers(sortie)
+    lecteurs_fabriques: list[str] = []
+    monkeypatch.setattr(cli, "fabriquer_lecteur", lambda c: lecteurs_fabriques.append(c))
+    resultat = CliRunner().invoke(application, ["verifier-bus", "--sortie", str(sortie)])
+    assert resultat.exit_code == 2, resultat.output
+    assert f"référence introuvable : {sortie / 'evenements'}" in resultat.output
+    assert lecteurs_fabriques == [], "le bus n'est pas lu"
 
 
 def test_commande_verifier_bus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -256,7 +298,6 @@ def test_commande_verifier_bus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         ["verifier-bus", "--sortie", str(sortie), "--racine", str(racine), *selection[:2]],
     )
     assert resultat.exit_code == 2, resultat.output
-    assert (
-        f"recalculé depuis {racine}" in resultat.output
-        and "seulement sur le bus" in resultat.output
+    assert f"référence introuvable : {sortie / 'etat.json'}" in resultat.output, (
+        "cette sortie n'a pas d'etat.json"
     )

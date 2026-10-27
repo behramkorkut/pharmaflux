@@ -429,20 +429,29 @@ def verifier_bus(
     """Relit chaque topic depuis le début, dédoublonne par id, applique et compare à la référence.
 
     Vérifie aussi la rétention sans limite et les partitions de chaque topic.
-    Codes de sortie : 1 courtier injoignable, 2 toute différence d'état ou de
-    configuration ; les doublons sont rapportés, pas comptés comme différence.
+    Codes de sortie : 1 courtier injoignable, 2 référence introuvable (refusée
+    avant de lire le bus) ou toute différence d'état ou de configuration ; les
+    doublons sont rapportés, pas comptés comme différence.
     """
     configurer_journal()
     contrats = charger_tous()
     selection = _selection_contrats(fichier, None, contrats)
-    if racine is None:
-        reference = verification.reference_fichiers(sortie)
-        description = f"fichiers d'événements de {sortie}"
-    else:
-        reference = verification.reference_archive(sortie, racine, contrats)
-        description = (
-            f"dernier snapshot retenu d'après {sortie / rejeu.NOM_ETAT}, recalculé depuis {racine}"
-        )
+    try:
+        if racine is None:
+            reference = verification.reference_fichiers(sortie)
+            description = f"fichiers d'événements de {sortie}"
+        else:
+            reference = verification.reference_archive(sortie, racine, contrats)
+            description = (
+                f"dernier snapshot retenu d'après {sortie / rejeu.NOM_ETAT},"
+                f" recalculé depuis {racine}"
+            )
+    except verification.ReferenceIntrouvable as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from exc
+    except rejeu.ReprendreImpossible as exc:
+        typer.echo(f"référence impossible : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
     adresse = _courtier(courtier)
     lecteur = fabriquer_lecteur(adresse) or LecteurKafka(adresse)
     try:

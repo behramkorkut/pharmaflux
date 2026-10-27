@@ -12,6 +12,13 @@ par identité de ligne, et le compare à une **référence** réduite de même :
   recalculé depuis l'archive : une référence indépendante des fichiers, pour
   la démonstration sur la copie du Mac.
 
+Une référence qui n'existe pas (pas de dossier d'événements dans la sortie,
+pas d'``etat.json`` avec ``--racine``) est refusée avant toute lecture du bus
+(``ReferenceIntrouvable``, code 2) : comparer à un état vide ferait croire à
+un bus faux, ou déclarerait conforme un topic vide. Une entité sélectionnée
+sans référence est dite en clair dans sa différence, et son topic n'est pas
+relu.
+
 Il vérifie aussi ce que la décision 5 exige du courtier : rétention sans
 limite (``retention.ms`` et ``retention.bytes`` à -1), ``cleanup.policy``
 ``delete``, et le nombre de partitions figé. Toute différence, d'état ou de
@@ -34,6 +41,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from pharmaflux.bus import enveloppe as env
 from pharmaflux.bus.client import (
@@ -50,10 +58,22 @@ from pharmaflux.evenements import rejeu, schema
 from pharmaflux.evenements.comparaison import Etat, appliquer, etat_du_snapshot
 
 Journal = Callable[[str], None]
-Reference = Callable[[str], Etat]  # entité → l'état attendu
 Empreintes = dict[str, bytes]  # identité de ligne → empreinte de (valeurs, occurrences)
 LOT_APPLICATION = 5_000  # ``appliquer`` copie l'état à chaque appel : on lui donne des lots
 EXEMPLES = 3  # identités citées par différence
+SANS_REFERENCE = "aucune référence pour cette entité : topic non relu"
+
+
+class ReferenceIntrouvable(Exception):  # noqa: N818 (nom français voulu)
+    """La référence n'existe pas : le message nomme le chemin, et le bus n'est pas lu."""
+
+
+class Reference(Protocol):
+    """Ce à quoi le bus est comparé : un état attendu par entité, quand elle en a un."""
+
+    def disponible(self, entite: str) -> bool: ...
+
+    def etat(self, entite: str) -> Etat: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,23 +113,50 @@ class Rapport:
         return sum(t.doublons for t in self.topics)
 
 
-def reference_fichiers(sortie: Path) -> Reference:
+@dataclass(frozen=True, slots=True)
+class ReferenceFichiers:
     """Le flux de fichiers de la sortie, appliqué au vide (la référence par défaut)."""
 
-    def etat(entite: str) -> Etat:
-        return _appliquer_par_lots({}, rejeu.lire_evenements(sortie, entite))
+    sortie: Path
 
-    return etat
+    def disponible(self, entite: str) -> bool:
+        return any((self.sortie / rejeu.DOSSIER_EVENEMENTS / entite).glob("*.jsonl"))
+
+    def etat(self, entite: str) -> Etat:
+        return _appliquer_par_lots({}, rejeu.lire_evenements(self.sortie, entite))
+
+
+@dataclass(frozen=True, slots=True)
+class ReferenceArchive:
+    """Le dernier snapshot retenu (``etat.json``), recalculé depuis l'archive (``--racine``)."""
+
+    sortie: Path
+    racine: Path
+    contrats: dict[str, Contrat]
+    entites: frozenset[str]  # celles qu'``etat.json`` connaît
+
+    def disponible(self, entite: str) -> bool:
+        return entite in self.entites
+
+    def etat(self, entite: str) -> Etat:
+        snapshot = rejeu.dernier_retenu(self.racine, self.sortie, self.contrats[entite])
+        return {} if snapshot is None else etat_du_snapshot(snapshot)
+
+
+def reference_fichiers(sortie: Path) -> Reference:
+    """``ReferenceIntrouvable`` si la sortie n'a pas de dossier d'événements."""
+    dossier = sortie / rejeu.DOSSIER_EVENEMENTS
+    if not dossier.is_dir():
+        raise ReferenceIntrouvable(f"référence introuvable : {dossier}")
+    return ReferenceFichiers(sortie)
 
 
 def reference_archive(sortie: Path, racine: Path, contrats: dict[str, Contrat]) -> Reference:
-    """Le dernier snapshot retenu (``etat.json``), recalculé depuis l'archive (``--racine``)."""
-
-    def etat(entite: str) -> Etat:
-        snapshot = rejeu.dernier_retenu(racine, sortie, contrats[entite])
-        return {} if snapshot is None else etat_du_snapshot(snapshot)
-
-    return etat
+    """``ReferenceIntrouvable`` sans ``etat.json`` ; ``ReprendreImpossible`` s'il est illisible."""
+    chemin = sortie / rejeu.NOM_ETAT
+    if not chemin.is_file():
+        raise ReferenceIntrouvable(f"référence introuvable : {chemin}")
+    return ReferenceArchive(sortie, racine, contrats, rejeu.entites_suivies(sortie))
 
 
 def verifier(
@@ -141,6 +188,7 @@ def _verifier_topic(
     """``reference`` None : la file des échecs, comptée et vérifiée, sans état à comparer."""
     depart = time.monotonic()
     description = lecteur.decrire_topic(definition.nom)
+    sans_reference = reference is not None and not reference.disponible(entite)
     differences: list[str] = []
     messages = doublons = 0
     par_fichier: Counter[str] = Counter()
@@ -155,7 +203,7 @@ def _verifier_topic(
         differences.extend(_ecarts_configuration(description, definition))
         if reference is None:
             messages = sum(1 for _ in lecteur.lire(definition.nom))
-        else:
+        elif not sans_reference:
             try:
                 etat_bus, messages, doublons, par_fichier = _rejouer(lecteur.lire(definition.nom))
             except ValueError as exc:
@@ -163,8 +211,10 @@ def _verifier_topic(
             else:
                 bus = _empreintes(etat_bus)
                 del etat_bus  # un seul état complet à la fois : la référence vient après
-    if reference is not None:
-        attendu = _empreintes(reference(entite))
+    if sans_reference:
+        differences.append(SANS_REFERENCE)
+    elif reference is not None:
+        attendu = _empreintes(reference.etat(entite))
         if not differences:
             differences.extend(_comparer(bus, attendu))
     return VerificationTopic(

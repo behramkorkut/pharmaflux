@@ -5,6 +5,8 @@ consigner). ``etat`` : ce que contient l'archive, d'après le manifeste.
 ``profil`` : une archive contre son contrat de schéma, anomalies et mesures.
 ``questions verifier`` : le jeu de questions de référence rejoué sur l'archive.
 ``evenements`` : du bronze aux événements, rejeu complet ou reprise.
+``publier`` : les fichiers d'événements sur le bus. ``schemas enregistrer`` :
+les schémas du dépôt dans le registre de Redpanda.
 """
 
 from __future__ import annotations
@@ -22,6 +24,21 @@ import httpx
 import typer
 
 from pharmaflux import bronze
+from pharmaflux.bus import publication
+from pharmaflux.bus.client import (
+    COURTIER_PAR_DEFAUT,
+    VARIABLE_COURTIER,
+    Bus,
+    BusKafka,
+    CourtierInjoignable,
+)
+from pharmaflux.bus.registre import (
+    REGISTRE_PAR_DEFAUT,
+    VARIABLE_REGISTRE,
+    Registre,
+    RegistreIndisponible,
+    enregistrer_tout,
+)
 from pharmaflux.collecte import manifeste
 from pharmaflux.collecte.catalogue import CATALOGUE, Entree, IdentifiantInconnu, par_identifiant
 from pharmaflux.collecte.etat import calculer_etat, formater_etat
@@ -40,8 +57,13 @@ QUESTIONS_PAR_DEFAUT = Path("evaluation/questions-reference-v0.toml")
 SORTIE_PAR_DEFAUT = Path("data/evenements")  # ignoré par git ; jamais sous la racine de l'archive
 RACINE_PAR_DEFAUT = Path.home() / "pharmaflux-data"
 
-# Remplacé par les tests pour simuler le serveur ; None = vrai réseau.
+# Remplacés par les tests pour simuler le serveur des sources, le courtier et le registre de
+# schémas ; None = le vrai réseau, le vrai Redpanda.
 fabriquer_transport: Callable[[], httpx.BaseTransport | None] = lambda: None  # noqa: E731
+fabriquer_bus: Callable[[str], Bus | None] = lambda _courtier: None  # noqa: E731
+fabriquer_transport_registre: Callable[[], httpx.BaseTransport | None] = (  # noqa: E731
+    lambda: None
+)
 
 application = typer.Typer(
     name="pharmaflux",
@@ -55,6 +77,21 @@ OptionRacine = Annotated[
     typer.Option(
         "--racine",
         help=f"Racine de l'archive. Défaut : {VARIABLE_RACINE}, sinon ~/pharmaflux-data.",
+    ),
+]
+OptionCourtier = Annotated[
+    str | None,
+    typer.Option(
+        "--courtier",
+        help=f"Adresse du courtier. Défaut : {VARIABLE_COURTIER}, sinon {COURTIER_PAR_DEFAUT}.",
+    ),
+]
+OptionRegistre = Annotated[
+    str | None,
+    typer.Option(
+        "--registre",
+        help=f"URL du registre de schémas. Défaut : {VARIABLE_REGISTRE},"
+        f" sinon {REGISTRE_PAR_DEFAUT}.",
     ),
 ]
 
@@ -299,6 +336,95 @@ def evenements(
 
 def _journal_evenements(message: str) -> None:
     logging.getLogger("pharmaflux.evenements").info(message)
+
+
+@application.command()
+def publier(
+    sortie: Annotated[
+        Path,
+        typer.Option(
+            "--sortie",
+            help="Sortie de « evenements » : ses fichiers JSONL sont publiés, son"
+            " publication.json garde ce qui l'est déjà.",
+            show_default=True,
+        ),
+    ] = SORTIE_PAR_DEFAUT,
+    courtier: OptionCourtier = None,
+    registre: OptionRegistre = None,
+    reprendre: Annotated[
+        bool,
+        typer.Option(
+            "--reprendre",
+            help="Ne publie que les fichiers absents de publication.json ; refusé si un fichier"
+            " publié a changé.",
+        ),
+    ] = False,
+) -> None:
+    """Publie les fichiers d'événements sur le bus, un topic par entité, dans l'ordre.
+
+    L'état est écrit après l'accusé de réception de chaque fichier. Codes de
+    sortie : 1 courtier ou registre injoignable, livraison en échec ; 2 état
+    illisible, état existant sans --reprendre, fichier publié modifié ; 3 au
+    moins un message dans la file des échecs.
+    """
+    configurer_journal()
+    adresse = _courtier(courtier)
+    bus = fabriquer_bus(adresse) or BusKafka(adresse)
+    try:
+        with Registre(_registre(registre), fabriquer_transport_registre()) as registre_:
+            rapport = publication.executer(
+                sortie, bus, registre_, reprendre=reprendre, journal=_journal_evenements
+            )
+    except publication.PublicationRefusee as exc:
+        typer.echo(f"publication refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except (CourtierInjoignable, RegistreIndisponible, publication.LivraisonEchouee) as exc:
+        typer.echo(f"publication interrompue : {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    for entite in rapport.resumes:
+        typer.echo(
+            f"{entite.identifiant:28} {entite.fichiers} fichier(s) publié(s)"
+            f" ({entite.deja_publies} déjà), {entite.messages} message(s),"
+            f" {entite.echecs} en échec"
+        )
+    for topic, nombre in sorted(rapport.topics.items()):
+        typer.echo(f"  {topic} : {nombre} message(s)")
+    typer.echo(f"durée : {rapport.duree_s:.1f} s ; état : {sortie / publication.NOM_PUBLICATION}")
+    raise typer.Exit(code=rapport.code_sortie)
+
+
+schemas = typer.Typer(
+    name="schemas",
+    help="Schémas du bus : enregistrement dans le registre de Redpanda (ADR 0007).",
+    no_args_is_help=True,
+)
+application.add_typer(schemas)
+
+
+@schemas.command("enregistrer")
+def schemas_enregistrer(registre: OptionRegistre = None) -> None:
+    """Pose la règle BACKWARD_TRANSITIVE et enregistre les schémas du dépôt, sujet par sujet.
+
+    Idempotent : un schéma déjà connu garde son identifiant. Code 1 si le
+    registre est injoignable ou refuse (schéma incompatible : HTTP 409).
+    """
+    try:
+        with Registre(_registre(registre), fabriquer_transport_registre()) as registre_:
+            resultats = enregistrer_tout(registre_, sorted(charger_tous()))
+    except RegistreIndisponible as exc:
+        typer.echo(f"registre : {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    for resultat in resultats:
+        etat_ = "nouveau" if resultat.nouveau else "déjà connu"
+        typer.echo(f"{resultat.sujet:44} id {resultat.identifiant} ({etat_})")
+
+
+def _courtier(courtier: str | None) -> str:
+    return courtier or os.environ.get(VARIABLE_COURTIER) or COURTIER_PAR_DEFAUT
+
+
+def _registre(registre: str | None) -> str:
+    return registre or os.environ.get(VARIABLE_REGISTRE) or REGISTRE_PAR_DEFAUT
 
 
 questions = typer.Typer(

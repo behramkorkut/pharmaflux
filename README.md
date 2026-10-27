@@ -58,6 +58,8 @@ uv run pharmaflux etat               # dernière archive, dernier changement, er
 uv run pharmaflux profil             # chaque archive contre son contrat : anomalies, clé, colonnes, liens
 uv run pharmaflux questions verifier # le jeu de questions de référence rejoué sur l'archive
 uv run pharmaflux evenements         # du bronze aux événements : rejeu complet, ou --reprendre
+uv run pharmaflux schemas enregistrer # les schémas du dépôt dans le registre de Redpanda
+uv run pharmaflux publier            # les fichiers d'événements sur le bus, ou --reprendre
 ```
 
 Un passage télécharge la page de téléchargement de la BDPM et ses onze
@@ -89,6 +91,36 @@ mêmes octets ; `--reprendre` ne traite que les archives arrivées depuis.
 Sur la copie de l'archive au 26/10/2026 : 164 096 événements d'état
 initial, puis 3 présentations supprimées, et le fichier vide du 26/10
 écarté sans un seul événement.
+
+**Le bus d'événements** (mission 03) tourne en local, dans Docker, à
+partir du fichier [`docker-compose.yml`](docker-compose.yml) : un Redpanda
+mono-nœud, projet `pharmaflux`, tous les ports sur `127.0.0.1` (Kafka
+`19092`, registre de schémas `18081`, HTTP proxy `18082`, administration
+`19644`), les données dans le volume `pharmaflux-redpanda`. Les versions des
+images sont épinglées dans ce fichier.
+
+```bash
+docker compose -p pharmaflux --profile console pull  # une fois : télécharge les images (beko)
+docker compose -p pharmaflux up -d --wait         # démarre, attend que le courtier réponde
+docker compose -p pharmaflux down                 # arrête, garde les données
+docker compose -p pharmaflux down -v              # rebâtit le bus : efface le volume
+docker compose -p pharmaflux --profile console up -d   # en plus : la console sur http://127.0.0.1:18080
+```
+
+`schemas enregistrer` pose la règle de compatibilité `BACKWARD_TRANSITIVE`
+et enregistre les schémas JSON du dépôt (`src/pharmaflux/bus/schemas/`),
+un sujet par topic. `publier` envoie les fichiers d'événements, dans
+l'ordre, sur un topic par entité (`pharmaflux.<entite>.v1`, trois
+partitions, clé = la clé de l'événement, rétention sans limite) ; la valeur
+du message est la ligne du fichier à l'octet près. `publication.json`
+garde ce qui est publié ; `--reprendre` ne publie que les nouveaux
+fichiers. Une ligne illisible ou un message trop gros vont dans la file
+`pharmaflux.echecs.v1`, et le code de sortie le dit. Les tests qui ont
+besoin du courtier sont marqués `integration` et sautés sans lui :
+
+```bash
+uv run pytest -q -m integration
+```
 
 Vérifications locales, identiques à la CI :
 

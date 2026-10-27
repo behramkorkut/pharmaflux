@@ -351,3 +351,9 @@ conforme, 0 doublon, 11 s et 189 Mo (219 avec `--racine`) ; clôture :
 `verifier-bus` conforme. 444 tests, dont 6 d'intégration. Deux faux positifs
 du garde-fou signalés et affinés sur `main` (un argument qui contenait le nom
 du moteur de conteneurs, un `find` sur un chemin réservé).
+
+Relecture 1 (sur `d4db1de`) : CONFORME, 0 bloquant ; trois points non
+bloquants corrigés en `57b9be6` (saut d'intégration en échec en CI, courtier
+vérifié au départ de `publier`, ADR 0006). Critère de clôture rejoué sur la
+copie du Mac : 0 archive, 0 fichier, 12 topics conformes. 446 tests.
+`pr.md` écrit, publication à beko.

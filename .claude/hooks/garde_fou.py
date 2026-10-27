@@ -363,6 +363,16 @@ def verifier_git(role: str, mots: list[str]) -> None:
         return
     if sous == "worktree" and reste[:1] == ["list"]:
         return
+    if sous == "config" and (
+        (
+            reste[:1] in (["--get"], ["--get-all"], ["get"])
+            and len(reste) == 2
+            and not reste[1].startswith("-")
+        )
+        or reste in (["--list"], ["-l"], ["list"])
+    ):
+        # Lecture d'une clé ou de toute la configuration ; toute autre forme écrit.
+        return
     if role == "relecteur" and sous == "switch" and reste[:1] == ["--detach"] and len(reste) == 2:
         return
     if role == "codeur" and sous == "add":

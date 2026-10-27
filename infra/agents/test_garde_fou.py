@@ -454,6 +454,20 @@ class GardeFou(unittest.TestCase):
         self.assertTrue(self.bash(self.principal, "git log --oneline main..mission-00-essai"))
         self.assertTrue(self.bash(self.principal, "gh pr checks 3"))
         for commande in (
+            "git config --get core.hooksPath",
+            "git config --get-all remote.origin.fetch",
+            "git config get user.name",
+            "git config --list",
+            "git config -l",
+        ):
+            with self.subTest(commande=commande):
+                self.assertTrue(self.bash(self.principal, commande))
+        for commande in (
+            "git config core.hooksPath /dev/null",
+            "git config --get core.hooksPath /dev/null",
+            "git config --list --add core.hooksPath /dev/null",
+            "git config --unset core.hooksPath",
+            "git config set core.hooksPath /dev/null",
             "git add CLAUDE.md",
             "git commit -m x",
             "git push",

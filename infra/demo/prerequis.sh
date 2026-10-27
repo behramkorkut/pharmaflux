@@ -51,7 +51,14 @@ else
     else
         echo "compose : $($compose version --short 2>/dev/null || echo ok)"
         # shellcheck disable=SC2086
-        images="${PHARMAFLUX_IMAGES:-$($compose $profil config --images)}"
+        if [ -n "${PHARMAFLUX_IMAGES:-}" ]; then
+            images="$PHARMAFLUX_IMAGES"
+        elif ! images=$($compose $profil config --images 2>/dev/null); then
+            # config --quiet vient de passer : un Compose qui ne connaît pas --images, par exemple
+            refus "Compose ne liste pas les images (config --images)" \
+                "mets Docker Compose à jour (2.23.1 au moins)"
+            images=""
+        fi
         for image in $images; do
             if docker image inspect "$image" >/dev/null 2>&1; then
                 echo "image présente : $image"

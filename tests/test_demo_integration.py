@@ -98,11 +98,11 @@ def test_suivre_attend_un_topic_absent_puis_lit_ce_qui_arrive(
 
     fil = threading.Thread(target=regarder, daemon=True)
     fil.start()
-    time.sleep(2.5)  # le topic n'existe pas encore : « suivre » l'attend
+    time.sleep(1.5)  # un cycle de recherche du topic (1 s) : il n'existe pas, « suivre » l'attend
     assert fil.is_alive() and lignes == []
     publication.executer(sortie, bus, registre, prefixe=prefixe)
     fil.join(timeout=60)
-    assert not fil.is_alive(), "« suivre » devait s'arrêter au vingtième message"
+    assert not fil.is_alive(), f"« suivre » devait s'arrêter après {n_pres} messages"
     assert (resultat["resume"].lus, resultat["resume"].illisibles) == (n_pres, 0)
     assert len(lignes) == n_pres and erreurs == []
     assert all(ligne.startswith(("24/10 14:17:00", "24/10 15:17:00")) for ligne in lignes)

@@ -309,7 +309,17 @@ def _passages_sans_archive(racine: Path, voulus: set[str]) -> list[Entree]:
         else:
             revus.setdefault(ligne.passage_id, 0)
     return [
-        Entree(_instant(passage_id), "", None, None, "", False, (), None, fichiers_revus=nombre)
+        Entree(
+            instant=_instant(passage_id),
+            entite="",
+            nom=None,
+            decision=None,
+            motif="",
+            etat_initial=False,
+            evenements=(),
+            fichier=None,
+            fichiers_revus=nombre,
+        )
         for passage_id, nombre in sorted(revus.items())
         if passage_id not in nouveaux
     ]

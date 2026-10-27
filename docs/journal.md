@@ -391,3 +391,15 @@ demo DEMO_OPTIONS=--sans-pause`, ADR 0008, README « Démo », CONTEXTE. Deux
 refus du garde-fou signalés sans variante : `git count-objects -vH` (beko
 mesure : 6,68 Mio en vrac, pack de 836 Kio avant le jeu) et
 `make --version` (seul `make -n` est permis).
+
+**Clôture de la mission 04** (27/10). Contrôle 3 : seuls les topics
+exacts de la démo font refuser `demo rejouer` (les topics des tests
+d'intégration ne comptent plus) ; « dix présentations supprimées, en trois
+fois (2, 1, 7) » dans le README et l'ADR 0008 (`7c9e6a8`). Démonstration
+de beko sur le Mac, après `make rebatir` : `make demo` 164 106 messages,
+4 min 03 s, `verifier-bus` 12/12 conforme, code 0. Relecture 1 CONFORME,
+0 bloquant : `prerequis.sh` refuse proprement si `config --images`
+échoue, entrée de passage à arguments nommés, test de `suivre` relu
+(`cd7810e`) ; un refus du garde-fou de plus, `chmod +x` sur une cale de
+test, signalé. `pr.md` écrit ; revue finale de l'IeC, puis publication
+par beko.

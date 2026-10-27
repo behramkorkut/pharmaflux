@@ -46,8 +46,9 @@ class Ligne:
 
     ``brutes`` est le tuple de la ``Lecture``, pas une copie ; ``normalisees``
     est ``brutes`` même quand rien ne change, et chaque valeur inchangée est le
-    même objet chaîne. ``anomalies`` : (colonne ou None, règle), dans l'ordre
-    de la vérification.
+    même objet chaîne. Une valeur normalisée qui se répète d'une ligne à
+    l'autre n'existe qu'une fois, comme les brutes dans la ``Lecture``.
+    ``anomalies`` : (colonne ou None, règle), dans l'ordre de la vérification.
     """
 
     numero: int
@@ -144,10 +145,11 @@ def depuis_lecture(lecture: Lecture, sha256: str, horodatage: datetime | None = 
     par_ligne: dict[str, tuple[Ligne, int]] = {}
     doublons = 0
     collisions: dict[tuple[str, ...], int] = {}  # clé normalisée répétée → lignes au-delà de la 1re
+    partagees: dict[str, str] = {}  # valeur normalisée → le premier objet chaîne vu
     for numero, brutes in lecture.lignes:
         normalisees = tuple(
-            normaliser_valeur(type_, valeur).valeur
-            for type_, valeur in zip(types, brutes, strict=True)
+            _partager(partagees, brute, normaliser_valeur(type_, brute).valeur)
+            for type_, brute in zip(types, brutes, strict=True)
         )
         if normalisees == brutes:
             normalisees = brutes  # même objet : rien n'a changé, rien n'est copié
@@ -188,6 +190,13 @@ def depuis_lecture(lecture: Lecture, sha256: str, horodatage: datetime | None = 
         par_ligne=par_ligne,
         bilan=bilan,
     )
+
+
+def _partager(partagees: dict[str, str], brute: str, normalisee: str) -> str:
+    """La brute elle-même quand rien ne change ; sinon le premier objet vu pour cette valeur."""
+    if normalisee == brute:
+        return brute
+    return partagees.setdefault(normalisee, normalisee)
 
 
 def _anomalies_par_regle(lecture: Lecture) -> tuple[tuple[Regle, int], ...]:

@@ -1,0 +1,97 @@
+# Le bus d'événements de Pharmaflux sur le Mac : un Redpanda mono-nœud (ADR 0007).
+#
+# Le colima est partagé avec d'autres projets : ce fichier ne nomme que le projet
+# `pharmaflux`, lie tous ses ports à 127.0.0.1 hors des ports par défaut, et ne touche
+# à rien d'autre. Toute commande nomme le projet : `docker compose -p pharmaflux …`.
+#
+#   premier téléchargement des images (beko) : docker compose -p pharmaflux --profile console pull
+#   (sans --profile console, le pull ignore la console, qui est sous ce profil)
+#   démarrer, attendre le courtier :            docker compose -p pharmaflux up -d --wait
+#   (les agents ajoutent --pull never)
+#   arrêter, garder les données :               docker compose -p pharmaflux down
+#   rebâtir le bus (efface le volume) :         docker compose -p pharmaflux down -v
+#   (aussi après un changement des propriétés de grappe du bloc configs, plus bas)
+#   la console, en option :                     docker compose -p pharmaflux --profile console up -d
+#
+# Les versions sont épinglées au correctif près (images multi-architecture : arm64 sur le
+# Mac, amd64 sur le VPS ; jamais latest) ; une seule source, ce fichier, que la CI
+# réutilise. `dev-container` relâche la durabilité (pas de fsync) : un bus de développement.
+name: pharmaflux
+
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.6
+    container_name: pharmaflux-redpanda
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=768M
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      # Deux écouteurs : interne (la console, dans le réseau compose) et externe (le Mac).
+      # Les adresses annoncées doivent correspondre, sinon le client est renvoyé ailleurs.
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://127.0.0.1:19092
+      - --schema-registry-addr=internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --pandaproxy-addr=internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr=internal://redpanda:8082,external://127.0.0.1:18082
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+    ports:
+      - "127.0.0.1:19092:19092" # Kafka
+      - "127.0.0.1:18081:18081" # registre de schémas
+      - "127.0.0.1:18082:18082" # HTTP proxy
+      - "127.0.0.1:19644:9644" # administration
+    volumes:
+      - pharmaflux-redpanda:/var/lib/redpanda/data
+    configs:
+      - source: amorcage-redpanda
+        target: /etc/redpanda/.bootstrap.yaml
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info -X brokers=localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 5s
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v3.13.1
+    container_name: pharmaflux-console
+    profiles: ["console"]
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      SCHEMAREGISTRY_ENABLED: "true"
+      SCHEMAREGISTRY_URLS: http://redpanda:8081
+      REDPANDA_ADMINAPI_ENABLED: "true"
+      REDPANDA_ADMINAPI_URLS: http://redpanda:9644
+    ports:
+      - "127.0.0.1:18080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+configs:
+  # Propriétés de grappe, lues par Redpanda au premier démarrage seulement (`.bootstrap.yaml`) :
+  # celles du mode dev-container, sauf la création automatique des topics, pour qu'un `produce`
+  # vers un topic non préparé échoue au lieu de créer un topic avec la rétention par défaut
+  # (décision 5). Les changer demande `down -v` : le volume porte la grappe déjà amorcée.
+  # Vérification : rpk cluster config get auto_create_topics_enabled → false.
+  amorcage-redpanda:
+    content: |
+      auto_create_topics_enabled: false
+      group_topic_partitions: 3
+      storage_min_free_bytes: 10485760
+      topic_partitions_per_shard: 1000
+      fetch_reads_debounce_timeout: 10
+      group_initial_rebalance_delay: 0
+      log_segment_size_min: 1
+      write_caching_default: "true"
+
+volumes:
+  pharmaflux-redpanda:
+    name: pharmaflux-redpanda

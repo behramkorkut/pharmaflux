@@ -1,6 +1,8 @@
-# CI de Pharmaflux : un seul job, les mêmes vérifications qu'en local,
-# plus les tests des garde-fous du circuit. Aucun appel réseau vers les
-# sources de données (les tests travaillent sur des fixtures).
+# CI de Pharmaflux : deux jobs. « verifier » rejoue les vérifications locales
+# plus les tests des garde-fous du circuit ; « integration » démarre le Redpanda
+# du dépôt (le même fichier compose que sur le Mac, ADR 0007) et lance les
+# tests marqués. Aucun appel réseau vers les sources de données (les tests
+# travaillent sur des fixtures).
 name: ci
 
 on:
@@ -57,3 +59,52 @@ jobs:
           else
             echo "aucun script dans infra/planification/ : rien à vérifier"
           fi
+
+  integration:
+    # Le bus réel (mission 03) : le fichier compose du dépôt, pas un « services: »
+    # d'Actions, pour une seule configuration entre le Mac et la CI. Deux écarts
+    # possibles, nommés dans le rapport du palier 3 : l'architecture (amd64 ici,
+    # arm64 sur le Mac ; les images sont multi-architecture) et la version de
+    # Compose (le bloc « configs: content: » demande au moins la 2.23.1).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer uv (avec cache)
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Installer les dépendances (verrouillées)
+        run: uv sync --frozen
+
+      - name: Versions de Docker et de Compose (les écarts possibles avec le Mac)
+        run: |
+          docker version --format '{{.Server.Os}}/{{.Server.Arch}} {{.Server.Version}}'
+          docker compose version
+
+      - name: Démarrer Redpanda (compose du dépôt, images épinglées)
+        run: docker compose -p pharmaflux up -d --wait
+
+      - name: La grappe est amorcée comme sur le Mac (création automatique coupée)
+        run: |
+          valeur=$(docker compose -p pharmaflux exec -T redpanda rpk cluster config get auto_create_topics_enabled)
+          echo "auto_create_topics_enabled=$valeur"
+          test "$valeur" = "false"
+
+      - name: Schémas (historique puis courant, sur un registre neuf)
+        run: uv run pharmaflux schemas enregistrer
+
+      - name: Tests d'intégration (ici, un saut est un échec, la variable l'exige)
+        run: uv run pytest -q -m integration
+        env:
+          PHARMAFLUX_INTEGRATION_EXIGEE: "1"
+
+      - name: Journal du courtier en cas d'échec
+        if: failure()
+        run: docker compose -p pharmaflux logs --tail=100 redpanda
+
+      - name: Arrêter Redpanda
+        if: always()
+        run: docker compose -p pharmaflux down -v

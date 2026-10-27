@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Behram Korkut" }]
 dependencies = [
+    "confluent-kafka>=2.16.0",
     "httpx>=0.28",
     "typer>=0.15",
 ]
@@ -18,6 +19,7 @@ pharmaflux = "pharmaflux.cli:application"
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.26.0",
     "mypy>=1.16",
     "pytest>=8.3",
     "ruff>=0.12",
@@ -58,4 +60,7 @@ pretty = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--strict-markers"
+addopts = "--strict-markers -rs"
+markers = [
+    "integration: a besoin du Redpanda local (docker compose -p pharmaflux up -d) ; sauté sinon, et dit",
+]

@@ -58,6 +58,9 @@ uv run pharmaflux etat               # dernière archive, dernier changement, er
 uv run pharmaflux profil             # chaque archive contre son contrat : anomalies, clé, colonnes, liens
 uv run pharmaflux questions verifier # le jeu de questions de référence rejoué sur l'archive
 uv run pharmaflux evenements         # du bronze aux événements : rejeu complet, ou --reprendre
+uv run pharmaflux schemas enregistrer # les schémas du dépôt dans le registre de Redpanda
+uv run pharmaflux publier            # les fichiers d'événements sur le bus, ou --reprendre
+uv run pharmaflux verifier-bus       # relit le bus et le compare à la référence (--racine : l'archive)
 ```
 
 Un passage télécharge la page de téléchargement de la BDPM et ses onze
@@ -90,11 +93,55 @@ Sur la copie de l'archive au 26/10/2026 : 164 096 événements d'état
 initial, puis 3 présentations supprimées, et le fichier vide du 26/10
 écarté sans un seul événement.
 
+**Le bus d'événements** (mission 03) tourne en local, dans Docker, à
+partir du fichier [`docker-compose.yml`](docker-compose.yml) : un Redpanda
+mono-nœud, projet `pharmaflux`, tous les ports sur `127.0.0.1` (Kafka
+`19092`, registre de schémas `18081`, HTTP proxy `18082`, administration
+`19644`), les données dans le volume `pharmaflux-redpanda`. Les versions des
+images sont épinglées dans ce fichier.
+
+```bash
+docker compose -p pharmaflux --profile console pull  # une fois : télécharge les images (beko)
+docker compose -p pharmaflux up -d --wait         # démarre, attend que le courtier réponde
+docker compose -p pharmaflux down                 # arrête, garde les données
+docker compose -p pharmaflux down -v              # rebâtit le bus : efface le volume (aussi après un changement des propriétés de grappe)
+docker compose -p pharmaflux --profile console up -d   # en plus : la console sur http://127.0.0.1:18080
+```
+
+`schemas enregistrer` pose la règle de compatibilité `BACKWARD_TRANSITIVE`
+et enregistre les schémas JSON du dépôt (`src/pharmaflux/bus/schemas/`),
+un sujet par topic. `publier` envoie les fichiers d'événements, dans
+l'ordre, sur un topic par entité (`pharmaflux.<entite>.v1`, trois
+partitions, clé = la clé de l'événement, rétention sans limite) ; la valeur
+du message est la ligne du fichier à l'octet près. `publication.json`
+garde ce qui est publié ; `--reprendre` ne publie que les nouveaux
+fichiers. Une ligne illisible ou un message trop gros vont dans la file
+`pharmaflux.echecs.v1`, et le code de sortie le dit. `verifier-bus` relit
+chaque topic depuis le début, sans commit d'offset, dédoublonne par `id`,
+applique les événements et compare l'état obtenu aux fichiers d'événements
+de la sortie ou, avec `--racine`, au dernier snapshot retenu recalculé
+depuis l'archive ; il vérifie aussi la rétention sans limite, la politique
+`delete`, le type d'horodatage et les partitions de chaque topic. Toute
+différence donne le code 2, comme une référence introuvable, refusée avant de
+lire le bus ; les doublons d'une reprise sont rapportés, avec le fichier dont
+ils viennent. Les tests qui ont besoin du courtier sont
+marqués `integration` et sautés sans lui :
+
+```bash
+uv run pytest -q -m integration
+```
+
 Vérifications locales, identiques à la CI :
 
 ```bash
 uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run pytest -q
 ```
+
+La CI a deux jobs : `verifier`, ces commandes plus les tests des garde-fous
+du circuit, et `integration`, qui démarre le Redpanda du même fichier
+compose et lance les tests marqués avec la variable
+`PHARMAFLUX_INTEGRATION_EXIGEE` posée : là, un saut est un échec, un job
+vert a lancé les six tests.
 
 ## Méthode
 

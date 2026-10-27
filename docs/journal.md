@@ -317,3 +317,43 @@ les trois fixtures ajoutées à la relecture 1 signalées dans
 et propose à l'IeC d'autoriser le dossier temporaire au relecteur.
 `docs/rapports/mission-02/pr.md` écrit. Fin de la mission 02 : 413 tests,
 21 commits depuis `main`.
+
+## 2026-10-27 — Mission 03 : bus d'événements (paliers 1 à 3)
+
+Branche `mission-03-bus-d-evenements`. §0 répondu sur mesures (rejeu de la
+copie du Mac : 474 Mo résidents, la sérialisation des 32 439 `creee` de
+`compositions` en cause), tranché par l'addendum 1 (cible 160 Mo,
+`confluent-kafka` seule dépendance de production, valeur nue, `schema_id` en
+en-tête, `BACKWARD_TRANSITIVE`, topics `pharmaflux.<entite>.v1` à trois
+partitions, rétention posée par le projet et vérifiée, codes 1/2/3, pas de
+topic des bilans, double référence, projet `pharmaflux` sur un colima partagé,
+CI par le fichier compose). **Palier 1** : écriture en flux (`comparer` rend
+un itérateur, un seul snapshot retenu vivant par entité, valeurs répétées
+partagées et comparées avec `==`), 118 à 143 Mo contre 474, sortie identique
+à l'octet, test `tracemalloc` en ratio, ADR 0006 mis à jour. **Palier 2** :
+fichier compose (Redpanda v26.2.6, console v3.13.1 sous profil, ports
+127.0.0.1, `dev-container` 768 Mo), paquet `pharmaflux.bus` (enveloppe, client
+idempotent, registre, publication avec état écrit après l'accusé, file des
+échecs), schémas draft-07 épinglés, `publier`, `schemas enregistrer`,
+ADR 0007. Trois correctifs du contrôle : création automatique des topics
+coupée par un `.bootstrap.yaml` du bloc `configs` (rpk n'a plus `--set` en
+v26.2 ; `down -v` pour l'appliquer), topic pris du dossier, sha256 des octets
+publiés. **Palier 3** : `verifier-bus` (relecture sans commit, fin par les
+offsets, dédoublonnage par `id`, états réduits en empreintes, référence
+fichiers ou `--racine`, rétention, politique, horodatage et partitions
+vérifiés), tests de coupure pendant chacun des trois fichiers puis
+`--reprendre` (doublons du seul fichier republié, copies exactes), job CI
+`integration` par le compose du dépôt, CONTEXTE, README. Démonstration sur la
+copie du Mac : rejeu 8,3 s et 134 Mo, `diff -r` identique ; `publier`
+164 099 messages sur onze topics en 29,8 s et 59 Mo ; `verifier-bus`
+conforme, 0 doublon, 11 s et 189 Mo (219 avec `--racine`) ; clôture :
+`evenements --reprendre` 0 archive, `publier --reprendre` 0 fichier,
+`verifier-bus` conforme. 444 tests, dont 6 d'intégration. Deux faux positifs
+du garde-fou signalés et affinés sur `main` (un argument qui contenait le nom
+du moteur de conteneurs, un `find` sur un chemin réservé).
+
+Relecture 1 (sur `d4db1de`) : CONFORME, 0 bloquant ; trois points non
+bloquants corrigés en `57b9be6` (saut d'intégration en échec en CI, courtier
+vérifié au départ de `publier`, ADR 0006). Critère de clôture rejoué sur la
+copie du Mac : 0 archive, 0 fichier, 12 topics conformes. 446 tests.
+`pr.md` écrit, publication à beko.

@@ -1,0 +1,195 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Pharmaflux, événement v1",
+  "description": "Un événement de l'ADR 0006 : une entité d'un fichier source créée, modifiée ou supprimée entre deux archives retenues. Toutes les valeurs de données sont des chaînes normalisées (ADR 0005). Aussi strict que pharmaflux.evenements.schema.deserialiser : aucune propriété en plus, toutes requises.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "version_schema",
+    "entite",
+    "fichier",
+    "version_contrat",
+    "type",
+    "etat_initial",
+    "identite",
+    "cle",
+    "empreinte_ligne",
+    "rang",
+    "avant",
+    "apres",
+    "champs_modifies",
+    "anomalies",
+    "date_source",
+    "date_observation",
+    "archive",
+    "archive_sha256",
+    "archive_precedente",
+    "archive_precedente_sha256"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256 de entite, archive, archive_precedente, type et identité de ligne"
+    },
+    "version_schema": {
+      "const": 1
+    },
+    "entite": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$",
+      "description": "identifiant du catalogue et du contrat"
+    },
+    "fichier": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version_contrat": {
+      "type": "string",
+      "pattern": "^v[0-9]+$"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "creee",
+        "modifiee",
+        "supprimee"
+      ]
+    },
+    "etat_initial": {
+      "type": "boolean"
+    },
+    "identite": {
+      "type": "string",
+      "enum": [
+        "cle",
+        "ligne"
+      ]
+    },
+    "cle": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "minProperties": 1,
+      "description": "colonnes de la clé déclarée → valeur normalisée"
+    },
+    "empreinte_ligne": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "rang": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "avant": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "apres": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "champs_modifies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "anomalies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "colonne",
+          "regle"
+        ],
+        "properties": {
+          "colonne": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "regle": {
+            "type": "string",
+            "enum": [
+              "encodage",
+              "fin_de_ligne",
+              "nombre_colonnes",
+              "cle_non_unique",
+              "retour_final",
+              "ligne_vide",
+              "ligne_dupliquee",
+              "valeur_manquante",
+              "espace_parasite",
+              "longueur_depassee",
+              "entier_illisible",
+              "decimal_illisible",
+              "date_illisible",
+              "date_hors_plage",
+              "booleen_inconnu",
+              "valeur_inconnue",
+              "code_illisible",
+              "url_illisible",
+              "hote_inconnu",
+              "fichier_vide"
+            ]
+          }
+        }
+      }
+    },
+    "date_source": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "date_observation": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "archive": {
+      "type": "string",
+      "minLength": 1
+    },
+    "archive_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "archive_precedente": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "archive_precedente_sha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Pharmaflux, message en échec v1",
+  "description": "Une ligne d'un fichier d'événements que publier n'a pas pu publier : illisible (refusée par deserialiser) ou trop grosse pour le courtier. La ligne brute est gardée, tronquée à 64 Ko s'il le faut.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version_echec",
+    "motif",
+    "detail",
+    "entite",
+    "fichier",
+    "ligne",
+    "id",
+    "taille",
+    "sha256_ligne",
+    "ligne_brute",
+    "tronquee"
+  ],
+  "properties": {
+    "version_echec": {
+      "const": 1
+    },
+    "motif": {
+      "type": "string",
+      "enum": [
+        "illisible",
+        "trop_gros"
+      ]
+    },
+    "detail": {
+      "type": "string"
+    },
+    "entite": {
+      "type": "string"
+    },
+    "fichier": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ligne": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "taille": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sha256_ligne": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ligne_brute": {
+      "type": "string"
+    },
+    "tronquee": {
+      "type": "boolean"
+    }
+  }
+}

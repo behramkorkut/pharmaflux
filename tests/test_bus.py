@@ -37,7 +37,7 @@ from pharmaflux.evenements import schema, snapshot
 from pharmaflux.evenements.comparaison import comparer
 from pharmaflux.evenements.schema import Evenement, EvenementInvalide, TypeEvenement
 from pharmaflux.evenements.snapshot import Identite, Snapshot
-from tests.conftest import FIXTURES
+from tests.conftest import FIXTURES, texte_nu
 
 SHA_EVENEMENT = "a1e3ab77906cee3f6c9185880a23757c73bbf2e4c8e52c1037850b6dacdcf211"
 SHA_ECHEC = "9f444172fc5e3bc24f5b858abb3971de31dd55fd0ec3cc1e04fe084e1e5e36f2"
@@ -626,7 +626,7 @@ def test_un_fichier_hors_d_ordre_fait_refuser_avant_le_premier_message(
     monkeypatch.setattr(cli, "fabriquer_bus", lambda _courtier: bus)
     monkeypatch.setattr(cli, "fabriquer_transport_registre", simule.transport)
     resultat = CliRunner().invoke(application, ["publier", "--sortie", str(sortie), "--reprendre"])
-    assert resultat.exit_code == 2 and "publication refusée" in resultat.output
+    assert resultat.exit_code == 2 and "publication refusée" in texte_nu(resultat.output)
 
 
 def test_un_fichier_d_evenements_vide_est_publie_et_inscrit_dans_l_etat(tmp_path: Path) -> None:
@@ -753,7 +753,7 @@ def test_commandes_publier_et_schemas_enregistrer(
     sortie, n_pres, n_dispo = _sortie(tmp_path)
     # Sans schéma enregistré : refus, code 2, et le conseil.
     refus = lanceur.invoke(application, ["publier", "--sortie", str(sortie)])
-    assert refus.exit_code == 2 and "schemas enregistrer" in refus.output
+    assert refus.exit_code == 2 and "schemas enregistrer" in texte_nu(refus.output)
     enregistrement = lanceur.invoke(
         application, ["schemas", "enregistrer", "--registre", "http://r.test"]
     )
@@ -775,7 +775,7 @@ def test_commandes_publier_et_schemas_enregistrer(
     assert f"pharmaflux.bdpm.disponibilite.v1 : {n_dispo} message(s)" in resultat.output
     assert "publication.json" in resultat.output
     deja = lanceur.invoke(application, ["publier", "--sortie", str(sortie)])
-    assert deja.exit_code == 2 and "--reprendre" in deja.output, "état existant"
+    assert deja.exit_code == 2 and "--reprendre" in texte_nu(deja.output), "état existant"
     reprise = lanceur.invoke(application, ["publier", "--sortie", str(sortie), "--reprendre"])
     assert reprise.exit_code == 0 and "(2 déjà), 0 message(s)" in reprise.output
     # Rien de nouveau, mais le courtier est arrêté : code non nul quand même (décision 4).

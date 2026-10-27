@@ -26,6 +26,7 @@ from pharmaflux.contrats.chargeur import charger_tous
 from pharmaflux.demo import rejeu_accelere
 from pharmaflux.demo.rejeu_accelere import DemoRefusee, Resume, executer
 from pharmaflux.evenements import rejeu
+from tests.conftest import texte_nu
 from tests.test_bus import DISPO, PRESENTATIONS, BusSimule, RegistreSimule, _registre_pret
 from tests.test_bus_verification import BusCoupe, LecteurSimule
 from tests.test_rejeu import SUITE, T0, Collecte, peupler
@@ -302,15 +303,15 @@ def test_commande_demo_rejouer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     pour_deux = ["--fichier", PRESENTATIONS, "--fichier", "CIS_CIP_Dispo_Spec.txt"]
     # Sans schéma enregistré : refus, code 2, le conseil, et rien n'est écrit.
     refus = lanceur.invoke(application, base + pour_deux)
-    assert refus.exit_code == 2 and "schemas enregistrer" in refus.output, refus.output
+    assert refus.exit_code == 2 and "schemas enregistrer" in texte_nu(refus.output), refus.output
     assert not sortie.exists()
     assert lanceur.invoke(application, ["schemas", "enregistrer"]).exit_code == 0
     sous_racine = lanceur.invoke(
         application, ["demo", "rejouer", "--racine", str(racine), "--sortie", str(racine / "x")]
     )
-    assert sous_racine.exit_code == 2 and "sous la racine" in sous_racine.output
+    assert sous_racine.exit_code == 2 and "sous la racine" in texte_nu(sous_racine.output)
     nul = lanceur.invoke(application, [*base, "--facteur", "0"])
-    assert nul.exit_code == 2 and "strictement positif" in nul.output
+    assert nul.exit_code == 2 and "strictement positif" in texte_nu(nul.output)
 
     resultat = lanceur.invoke(application, base + pour_deux)
     assert resultat.exit_code == 0, resultat.output
@@ -330,8 +331,8 @@ def test_commande_demo_rejouer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
     encore = lanceur.invoke(application, base + pour_deux)
     assert encore.exit_code == 2, encore.output
-    assert "démo refusée : le bus a déjà reçu une publication" in encore.output
-    assert "make rebatir" in encore.output
+    assert "démo refusée : le bus a déjà reçu une publication" in texte_nu(encore.output)
+    assert "make rebatir" in texte_nu(encore.output)
     reprise = lanceur.invoke(application, base + pour_deux + ["--reprendre"])
     assert reprise.exit_code == 0 and "rien à rejouer" in reprise.output, reprise.output
     assert "(15 déjà)" in reprise.output
@@ -345,7 +346,7 @@ def test_commande_demo_rejouer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert hors_d_ordre.exit_code == 2, hors_d_ordre.output
     assert (
         "démo refusée : bdpm.presentations : 20261024T000000Z__000000000000.jsonl se range avant"
-        in (hors_d_ordre.output)
+        in texte_nu(hors_d_ordre.output)
     )
 
     # Courtier arrêté : code 1.

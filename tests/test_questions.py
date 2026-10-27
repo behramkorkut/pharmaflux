@@ -18,7 +18,7 @@ from pharmaflux.evaluation.questions import (
     charger_octets,
 )
 from pharmaflux.evaluation.verification import Verdict, formater_bilan, verifier_jeu
-from tests.conftest import FIXTURES, entree
+from tests.conftest import FIXTURES, entree, texte_nu
 
 lanceur = CliRunner()
 JEU_REFERENCE = Path(__file__).parent.parent / "evaluation" / "questions-reference-v0.toml"
@@ -300,7 +300,7 @@ def test_commande_questions_verifier(racine_essai: Path, tmp_path: Path) -> None
     invalide = tmp_path / "invalide.toml"
     invalide.write_text(QUESTION_MINIMALE.replace('version = "v0"', 'version = "v9"'))
     resultat = lanceur.invoke(application, [*arguments[:5], str(invalide)])
-    assert resultat.exit_code == 2 and "v9" in resultat.output
+    assert resultat.exit_code == 2 and "v9" in texte_nu(resultat.output)
 
     resultat = lanceur.invoke(application, ["questions", "verifier", "--help"])
     assert resultat.exit_code == 0 and "questions-reference-v0.toml" in resultat.output

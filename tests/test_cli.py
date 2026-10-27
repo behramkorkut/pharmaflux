@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 from pharmaflux import cli
 from pharmaflux.cli import application
-from tests.conftest import ServeurSimule
+from tests.conftest import ServeurSimule, texte_nu
 
 lanceur = CliRunner()
 
@@ -41,7 +41,7 @@ def test_catalogue() -> None:
 def test_source_inconnue() -> None:
     resultat = lanceur.invoke(application, ["collecte", "--source", "bdpm.inexistant"])
     assert resultat.exit_code == 2
-    assert "bdpm.inexistant" in resultat.output
+    assert "bdpm.inexistant" in texte_nu(resultat.output)
 
 
 def test_collecte_puis_etat(

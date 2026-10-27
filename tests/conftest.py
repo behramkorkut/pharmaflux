@@ -11,6 +11,7 @@ saute, et le dit (un échec en CI, ``PHARMAFLUX_INTEGRATION_EXIGEE``).
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
@@ -44,6 +45,19 @@ EN_TETES_IGNORES = {"transfer-encoding", "content-length", "content-encoding"}
 
 # Une réponse scénarisée : (statut, contenu, en-têtes) ou une exception à lever.
 ReponseSimulee = tuple[int, bytes, dict[str, str]] | Exception
+
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+_CADRE = re.compile(r"[─│╭╮╰╯]")
+
+
+def texte_nu(sortie: str) -> str:
+    """La sortie d'une commande sans couleurs ni cadre Rich, les blancs réduits à une espace.
+
+    Typer affiche une erreur d'option (code 2) dans un cadre Rich de 80 colonnes, en couleur
+    sur le runner de la CI (``GITHUB_ACTIONS``) ; la ligne est coupée là où le chemin qu'elle
+    contient la pousse. Une phrase se cherche donc ici, jamais dans la sortie brute.
+    """
+    return " ".join(_CADRE.sub(" ", _ANSI.sub("", sortie)).split())
 
 
 def chemin_fixture(entree: Entree) -> Path:

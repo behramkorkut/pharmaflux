@@ -410,3 +410,13 @@ rédaction dans `pr.md` (la démonstration de beko a suivi `make rebatir`,
 le refus ayant été montré au palier 3 ; `git count-objects` et
 `make --version` sont déjà permis sur `main`, `714b673` et `9ad4b14`).
 Publication par beko ensuite.
+
+**Premier passage de la CI de la mission 04** (27/10) : `integration`
+vert, `verifier` rouge sur `test_commandes_demo_fabriquer_et_verifier`.
+Typer affiche une erreur d'option dans un cadre Rich de 80 colonnes, en
+couleur sur le runner, et la coupure de ligne dépend de la longueur du
+chemin dans le message : « pas un dossier vide » était coupé sur le runner,
+pas sur le Mac. Correctif dans les tests seuls : `texte_nu` (codes ANSI,
+cadre, blancs) devant toute assertion sur le texte d'une erreur à code 2 ;
+suite complète avec `GITHUB_ACTIONS=true` et balayage de la longueur du
+dossier temporaire de 0 à 60, verts.

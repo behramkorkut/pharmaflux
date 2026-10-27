@@ -30,6 +30,7 @@ from pharmaflux.bus.client import (
 )
 from pharmaflux.bus.enveloppe import Enveloppe
 from pharmaflux.contrats.chargeur import charger_tous
+from tests.conftest import texte_nu
 from tests.test_bus import DISPO, PRESENTATIONS, BusSimule, _registre_pret, _sortie
 from tests.test_rejeu import SUITE, _executer, peupler
 
@@ -261,7 +262,7 @@ def test_une_reference_introuvable_est_refusee_avant_de_lire_le_bus(
     monkeypatch.setattr(cli, "fabriquer_lecteur", lambda c: lecteurs_fabriques.append(c))
     resultat = CliRunner().invoke(application, ["verifier-bus", "--sortie", str(sortie)])
     assert resultat.exit_code == 2, resultat.output
-    assert f"référence introuvable : {sortie / 'evenements'}" in resultat.output
+    assert f"référence introuvable : {sortie / 'evenements'}" in texte_nu(resultat.output)
     assert lecteurs_fabriques == [], "le bus n'est pas lu"
 
 
@@ -293,8 +294,8 @@ def test_commande_verifier_bus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         application,
         ["verifier-bus", "--sortie", str(sortie), "--fichier", DISPO, "--courtier", "x:1"],
     )
-    assert resultat.exit_code == 2 and "DIFFÉRENCE : 1 identité(s)" in resultat.output
-    assert "bdpm.presentations" not in resultat.output, "la sélection est respectée"
+    assert resultat.exit_code == 2 and "DIFFÉRENCE : 1 identité(s)" in texte_nu(resultat.output)
+    assert "bdpm.presentations" not in texte_nu(resultat.output), "la sélection est respectée"
     racine = tmp_path / "vide"
     racine.mkdir()
     resultat = lanceur.invoke(
@@ -302,7 +303,7 @@ def test_commande_verifier_bus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         ["verifier-bus", "--sortie", str(sortie), "--racine", str(racine), *selection[:2]],
     )
     assert resultat.exit_code == 2, resultat.output
-    assert f"référence introuvable : {sortie / 'etat.json'}" in resultat.output, (
+    assert f"référence introuvable : {sortie / 'etat.json'}" in texte_nu(resultat.output), (
         "cette sortie n'a pas d'etat.json"
     )
 

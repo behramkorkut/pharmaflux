@@ -19,6 +19,7 @@ from pharmaflux.collecte import manifeste
 from pharmaflux.collecte.manifeste import Enregistrement
 from pharmaflux.contrats.chargeur import charger_tous
 from pharmaflux.demo.jeu import FabricationRefusee, fabriquer, verifier
+from tests.conftest import texte_nu
 from tests.test_rejeu import DISPO, PRESENTATIONS, SUITE, _arbre, _executer, peupler
 
 DEPOT = Path(__file__).resolve().parent.parent
@@ -201,7 +202,7 @@ def test_commandes_demo_fabriquer_et_verifier(source: Path, tmp_path: Path) -> N
     assert "bdpm.presentations           6 archive(s)" in resultat.output
     assert resultat.output.rstrip().endswith("conforme")
     encore = lanceur.invoke(application, arguments)
-    assert encore.exit_code == 2 and "pas un dossier vide" in encore.output
+    assert encore.exit_code == 2 and "pas un dossier vide" in texte_nu(encore.output)
     mal_coupe = ["--jusqu-au-passage", "hier"]
     mal = lanceur.invoke(
         application,
@@ -215,7 +216,11 @@ def test_commandes_demo_fabriquer_et_verifier(source: Path, tmp_path: Path) -> N
             *mal_coupe,
         ],
     )
-    assert mal.exit_code == 2 and "AAAAMMJJTHHMMSSZ" in mal.output and not (tmp_path / "x").exists()
+    assert (
+        mal.exit_code == 2
+        and "AAAAMMJJTHHMMSSZ" in texte_nu(mal.output)
+        and not (tmp_path / "x").exists()
+    )
     verification = lanceur.invoke(application, ["demo", "verifier", "--racine", str(destination)])
     assert verification.exit_code == 0 and verification.output.rstrip().endswith("conforme")
     (destination / "bronze" / "intrus").write_text("")

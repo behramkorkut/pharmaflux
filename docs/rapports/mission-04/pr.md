@@ -84,11 +84,15 @@ rapports de palier, réponse à la relecture), `docs/relectures/mission-04/`
 (trois contrôles de palier, une relecture, le contrôle final, commis tels
 quels), ADR 0008, `demo/README.md`.
 
-## Vérifications locales (commit testé : `cd7810e` ; `pr.md`, le journal et le contrôle final seuls ont changé depuis)
+## Vérifications locales (commit testé : `cd7810e`, puis le correctif CI `fix(m04)` qui ne touche que `tests/`)
 
 Courtier du projet démarré sur le Mac (`pharmaflux-redpanda`, le bus de la
 démo de beko). L'IeC a rejoué les cinq premières lignes et `demo verifier`
 sur une extraction de `513a226`, mêmes résultats (`controle-iec-final.md`).
+Après le correctif CI (écart 9), relancés sur son commit : ruff, format,
+mypy, la suite complète avec `GITHUB_ACTIONS=true` (470 passed), et les
+treize tests à code 2 avec un dossier temporaire de 0 à 60 caractères de
+plus, tous verts.
 
 | commande | résultat |
 |---|---|
@@ -150,3 +154,13 @@ l'IeC :
    sont levés sur `main` depuis : `git count-objects` est permis en lecture
    à tous les rôles (`714b673`) et `make --version`, seul, est permis
    (`9ad4b14`).
+9. **Premier passage de la CI : le job `verifier` a échoué sur un test,
+   `integration` était vert.** `test_commandes_demo_fabriquer_et_verifier`
+   cherchait « pas un dossier vide » dans la sortie d'une erreur d'option ;
+   Typer l'affiche dans un cadre Rich de 80 colonnes, en couleur sur le
+   runner (`GITHUB_ACTIONS`), et la coupure de ligne dépend de la longueur
+   du chemin que contient le message : sur le runner, elle tombait au milieu
+   de la phrase, pas sur le Mac. Correctif `fix(m04)` dans les tests seuls :
+   `tests.conftest.texte_nu` retire les codes ANSI et le cadre, réduit les
+   blancs, et toutes les assertions sur le texte d'une erreur à code 2
+   (huit fichiers) passent par lui.

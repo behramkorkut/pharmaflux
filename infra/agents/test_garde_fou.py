@@ -148,6 +148,8 @@ class GardeFou(unittest.TestCase):
             "git show main:docs/missions/mission-00.md | head -50",
             "git ls-tree --name-only main docs/missions/",
             "git check-ignore -v data/bronze/x.gz",
+            # Mission 04 : la taille du jeu de démo dans le pack.
+            "git count-objects -vH",
             "uv run pytest -q 2>&1 | tail -25",
             "cat CLAUDE.md",
             "grep -n push docs/agents/processus.md",
@@ -435,6 +437,7 @@ class GardeFou(unittest.TestCase):
     def test_relecteur_git(self) -> None:
         self.assertTrue(self.bash(self.relecteur, "git switch --detach mission-00-essai"))
         self.assertTrue(self.bash(self.relecteur, "git diff --stat main...HEAD"))
+        self.assertTrue(self.bash(self.relecteur, "git count-objects -vH"))
         self.assertTrue(self.bash(self.relecteur, "uv run pytest -q 2>&1 | tail -25"))
         # Mission 03, relecture 1 : extraire le code fusionné pour un diff -r de référence.
         temporaire = "/tmp/claude-501/-relecteur/session/scratchpad/ref"
@@ -462,6 +465,7 @@ class GardeFou(unittest.TestCase):
             self.ecrit(self.principal, self.codeur / "docs/relectures/mission-00/controle-iec-1.md")
         )
         self.assertTrue(self.bash(self.principal, "git log --oneline main..mission-00-essai"))
+        self.assertTrue(self.bash(self.principal, "git count-objects -vH"))
         self.assertTrue(self.bash(self.principal, "gh pr checks 3"))
         for commande in (
             "git config --get core.hooksPath",

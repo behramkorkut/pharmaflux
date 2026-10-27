@@ -63,6 +63,7 @@ GIT_LECTURE = {
     "rev-list",
     "ls-tree",
     "check-ignore",
+    "count-objects",
 }
 # Commandes qui ne font que lire : elles peuvent nommer un chemin réservé.
 LECTURE = {

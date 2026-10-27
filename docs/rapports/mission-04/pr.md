@@ -88,8 +88,8 @@ quels), ADR 0008, `demo/README.md`.
 ## Vérifications locales (commit testé : `cd7810e` ; `pr.md`, le journal et le contrôle final seuls ont changé depuis)
 
 Courtier du projet démarré sur le Mac (`pharmaflux-redpanda`, le bus de la
-démo de beko). L'IeC a rejoué les six premières lignes sur une extraction de
-`513a226`, mêmes résultats (`controle-iec-final.md`).
+démo de beko). L'IeC a rejoué les cinq premières lignes et `demo verifier`
+sur une extraction de `513a226`, mêmes résultats (`controle-iec-final.md`).
 
 | commande | résultat |
 |---|---|

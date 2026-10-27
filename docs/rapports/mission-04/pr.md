@@ -1,13 +1,18 @@
 # Mission 04 — rejeu accéléré et jeu de démo : `demo/archive` figé dans le dépôt, `demo rejouer`, `suivre`, `make demo`, CI
 
-Branche `mission-04-rejeu-accelere-et-demo`, 9 commits depuis `main`
-(`f1750dc`), §0 en `ab31fd3`, cette description en dernier. Ordre de
-mission : `docs/missions/mission-04-rejeu-accelere-et-demo.md` (addendum 1,
-`aceb5ba` sur `main`). Trois paliers acceptés par l'IeC, le troisième avec un
-correctif (`7c9e6a8`) ; trois contrôles commis tels quels dans
-`docs/relectures/mission-04/`. Relecture 1 : **CONFORME**, 0 bloquant
-(`relecture-1.md`), un point non bloquant et trois remarques corrigés en
-`cd7810e` (`docs/rapports/mission-04/reponse-relecture-1.md`).
+Branche `mission-04-rejeu-accelere-et-demo`, 10 commits depuis `f1750dc`
+(le `main` du départ ; `main` a avancé depuis de trois commits sur des
+chemins réservés à l'IeC, sans conflit), §0 en `ab31fd3`, cette description
+en dernier. Ordre de mission : `docs/missions/mission-04-rejeu-accelere-et-demo.md`
+(addendum 1, `aceb5ba` sur `main`). Trois paliers acceptés par l'IeC, le
+troisième avec un correctif (`7c9e6a8`) ; trois contrôles de palier et le
+contrôle final commis tels quels dans `docs/relectures/mission-04/`.
+Relecture 1 : **CONFORME**, 0 bloquant (`relecture-1.md`), un point non
+bloquant et trois remarques corrigés en `cd7810e`
+(`docs/rapports/mission-04/reponse-relecture-1.md`). Contrôle final de l'IeC
+sur `513a226` (`controle-iec-final.md`) : **fusion autorisée** après le
+commit qui porte cette version de `pr.md`, trois corrections de rédaction,
+code non repris.
 
 ## Ce qui est livré
 
@@ -56,11 +61,13 @@ après les tests d'intégration et avant `down -v`. ADR 0008, section « Démo �
 en tête de « Lancer » dans le README, `CONTEXTE.md`, journal.
 
 **Démonstration de beko sur le Mac** (décision 7, sur `7c9e6a8`, dans
-`pharmaflux-codeur/`) : `make demo` sur le bus qui portait la démo du
-palier 2 a **refusé** (code 2, « le bus a déjà reçu une publication …
-(make rebatir) »), puis `make rebatir` et `make demo` : rejeu des 22 archives
-en 9,0 s ; 22 archives déroulées, 18 fichiers publiés, 4 écartés, 0 en
-attente, 59 passages sans archive ; **164 106 messages** sur onze topics,
+`pharmaflux-codeur/`). Le refus d'un bus déjà publié (code 2, « le bus a
+déjà reçu une publication … (make rebatir) ») a été montré au palier 3 par
+le codeur, avec les commandes de `make -n demo` lancées une à une sur le bus
+du palier 2. Sur `7c9e6a8`, beko a lancé `make rebatir` puis `make demo`,
+registre neuf : rejeu des 22 archives en 9,0 s ; 22 archives déroulées,
+18 fichiers publiés, 4 écartés, 0 en attente, 59 passages sans archive ;
+**164 106 messages** sur onze topics,
 dont 20 908 pour les présentations (20 898 à l'état initial, puis 2, 1 et 7
 suppressions) ; observé du 24/10 19:41:43 au 27/10 15:17:08 (67 h 35 min),
 réel **4 min 03 s** au facteur 1 000 ; `verifier-bus` **12/12 conforme**,
@@ -75,12 +82,14 @@ autres tournent sans réseau ni conteneur. Aucune dépendance nouvelle.
 
 **Documents** : `docs/rapports/mission-04/` (points à trancher, trois
 rapports de palier, réponse à la relecture), `docs/relectures/mission-04/`
-(trois contrôles, une relecture, commis tels quels), ADR 0008, `demo/README.md`.
+(trois contrôles de palier, une relecture, le contrôle final, commis tels
+quels), ADR 0008, `demo/README.md`.
 
-## Vérifications locales (commit testé : `cd7810e` ; `pr.md` et le journal seuls ont changé depuis)
+## Vérifications locales (commit testé : `cd7810e` ; `pr.md`, le journal et le contrôle final seuls ont changé depuis)
 
 Courtier du projet démarré sur le Mac (`pharmaflux-redpanda`, le bus de la
-démo de beko).
+démo de beko). L'IeC a rejoué les six premières lignes sur une extraction de
+`513a226`, mêmes résultats (`controle-iec-final.md`).
 
 | commande | résultat |
 |---|---|
@@ -94,7 +103,7 @@ démo de beko).
 | `sh infra/git-hooks/test-crochets.sh` | crochets git : tout est conforme |
 | `uv run pharmaflux demo verifier` | conforme (22 archives, 781 lignes, 71 passages) |
 | `profil`, `questions verifier`, `evenements` puis `diff -r` contre `4684292` (relecteur) | 0 bloquante ; 25/5/10 ; identique |
-| `make up` puis `make demo` (beko, `7c9e6a8`) | ci-dessus : 12/12 conforme, code 0 |
+| `make rebatir` puis `make demo` (beko, `7c9e6a8`) | ci-dessus : 12/12 conforme, code 0 |
 
 L'archive `~/pharmaflux-data` n'a été que lue ; aucune requête réseau vers
 les sources. **La CI n'a pas encore tourné** : sa première exécution a lieu au
@@ -138,8 +147,7 @@ l'IeC :
    count-objects -vH` (beko a mesuré le pack), `make --version` (version
    3.81 prise du §0), `chmod +x` sur une cale de test (le cas « `config
    --images` échoue » de `prerequis.sh` n'a pas été exercé, le chemin est relu
-   et shellcheck ne dit rien).
-
-Propositions pour les consignes, à trancher par l'IeC dans
-`controle-iec-final.md` : permettre au codeur `git count-objects` et
-`make --version`, deux lectures.
+   et shellcheck ne dit rien, accepté au contrôle final). Les deux premiers
+   sont levés sur `main` depuis : `git count-objects` est permis en lecture
+   à tous les rôles (`714b673`) et `make --version`, seul, est permis
+   (`9ad4b14`).

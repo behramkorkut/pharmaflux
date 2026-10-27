@@ -403,3 +403,10 @@ de beko sur le Mac, après `make rebatir` : `make demo` 164 106 messages,
 (`cd7810e`) ; un refus du garde-fou de plus, `chmod +x` sur une cale de
 test, signalé. `pr.md` écrit ; revue finale de l'IeC, puis publication
 par beko.
+
+**Contrôle final de la mission 04** (27/10, `controle-iec-final.md` sur
+`513a226`) : fusion autorisée, code non repris, trois corrections de
+rédaction dans `pr.md` (la démonstration de beko a suivi `make rebatir`,
+le refus ayant été montré au palier 3 ; `git count-objects` et
+`make --version` sont déjà permis sur `main`, `714b673` et `9ad4b14`).
+Publication par beko ensuite.

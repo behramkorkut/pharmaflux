@@ -83,7 +83,7 @@ def test_horodatage_du_message_est_la_date_d_observation() -> None:
 def test_envelopper_garde_la_ligne_a_l_octet() -> None:
     _, suivants = _evenements_presentations()
     ligne = schema.serialiser(suivants[0]).encode("utf-8")
-    enveloppe = env.envelopper(ligne, "evenements/bdpm.presentations/x.jsonl", 7)
+    enveloppe = env.envelopper(ligne, "evenements/bdpm.presentations/x.jsonl", PRESENTATIONS, 7)
     assert enveloppe.valeur == ligne[:-1] and not enveloppe.valeur.endswith(b"\n")
     assert schema.deserialiser(enveloppe.valeur.decode()) == suivants[0]
     assert enveloppe.topic == "pharmaflux.bdpm.presentations.v1"
@@ -99,14 +99,19 @@ def test_envelopper_garde_la_ligne_a_l_octet() -> None:
     assert en_tetes["archive"] == suivants[0].archive.encode()
     assert en_tetes["producteur"].startswith(b"pharmaflux/") and en_tetes["version_schema"] == b"1"
     assert all(isinstance(v, bytes) for _, v in enveloppe.en_tetes)
-    sans_retour = env.envelopper(ligne[:-1], "f", 7)
+    sans_retour = env.envelopper(ligne[:-1], "f", PRESENTATIONS, 7)
     assert sans_retour.valeur == enveloppe.valeur, "avec ou sans le retour final, même valeur"
     with pytest.raises(EvenementInvalide, match="version_schema"):
-        env.envelopper(ligne.replace(b'"version_schema":1', b'"version_schema":2'), "f", 7)
+        env.envelopper(
+            ligne.replace(b'"version_schema":1', b'"version_schema":2'), "f", PRESENTATIONS, 7
+        )
     with pytest.raises(EvenementInvalide, match="UTF-8"):
-        env.envelopper(b'\xff\xfe{"id":1}\n', "f", 7)
+        env.envelopper(b'\xff\xfe{"id":1}\n', "f", PRESENTATIONS, 7)
     with pytest.raises(EvenementInvalide, match="illisible"):
-        env.envelopper(b"{pas du json\n", "f", 7)
+        env.envelopper(b"{pas du json\n", "f", PRESENTATIONS, 7)
+    with pytest.raises(EvenementInvalide, match=r"dossier bdpm\.disponibilite") as info:
+        env.envelopper(ligne, "f", DISPO, 7)  # le topic vient du dossier, pas de la ligne
+    assert "bdpm.presentations" in str(info.value), "le détail nomme les deux entités"
 
 
 def test_message_en_echec_illisible_et_trop_gros() -> None:
@@ -559,6 +564,29 @@ def test_ligne_illisible_et_message_trop_gros_vont_dans_la_file(tmp_path: Path) 
     assert sum(v for t, v in rapport.topics.items() if "echecs" not in t) == n_pres + n_dispo - len(
         echecs
     )
+
+
+def test_une_ligne_d_une_autre_entite_va_dans_la_file(tmp_path: Path) -> None:
+    sortie, n_pres, n_dispo = _sortie(tmp_path)
+    fichier = sorted((sortie / "evenements" / DISPO).glob("*.jsonl"))[0]
+    presentations = sorted((sortie / "evenements" / PRESENTATIONS).glob("*.jsonl"))[0]
+    lignes = fichier.read_bytes().splitlines(keepends=True)
+    lignes.insert(1, presentations.read_bytes().splitlines(keepends=True)[0])
+    fichier.write_bytes(b"".join(lignes))  # une ligne de presentations dans un fichier de dispo
+    bus = BusSimule()
+    _, r = _registre_pret()
+    rapport = publication.executer(sortie, bus, r)
+    assert rapport.code_sortie == 3
+    (echec,) = bus.messages["pharmaflux.echecs.v1"]
+    contenu = json.loads(echec.valeur)
+    assert (contenu["motif"], contenu["ligne"], echec.cle) == (
+        "illisible",
+        2,
+        b"bdpm.disponibilite",
+    )
+    assert "bdpm.presentations" in contenu["detail"] and "bdpm.disponibilite" in contenu["detail"]
+    assert len(bus.messages["pharmaflux.bdpm.disponibilite.v1"]) == n_dispo
+    assert len(bus.messages["pharmaflux.bdpm.presentations.v1"]) == n_pres, "rien ne part ailleurs"
 
 
 def test_livraison_en_echec_arrete_sans_avancer_l_etat(tmp_path: Path) -> None:

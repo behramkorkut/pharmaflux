@@ -72,12 +72,14 @@ def horodatage_ms(date_observation: str) -> int:
 
 
 def envelopper(
-    ligne: bytes, fichier: str, schema_id: int, prefixe: str = PREFIXE_PAR_DEFAUT
+    ligne: bytes, fichier: str, entite: str, schema_id: int, prefixe: str = PREFIXE_PAR_DEFAUT
 ) -> Enveloppe:
     """L'enveloppe d'une ligne JSONL (``\\n`` final retiré) ; ``EvenementInvalide`` sinon.
 
     ``fichier`` est le chemin du JSONL sous la sortie : l'unité de
     republication, pour qu'un consommateur sache d'où vient un doublon.
+    ``entite`` est le dossier du fichier : le topic vient de lui, comme le
+    schéma enregistré, et une ligne qui dit une autre entité est refusée.
     """
     valeur = ligne[:-1] if ligne.endswith(b"\n") else ligne
     try:
@@ -85,6 +87,11 @@ def envelopper(
     except UnicodeDecodeError as exc:
         raise EvenementInvalide(f"octets illisibles en UTF-8 : {exc}") from exc
     evenement = schema.deserialiser(texte)
+    if evenement.entite != entite:
+        raise EvenementInvalide(
+            f"entité {evenement.entite} dans la ligne, dossier {entite} :"
+            " la ligne n'est pas à sa place"
+        )
     en_tetes: EnTetes = [
         ("id", evenement.id.encode()),
         ("version_schema", str(VERSION_SCHEMA).encode()),
@@ -96,7 +103,7 @@ def envelopper(
         ("producteur", producteur().encode()),
     ]
     return Enveloppe(
-        topic=nom_topic(evenement.entite, prefixe),
+        topic=nom_topic(entite, prefixe),
         cle=cle_message(evenement),
         valeur=valeur,
         en_tetes=en_tetes,

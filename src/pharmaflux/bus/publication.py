@@ -8,7 +8,9 @@ l'accusé de réception de tous les messages du fichier. ``--reprendre``
 publie, dans l'ordre des noms, chaque fichier absent de l'état. Après une
 coupure, le fichier en cours est republié en entier : ses messages déjà
 acceptés sont alors en double sur le topic, même identifiant, même contenu,
-même horodatage ; les consommateurs dédoublonnent par ``id`` (PRD §6.4).
+même horodatage ; les consommateurs dédoublonnent par ``id`` (PRD §6.4). Le
+sha256 enregistré est celui des octets lus pendant la publication, ligne à
+ligne, jamais celui d'une relecture du fichier après coup.
 
 Un fichier publié dont le sha256 a changé (un rejeu complet a recalculé la
 sortie autrement) fait **refuser** la publication, sans option pour forcer :
@@ -20,10 +22,11 @@ livraison en échec l'arrêtent, l'état n'avance pas.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from collections import Counter
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -38,7 +41,6 @@ from pharmaflux.bus.client import (
 )
 from pharmaflux.bus.enveloppe import Motif
 from pharmaflux.bus.registre import Registre, SchemaAbsent, sujet
-from pharmaflux.collecte.empreintes import sha256_hex
 from pharmaflux.evenements.rejeu import DOSSIER_EVENEMENTS
 from pharmaflux.evenements.schema import EvenementInvalide
 
@@ -48,8 +50,8 @@ Journal = Callable[[str], None]
 
 
 class PublicationRefusee(Exception):  # noqa: N818 (nom français voulu)
-    """L'état est illisible, absent alors qu'il faut reprendre, ou un fichier publié a changé
-    (code de sortie 2) : le message dit quoi faire, rien n'est publié."""
+    """L'état est illisible, il existe alors qu'on ne reprend pas, ou un fichier publié a
+    changé ou disparu (code de sortie 2) : le message dit quoi faire, rien n'est publié."""
 
 
 class LivraisonEchouee(Exception):  # noqa: N818 (nom français voulu)
@@ -162,7 +164,7 @@ def _verifier_inchanges(
                     f"{entite} : {chemin} est publié mais n'est plus dans la sortie ;"
                     " un événement publié n'est jamais réécrit : rebâtis le bus"
                 )
-            if sha256_hex((sortie / chemin).read_bytes()) != publie.sha256:
+            if _sha256_fichier(sortie / chemin) != publie.sha256:
                 raise PublicationRefusee(
                     f"{entite} : {chemin} a changé depuis sa publication (sha256 différent) ;"
                     " un événement publié n'est jamais réécrit : rebâtis le bus"
@@ -217,10 +219,14 @@ def _publier_fichier(
         bus.produire(message, livre)
         comptes["echecs"] += 1
 
+    empreinte = hashlib.sha256()  # celle des octets lus ici, pas d'une relecture après coup
     with (sortie / chemin).open("rb") as flux:
-        for numero, ligne in _lignes(flux):
+        for numero, ligne in enumerate(flux, 1):  # numérotées comme dans le fichier
+            empreinte.update(ligne)
+            if not ligne.strip():
+                continue
             try:
-                enveloppe = env.envelopper(ligne, chemin, identifiants[topic], prefixe)
+                enveloppe = env.envelopper(ligne, chemin, entite, identifiants[topic], prefixe)
             except EvenementInvalide as exc:
                 en_echec(Motif.ILLISIBLE, str(exc), numero, ligne)
                 continue
@@ -240,16 +246,19 @@ def _publier_fichier(
     par_topic[topic] = par_topic.get(topic, 0) + comptes["messages"]
     if comptes["echecs"]:
         par_topic[echecs_topic] = par_topic.get(echecs_topic, 0) + comptes["echecs"]
-    return FichierPublie(
-        sha256_hex((sortie / chemin).read_bytes()), comptes["messages"], comptes["echecs"]
-    )
+    return FichierPublie(empreinte.hexdigest(), comptes["messages"], comptes["echecs"])
 
 
-def _lignes(flux: Iterator[bytes]) -> Iterator[tuple[int, bytes]]:
-    """(numéro, ligne) des lignes non vides, numérotées comme dans le fichier."""
-    for numero, ligne in enumerate(flux, 1):
-        if ligne.strip():
-            yield numero, ligne
+TAILLE_BLOC = 1 << 20  # 1 Mio : les fichiers publiés grossiront, on ne les charge pas entiers
+
+
+def _sha256_fichier(chemin: Path) -> str:
+    """Le sha256 d'un fichier lu par blocs : le même que celui calculé pendant la publication."""
+    empreinte = hashlib.sha256()
+    with chemin.open("rb") as flux:
+        while bloc := flux.read(TAILLE_BLOC):
+            empreinte.update(bloc)
+    return empreinte.hexdigest()
 
 
 def lire_etat(chemin: Path) -> dict[str, dict[str, FichierPublie]]:

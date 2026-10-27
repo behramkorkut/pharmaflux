@@ -103,7 +103,7 @@ images sont épinglées dans ce fichier.
 docker compose -p pharmaflux --profile console pull  # une fois : télécharge les images (beko)
 docker compose -p pharmaflux up -d --wait         # démarre, attend que le courtier réponde
 docker compose -p pharmaflux down                 # arrête, garde les données
-docker compose -p pharmaflux down -v              # rebâtit le bus : efface le volume
+docker compose -p pharmaflux down -v              # rebâtit le bus : efface le volume (aussi après un changement des propriétés de grappe)
 docker compose -p pharmaflux --profile console up -d   # en plus : la console sur http://127.0.0.1:18080
 ```
 

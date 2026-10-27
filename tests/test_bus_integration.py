@@ -26,6 +26,7 @@ from pharmaflux.bus.client import (
     VARIABLE_COURTIER,
     BusKafka,
     CourtierInjoignable,
+    Livraison,
 )
 from pharmaflux.bus.registre import (
     REGISTRE_PAR_DEFAUT,
@@ -189,3 +190,16 @@ def test_un_message_impubliable_va_dans_la_file_et_la_suite_est_publiee(
         "LogAppendTime sur la file"
     )  # TIMESTAMP_LOG_APPEND_TIME
     assert len(_relire(env.nom_topic(DISPO, prefixe))) == n_dispo - 2, "la suite est publiée"
+
+
+@pytest.mark.usefixtures("bus")
+def test_un_produce_vers_un_topic_non_prepare_echoue_sans_le_creer(prefixe: str) -> None:
+    """Décision 5 : la création automatique est coupée, la rétention vient toujours du projet."""
+    bus = BusKafka(COURTIER, propagation_topic_ms=2_000)  # 30 s par défaut, trop pour un test
+    topic = env.nom_topic("bdpm.inconnu", prefixe)
+    livraisons: list[Livraison] = []
+    enveloppe = env.Enveloppe(topic=topic, cle=b"cle", valeur=b"{}", en_tetes=[], horodatage_ms=0)
+    bus.produire(enveloppe, livraisons.append)
+    assert bus.attendre(30) == 0, "le message est tranché, pas en attente"
+    assert [x.erreur for x in livraisons] == ["Broker: Unknown topic or partition (3)"]
+    assert topic not in bus.verifier_courtier(), "le courtier n'a créé aucun topic"

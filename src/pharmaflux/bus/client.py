@@ -33,6 +33,7 @@ PARTITIONS_EVENEMENTS = 3  # figé par l'ADR 0007 : changer redistribue les clé
 PARTITIONS_ECHECS = 1
 TAILLE_MAX_MESSAGE = 1_048_576  # octets, la limite par défaut de Redpanda et de Kafka
 DELAI_LIVRAISON_S = 120
+PROPAGATION_TOPIC_MS = 30_000  # défaut de librdkafka : délai avant « topic inconnu »
 DELAI_COURTIER_S = 5.0
 
 RETENTION_SANS_LIMITE = {
@@ -93,9 +94,14 @@ class Bus(Protocol):
         """Attend les livraisons en attente ; rend le nombre de messages encore non livrés."""
 
 
-def configuration_producteur(courtier: str) -> dict[str, object]:
+def configuration_producteur(
+    courtier: str, propagation_topic_ms: int = PROPAGATION_TOPIC_MS
+) -> dict[str, object]:
     return {
         "bootstrap.servers": courtier,
+        # Un topic inconnu (la création automatique est coupée, décision 5) fait échouer
+        # le message après ce délai, au lieu d'attendre qu'il apparaisse.
+        "topic.metadata.propagation.max.ms": propagation_topic_ms,
         "enable.idempotence": True,  # acks=all, réessais, ordre conservé par partition
         "compression.type": "zstd",
         "partitioner": "murmur2_random",
@@ -109,10 +115,10 @@ def configuration_producteur(courtier: str) -> dict[str, object]:
 class BusKafka:
     """Le bus réel : un ``Producer`` et un ``AdminClient`` de confluent-kafka."""
 
-    def __init__(self, courtier: str) -> None:
+    def __init__(self, courtier: str, *, propagation_topic_ms: int = PROPAGATION_TOPIC_MS) -> None:
         self.courtier = courtier
         self._admin = AdminClient({"bootstrap.servers": courtier})
-        self._producteur = Producer(configuration_producteur(courtier))
+        self._producteur = Producer(configuration_producteur(courtier, propagation_topic_ms))
 
     def verifier_courtier(self, delai_s: float = DELAI_COURTIER_S) -> list[str]:
         """Les topics du courtier, ou ``CourtierInjoignable`` s'il ne répond pas dans le délai."""

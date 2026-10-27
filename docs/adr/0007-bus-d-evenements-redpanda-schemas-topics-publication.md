@@ -30,7 +30,12 @@ CI réutilise : Redpanda `v26.2.6` (dernier correctif de la branche 26.2, du
 jamais `latest` ni suffixe `-arm64`. `dev-container` relâche la durabilité
 (pas de fsync) : un bus de développement. Le premier `pull` est à beko, avec
 `--profile console` pour que la console, sous profil, soit téléchargée aussi ;
-les agents lancent `up -d --pull never`.
+les agents lancent `up -d --pull never`. Les propriétés de grappe viennent
+d'un fichier d'amorçage (`.bootstrap.yaml`, bloc `configs` du compose, lu au
+premier démarrage seulement) : celles du mode `dev-container`, sauf
+`auto_create_topics_enabled`, mis à `false` pour qu'un `produce` vers un
+topic non préparé échoue au lieu de créer un topic avec la rétention par
+défaut, ce que la décision 5 interdit ; les changer demande `down -v`.
 
 **Client.** `confluent-kafka` (librdkafka), sans extras : producteur
 **idempotent** (`enable.idempotence`, donc `acks=all`, réessais, ordre
@@ -66,7 +71,11 @@ nouvelle `version_schema`, donc un nouveau topic, jamais une version de plus
 du même sujet ; `bus/schemas/historique/` garde les versions publiées pour
 qu'un registre neuf (la CI) refuse une évolution incompatible. Le registre
 **n'encode rien** : l'identifiant du schéma voyage dans l'en-tête
-`schema_id`. Ce que ce choix coûte : un outil qui attend le format Confluent
+`schema_id`. Un identifiant désigne un *contenu* de schéma pour tout le
+registre, seule la version est propre au sujet : les onze sujets
+d'événements, qui portent le même schéma, partagent donc le même
+`schema_id` (1 sur un registre neuf), et ce `1` partout n'est pas une
+erreur. Ce que ce choix coûte : un outil qui attend le format Confluent
 (cinq octets devant la valeur) ne décode pas par le registre. Le sha256 des
 fichiers de schéma est épinglé par un test. `jsonschema` est une dépendance
 de **test** seulement.

@@ -10,6 +10,7 @@
 #   (les agents ajoutent --pull never)
 #   arrêter, garder les données :               docker compose -p pharmaflux down
 #   rebâtir le bus (efface le volume) :         docker compose -p pharmaflux down -v
+#   (aussi après un changement des propriétés de grappe du bloc configs, plus bas)
 #   la console, en option :                     docker compose -p pharmaflux --profile console up -d
 #
 # Les versions sont épinglées au correctif près (images multi-architecture : arm64 sur le
@@ -47,6 +48,9 @@ services:
       - "127.0.0.1:19644:9644" # administration
     volumes:
       - pharmaflux-redpanda:/var/lib/redpanda/data
+    configs:
+      - source: amorcage-redpanda
+        target: /etc/redpanda/.bootstrap.yaml
     mem_limit: 1g
     healthcheck:
       test: ["CMD-SHELL", "rpk cluster info -X brokers=localhost:9092 > /dev/null 2>&1"]
@@ -70,6 +74,23 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
+
+configs:
+  # Propriétés de grappe, lues par Redpanda au premier démarrage seulement (`.bootstrap.yaml`) :
+  # celles du mode dev-container, sauf la création automatique des topics, pour qu'un `produce`
+  # vers un topic non préparé échoue au lieu de créer un topic avec la rétention par défaut
+  # (décision 5). Les changer demande `down -v` : le volume porte la grappe déjà amorcée.
+  # Vérification : rpk cluster config get auto_create_topics_enabled → false.
+  amorcage-redpanda:
+    content: |
+      auto_create_topics_enabled: false
+      group_topic_partitions: 3
+      storage_min_free_bytes: 10485760
+      topic_partitions_per_shard: 1000
+      fetch_reads_debounce_timeout: 10
+      group_initial_rebalance_delay: 0
+      log_segment_size_min: 1
+      write_caching_default: "true"
 
 volumes:
   pharmaflux-redpanda:

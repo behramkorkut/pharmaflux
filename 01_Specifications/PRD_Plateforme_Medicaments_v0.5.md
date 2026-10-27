@@ -2,8 +2,8 @@
 
 **Projet :** Pharmaflux — projet portfolio
 **Client :** client fictif — **direction santé d'une mutuelle** de taille moyenne (personas §3). Aucune donnée client : uniquement des données publiques réelles.
-**Version :** 0.4 _(après la mission 02 : normalisation, snapshots et événements de changement, du bronze à des fichiers JSONL sur le Mac)_
-**Date :** 26 octobre 2026 _(v0.1 : 23 octobre 2026 ; v0.2 et v0.3 : 26 octobre 2026)_
+**Version :** 0.5 _(après la mission 03 : écriture en flux, bus Redpanda local, schémas, file des messages en échec, vérification du bus)_
+**Date :** 27 octobre 2026 _(v0.1 : 23 octobre 2026 ; v0.2 à v0.4 : 26 octobre 2026)_
 **Auteur :** Behram Korkut
 
 **Sources de données (publiques, réelles) :**
@@ -30,6 +30,7 @@
 | 2 | PRD v0.2 : nom Pharmaflux retenu ; collecte **horaire** sur le VPS-1 de beko, partagé avec une pré-production jusqu'à mi-novembre 2026 ; pas de requête conditionnelle ; indicateur de fraîcheur découplé (§2.2) ; dates utiles de data.gouv (§6.1) ; constats sur les encodages et les formats (annexe A, avec le §0 de la mission 01) ; sens d'une ligne qui disparaît de la disponibilité (§6.3) ; points 5, 6 et 8 du §10.2 reportés à leur lot ; circuit local (annexe C) | Mission 00 (24-25/10/2026) : réponse au §0, addendum 2, 24 h de passages sur le VPS |
 | 3 | PRD v0.3 : Lot 0 soldé (§4) ; contrats de schéma v0 et règle de version (§6.2) ; **fichier servi vide** et garde-fou de volume (§6.1, §6.3, §9) ; points 2, 3, 4 et 7 du §10.2 tranchés par les ADR 0001 à 0004 ; annexe A avec colonne « Statut » ; annexe B : comportement attendu, archive citée, réponse avec réserve ; messages directs entre sessions pour la routine (annexe C) | Mission 01 (26/10/2026) : PR #2, contrôles des paliers 3 et 4, relecture 1, passages du 26/10 sur le VPS |
 | 4 | PRD v0.4 : avancement du Lot 1 (§4) ; forme canonique par type et forme déclarée vérifiée par une mesure (§6.2) ; valeur illisible gardée brute, et non rejetée (§6.2) ; schéma d'événement v1, identité d'une ligne sans clé unique, ordre des colonnes et des rangs, garde-fou de volume chiffré, premier snapshot (§6.3) ; reprise égale au rejeu complet (§7.1) ; mémoire de pointe au-dessus du plafond du VPS (§9) | Mission 02 (26/10/2026) : PR #3, ADR 0005 et 0006, contrôles des paliers 1 à 3, relectures 1 et 2 |
+| 5 | PRD v0.5 : avancement du Lot 1 (§4) ; bus précisé : topics, clé, valeur, compatibilité des schémas, rétention, file des messages en échec, vérification (§6.4) ; publication sans perte ni doublon d'identifiant, reprise (§7.1) ; jeu de démo figé dans le dépôt, rejeu accéléré dans l'ordre des observations, `make up` (§7.3) ; risque mémoire levé, rythme réel mesuré (§9) | Mission 03 (27/10/2026) : PR #4, ADR 0007, contrôles des paliers 1 à 3, relecture 1, contrôle final ; ordre de la mission 04 |
 
 ---
 
@@ -153,7 +154,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - Publication des événements dans Redpanda, contrats de schéma, file des messages en échec.
 - Idempotence et rejeu complet depuis le bronze.
 - `docker compose` local, CI (lint, types, tests unitaires et d'intégration).
-- _Avancement : la collecte est en service depuis la mission 00. La mission 02 (fusionnée le 26/10/2026) va du bronze aux événements : `pharmaflux evenements` normalise chaque archive, la compare au dernier snapshot retenu, et écrit les événements et un bilan par archive, avec rejeu complet et reprise. Elle ne tourne que sur le Mac. Restent la publication dans Redpanda, la file des messages en échec, l'écriture en flux et l'exécution sur le VPS._
+- _Avancement : la collecte est en service depuis la mission 00. La mission 02 (fusionnée le 26/10/2026) va du bronze aux événements : `pharmaflux evenements` normalise chaque archive, la compare au dernier snapshot retenu, et écrit les événements et un bilan par archive, avec rejeu complet et reprise. Elle ne tourne que sur le Mac. La mission 03 (fusionnée le 27/10/2026) écrit les événements en flux (474 Mo → 118 à 149 Mo résidents au rejeu complet), les publie dans un Redpanda local (`docker compose`, projet `pharmaflux`), avec un registre de schémas et une file des messages en échec, et vérifie le bus contre le dernier snapshot retenu ; la CI a un job d'intégration. Restent le rejeu accéléré avec un jeu de démo fourni (mission 04) et l'exécution sur le VPS, après le départ de la pré-production voisine (mi-novembre 2026)._
 
 ### Lot 2 — Lakehouse, historique et voyage dans le temps
 
@@ -245,10 +246,12 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 
 ### 6.4 Bus d'événements
 
-- Redpanda, un topic par entité, partitionnement par clé (ordre garanti par médicament).
-- Registre de schémas ; une évolution incompatible est refusée par la CI.
-- File des messages en échec, avec le motif et la ligne brute.
-- Consommateurs idempotents : traiter deux fois le même événement ne change rien.
+- Redpanda, un topic par entité (`pharmaflux.<entite>.v1`, 3 partitions), partitionnement par clé (ordre garanti par médicament). La clé du message est l'objet `cle` de l'événement ; pour un fichier sans clé unique, ce sont les colonnes de la clé déclarée, pour qu'une `supprimee` et la `creee` qui la remplace restent dans la même partition.
+- La valeur du message est la ligne de l'événement v1 à l'octet : le bus ne transforme pas l'événement. L'horodatage du message est la date d'observation. Rétention sans limite, posée par le projet à la création du topic, jamais de compactage.
+- Registre de schémas, compatibilité `BACKWARD_TRANSITIVE` ; une évolution incompatible est une nouvelle version de schéma, donc un nouveau topic, et la CI refuse l'autre cas.
+- File des messages en échec (`pharmaflux.echecs.v1`) : ce que la chaîne ne peut pas publier (ligne illisible, message trop gros), avec le motif et la ligne brute. Une valeur de source illisible n'y va pas : elle est gardée brute dans l'événement (§6.2).
+- Consommateurs idempotents : traiter deux fois le même événement ne change rien. Ils dédoublonnent par identifiant d'événement.
+- Vérification du bus : relu depuis le début et appliqué, il redonne le dernier snapshot retenu de chaque fichier (ADR 0007).
 
 ### 6.5 Lakehouse et historique
 
@@ -296,7 +299,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 
 - Rejeu complet depuis le bronze à tout moment, avec un résultat identique **à l'octet**.
 - **Reprise égale au rejeu complet** : après une coupure à n'importe quel point, même pendant un rejeu complet, la reprise produit la même sortie que le rejeu complet. Pour cela, chaque fichier de sortie est écrit entier puis renommé, dans l'ordre événements, bilan, état, et l'état ne garde que des chemins d'archives : les snapshots se recalculent. Une reprise est refusée quand une version de contrat a changé.
-- Aucun événement perdu, aucun doublon ; vérifié par un test automatique.
+- Aucun événement perdu, aucun doublon ; vérifié par un test automatique. Côté bus : la publication reprend au premier fichier non accusé, donc un fichier peut être republié après une coupure ; ses messages en double portent le même identifiant, et les consommateurs les dédoublonnent. Un fichier déjà publié qui a changé fait refuser la publication.
 - Toute anomalie de source est visible (file des messages en échec, tableau de bord), jamais absorbée.
 
 ### 7.2 Fraîcheur
@@ -306,9 +309,10 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 
 ### 7.3 Reproductibilité
 
-- `make up` lance l'ensemble sur un MacBook (Apple Silicon) avec Docker.
-- Un jeu de fichiers archivés est fourni pour lancer la démo sans dépendre du site source.
-- **Mode rejeu accéléré** : les jours archivés sont rejoués en quelques minutes pour montrer le flux en direct.
+- `make up` lance l'ensemble sur un MacBook (Apple Silicon) avec Docker ; la chaîne tourne sur l'hôte, avec uv. `make up` ne télécharge rien qui ne soit épinglé.
+- Un jeu de fichiers archivés est fourni **dans le dépôt** (`demo/`) pour lancer la démo sans dépendre du site source ni du réseau. Les fichiers sont repris à l'octet, avec leur manifeste, leur source et leur date (licence de la BDPM : sans altération) ; le jeu est figé.
+- **Mode rejeu accéléré** : les jours archivés sont rejoués en quelques minutes pour montrer le flux en direct, dans l'ordre où les archives ont été observées, toutes entités confondues. Il publie les mêmes messages que la publication normale ; seul le moment de leur envoi change, et la vérification du bus est conforme à la fin.
+- La démo montre le rythme réel, sans changement fabriqué : l'état initial, puis les rares changements et incidents observés (§9).
 
 ### 7.4 Santé, conformité et IA
 
@@ -350,8 +354,8 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 |---|---|---|---|
 | **Format d'un fichier source modifié sans préavis** | Élevé | Moyenne | Contrats de schéma ; collecte qui s'arrête proprement et alerte ; incident documenté |
 | **Fichier servi vide ou tronqué par la source**, sans erreur HTTP (observé le 26/10/2026) | Élevé | Faible | Archivé tel quel ; garde-fou de volume avant toute comparaison (§6.3) ; jamais d'événement `supprimee` en masse |
-| **Mémoire de pointe au-dessus du plafond du VPS** : 474 Mo au rejeu complet, contre 256 Mo pour l'unité systemd (mission 02) | Élevé | Certaine tant que la chaîne n'écrit pas en flux | La chaîne ne tourne que sur le Mac ; écriture des événements en flux avant toute exécution sur le VPS (condition de la mission 03) ; plafond de l'unité gardé, au service de la pré-production voisine |
-| **Rythme réel de mise à jour inconnu ou faible** (peu d'événements à montrer) | Élevé | Moyenne | Archivage dès le Lot 0 ; mode rejeu accéléré ; mesure honnête publiée |
+| **Mémoire de pointe au-dessus du plafond du VPS** : 474 Mo au rejeu complet, contre 256 Mo pour l'unité systemd (mission 02) | Élevé | **Levé pour la chaîne** par la mission 03 : 118 à 149 Mo en flux ; `verifier-bus` monte à 190-230 Mo, sans cible | Plafond de l'unité gardé, au service de la pré-production voisine ; mesure à refaire sur le VPS, avec le bus, avant d'y lancer autre chose que la collecte |
+| **Rythme réel de mise à jour faible** (peu d'événements à montrer) : en 45 heures (24-26/10/2026), en dehors de l'état initial, un seul fichier a changé, deux fois, plus un fichier servi vide | Élevé | **Avérée** | Archivage dès le Lot 0 ; mode rejeu accéléré ; la démo montre ce rythme et l'incident tels quels ; mesure honnête publiée ; l'historique s'allonge chaque heure |
 | **Sens d'une disparition de ligne ambigu** (remise à disposition ? arrêt ?) | Moyen | Élevée | ADR 0003 « proposé » (fin de publication, pas remise), revu au plus tard le 07/12/2026 sur les disparitions observées ; libellés prudents dans l'assistant |
 | Granularités incompatibles (dépense annuelle, disponibilité quotidienne) | Moyen | Certaine | Indicateur « dépense exposée » défini et documenté avec ses limites |
 | Correspondance BDPM ↔ Open Medic incomplète | Moyen | Moyenne | Taux mesuré et affiché ; non-correspondances listées |

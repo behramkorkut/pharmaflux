@@ -101,7 +101,10 @@ et une session ne demande jamais à l'autre de faire ce qui lui a été refusé.
    (le colima porte aussi les conteneurs d'Alamel). `git archive` est
    permis vers la sortie standard, pour extraire un commit dans un dossier
    temporaire (`git archive <commit> | tar -x -C …`) ; `git config` est
-   permis en lecture seulement (`--get <clé>`, `--list`). Test :
+   permis en lecture seulement (`--get <clé>`, `--list`). Depuis la
+   mission 04, `make` ne tourne qu'en simulation (`make -n <cible>`) : ses
+   recettes échappent au crochet ; `make <cible>` est à beko et à la CI.
+   Test :
    `python3 infra/agents/test_garde_fou.py`.
 2. **Crochets git** `infra/git-hooks/` (activés par `preparer-mission.sh`) :
    sous Claude Code, pas de push du tout, pas de commit sur `main` ni sur

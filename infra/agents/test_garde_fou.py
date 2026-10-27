@@ -306,6 +306,16 @@ class GardeFou(unittest.TestCase):
             with self.subTest(commande=commande):
                 self.assertFalse(self.bash(self.codeur, commande))
 
+    def test_make_en_simulation_seulement(self) -> None:
+        """Mission 04 : les recettes d'un Makefile échappent au garde-fou, pour tous les rôles."""
+        for dossier in (self.codeur, self.relecteur, self.principal):
+            for commande in ("make -n demo", "make --dry-run up", "make -n"):
+                with self.subTest(dossier=dossier.name, commande=commande):
+                    self.assertTrue(self.bash(dossier, commande))
+            for commande in ("make demo", "make", "make up -j2", "gmake down", "cd x && make up"):
+                with self.subTest(dossier=dossier.name, commande=commande):
+                    self.assertFalse(self.bash(dossier, commande))
+
     def test_docker_limite_au_projet_pharmaflux(self) -> None:
         """Mission 03 : le colima porte aussi les conteneurs d'Alamel, pour tous les rôles."""
         for dossier in (self.codeur, self.relecteur, self.principal):

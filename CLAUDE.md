@@ -29,7 +29,9 @@ ouvrir les PR, fusionner et installer quoi que ce soit sur le système.
   et des crochets git (`infra/git-hooks/`) refusent ce que ton rôle ne
   permet pas. Un refus se **signale** à beko ; il ne se contourne jamais
   (pas de variante de commande, pas de script détourné).
-- **Données** : rien de `data/` dans git. Aucune donnée personnelle. Les
+- **Données** : rien de `data/` dans git. Seule exception : le jeu de démo
+  figé `demo/` (mission 04), des fichiers BDPM repris à l'octet avec leur
+  source et leur date. Aucune donnée personnelle. Les
   tests n'appellent jamais le réseau (fixtures dans `tests/fixtures/`).
 - **Sites sources** : un service public, pas un banc d'essai. Pas de
   téléchargement en boucle : un téléchargement réel sert à constituer les

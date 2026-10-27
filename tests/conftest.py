@@ -1,12 +1,18 @@
-"""Outils communs des tests : serveur simulé sur fixtures, horloge, lancement d'un passage.
+"""Outils communs des tests : serveur simulé sur fixtures, horloge, lancement d'un passage,
+et les fixtures des tests d'intégration contre le Redpanda local.
 
-Aucun test n'appelle le réseau : ``httpx.MockTransport`` sert les fichiers de
-``tests/fixtures/`` (extraits réels, voir ``tests/fixtures/README.md``).
+Aucun test unitaire n'appelle le réseau : ``httpx.MockTransport`` sert les
+fichiers de ``tests/fixtures/`` (extraits réels, voir
+``tests/fixtures/README.md``). Les tests marqués ``integration`` parlent au
+courtier de ``docker compose -p pharmaflux up -d`` ; sans lui, ``bus`` les
+saute, et le dit (un échec en CI, ``PHARMAFLUX_INTEGRATION_EXIGEE``).
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+import os
+import uuid
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -14,6 +20,21 @@ from pathlib import Path
 import httpx
 import pytest
 
+from pharmaflux.bus import enveloppe as env
+from pharmaflux.bus.client import (
+    COURTIER_PAR_DEFAUT,
+    VARIABLE_COURTIER,
+    BusKafka,
+    CourtierInjoignable,
+    LecteurKafka,
+)
+from pharmaflux.bus.registre import (
+    REGISTRE_PAR_DEFAUT,
+    VARIABLE_REGISTRE,
+    Registre,
+    enregistrer_tout,
+    sujets_du_projet,
+)
 from pharmaflux.collecte.catalogue import CATALOGUE, Entree
 from pharmaflux.collecte.passage import Bilan, executer_passage
 from pharmaflux.collecte.telechargement import Telechargeur
@@ -148,3 +169,56 @@ def entrees_bdpm_txt() -> list[Entree]:
 
 def entree(identifiant: str) -> Entree:
     return next(e for e in CATALOGUE if e.identifiant == identifiant)
+
+
+# --- Intégration : le Redpanda local -----------------------------------------------------------
+
+COURTIER = os.environ.get(VARIABLE_COURTIER, COURTIER_PAR_DEFAUT)
+REGISTRE = os.environ.get(VARIABLE_REGISTRE, REGISTRE_PAR_DEFAUT)
+VARIABLE_EXIGEE = "PHARMAFLUX_INTEGRATION_EXIGEE"  # posée par la CI : un saut devient un échec
+ENTITES_INTEGRATION = ["bdpm.presentations", "bdpm.disponibilite"]  # les sujets et topics du test
+
+
+@pytest.fixture(scope="session")
+def bus() -> Iterator[BusKafka]:
+    """Le courtier, ou le saut de tous les tests d'intégration avec le motif (échec en CI)."""
+    bus_ = BusKafka(COURTIER)
+    try:
+        bus_.verifier_courtier(delai_s=5)
+    except CourtierInjoignable as exc:
+        motif = f"aucun courtier sur {COURTIER} (docker compose -p pharmaflux up -d) : {exc}"
+        if os.environ.get(VARIABLE_EXIGEE):
+            pytest.fail(f"{VARIABLE_EXIGEE} est posée, le saut est un échec : {motif}")
+        pytest.skip(motif)
+    yield bus_
+    bus_.attendre(10)
+
+
+@pytest.fixture
+def prefixe() -> str:
+    """Un préfixe par test : chaque test relit des topics qu'il est seul à remplir."""
+    return f"pharmaflux.test-{uuid.uuid4().hex[:8]}"
+
+
+@pytest.fixture
+def registre(bus: BusKafka, prefixe: str) -> Iterator[Registre]:
+    """Les schémas enregistrés sous les sujets du test ; sujets et topics effacés à la fin."""
+    registre_ = Registre(REGISTRE)
+    sujets = [s for s, _ in sujets_du_projet(ENTITES_INTEGRATION, prefixe)]
+    enregistrer_tout(registre_, ENTITES_INTEGRATION, prefixe)
+    yield registre_
+    for sujet_ in sujets:
+        registre_.supprimer(sujet_)
+    registre_.close()
+    topics = [
+        *(env.nom_topic(entite, prefixe) for entite in ENTITES_INTEGRATION),
+        env.topic_echecs(prefixe),
+    ]
+    bus.supprimer_topics(topics)
+
+
+@pytest.fixture
+def lecteur() -> Iterator[LecteurKafka]:
+    lecteur_ = LecteurKafka(COURTIER)
+    yield lecteur_
+    lecteur_.close()

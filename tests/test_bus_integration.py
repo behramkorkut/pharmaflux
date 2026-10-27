@@ -4,17 +4,17 @@ Marqués ``integration`` : sautés, et dit, quand aucun courtier ne répond sur
 ``PHARMAFLUX_COURTIER`` (défaut ``127.0.0.1:19092``, celui de
 ``docker compose -p pharmaflux up -d``). En CI, la variable
 ``PHARMAFLUX_INTEGRATION_EXIGEE`` fait de ce saut un échec : un job vert a
-lancé les tests. Les topics et les sujets du registre portent un suffixe
-unique par test et sont supprimés à la fin. Seules les fixtures sont lues,
+lancé les tests. Les fixtures (``bus``, ``prefixe``, ``registre``,
+``lecteur``) sont dans ``conftest.py``, partagées avec la mission 04. Les
+topics et les sujets du registre portent un suffixe unique par test et sont
+supprimés à la fin. Seules les fixtures sont lues,
 jamais ``~/pharmaflux-data``, pour que la CI ait le même jeu que le Mac.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import uuid
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -25,77 +25,21 @@ from pharmaflux.bus import publication, verification
 from pharmaflux.bus.client import (
     CONFIG_ECHECS,
     CONFIG_EVENEMENTS,
-    COURTIER_PAR_DEFAUT,
-    VARIABLE_COURTIER,
     BusKafka,
-    CourtierInjoignable,
     LecteurKafka,
     Livraison,
 )
 from pharmaflux.bus.registre import (
-    REGISTRE_PAR_DEFAUT,
-    VARIABLE_REGISTRE,
     Registre,
-    enregistrer_tout,
-    sujets_du_projet,
 )
 from pharmaflux.bus.registre import sujet as sujet_de
 from pharmaflux.evenements import schema
 from pharmaflux.evenements.comparaison import appliquer, etat_du_snapshot
+from tests.conftest import COURTIER
 from tests.test_bus import DISPO, PRESENTATIONS, _snap, _sortie
 from tests.test_bus_verification import BusCoupe, _lignes
 
 pytestmark = pytest.mark.integration
-
-COURTIER = os.environ.get(VARIABLE_COURTIER, COURTIER_PAR_DEFAUT)
-REGISTRE = os.environ.get(VARIABLE_REGISTRE, REGISTRE_PAR_DEFAUT)
-VARIABLE_EXIGEE = "PHARMAFLUX_INTEGRATION_EXIGEE"  # posée par la CI : un saut devient un échec
-
-
-@pytest.fixture(scope="session")
-def bus() -> Iterator[BusKafka]:
-    """Le courtier, ou le saut de tous les tests d'intégration avec le motif (échec en CI)."""
-    bus_ = BusKafka(COURTIER)
-    try:
-        bus_.verifier_courtier(delai_s=5)
-    except CourtierInjoignable as exc:
-        motif = f"aucun courtier sur {COURTIER} (docker compose -p pharmaflux up -d) : {exc}"
-        if os.environ.get(VARIABLE_EXIGEE):
-            pytest.fail(f"{VARIABLE_EXIGEE} est posée, le saut est un échec : {motif}")
-        pytest.skip(motif)
-    yield bus_
-    bus_.attendre(10)
-
-
-@pytest.fixture
-def prefixe() -> str:
-    """Un préfixe par test : chaque test relit des topics qu'il est seul à remplir."""
-    return f"pharmaflux.test-{uuid.uuid4().hex[:8]}"
-
-
-@pytest.fixture
-def registre(bus: BusKafka, prefixe: str) -> Iterator[Registre]:
-    """Les schémas enregistrés sous les sujets du test ; sujets et topics effacés à la fin."""
-    registre_ = Registre(REGISTRE)
-    sujets = [s for s, _ in sujets_du_projet([PRESENTATIONS, DISPO], prefixe)]
-    enregistrer_tout(registre_, [PRESENTATIONS, DISPO], prefixe)
-    yield registre_
-    for sujet_ in sujets:
-        registre_.supprimer(sujet_)
-    registre_.close()
-    topics = [
-        env.nom_topic(PRESENTATIONS, prefixe),
-        env.nom_topic(DISPO, prefixe),
-        env.topic_echecs(prefixe),
-    ]
-    bus.supprimer_topics(topics)
-
-
-@pytest.fixture
-def lecteur() -> Iterator[LecteurKafka]:
-    lecteur_ = LecteurKafka(COURTIER)
-    yield lecteur_
-    lecteur_.close()
 
 
 def _verifier(lecteur: LecteurKafka, sortie: Path, prefixe: str) -> verification.Rapport:

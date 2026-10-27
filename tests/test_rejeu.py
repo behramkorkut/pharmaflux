@@ -46,8 +46,12 @@ class Collecte:
 
 
 def _fixture(nom: str) -> bytes:
-    dossier = "contrats" if nom.endswith("_anomalies.txt") else "evenements"
-    return (FIXTURES / dossier / nom).read_bytes()
+    """Une archive fabriquée (``evenements/``), un extrait des contrats, ou un chemin sous
+    ``fixtures/`` (``bdpm/CIS_bdpm.txt``)."""
+    for chemin in (FIXTURES / "evenements" / nom, FIXTURES / "contrats" / nom, FIXTURES / nom):
+        if chemin.is_file():
+            return chemin.read_bytes()
+    raise FileNotFoundError(nom)
 
 
 # Toutes entités confondues, dans l'ordre du temps. Présentations (clé) : A, B, vide, A, B

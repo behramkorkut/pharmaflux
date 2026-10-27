@@ -1,0 +1,13 @@
+# Mission 04 — palier 2
+**Fait** : `pharmaflux demo rejouer` (`demo/rejeu_accelere.py` : horloge au facteur 1 000, ordre global par (horodatage, entité), passages sans archive, `--sans-pause`, `--sans-passages`, `--reprendre`, table des refus code 2 vers `make rebatir`) ; `publication` découpée en `preparer` (F.3 compris) et `publier_fichier`, `executer` les enchaîne ; `pharmaflux suivre` (`bus/suivi.py`, `LecteurKafka.suivre`, un topic absent est attendu) ; 5 tests unitaires sur le bus simulé (ordre global sur 3 entités et 7 archives, même ordre par topic que `publier`, cadence sans dormir, refus, reprise, hors d'ordre sur `demo rejouer --reprendre`), 4 tests de `suivre`, 3 tests d'intégration (démo puis `verifier-bus` sur ses deux références, `suivre` sur un topic apparu après le départ, F.2 contre le vrai registre : schéma sans `date_source`, `compatible` faux, `SchemaIncompatible`, une seule version) ; fixtures d'intégration déplacées dans `conftest.py`.
+**Mesures** (Q5) : `evenements` sous `tracemalloc`, pic par entité de 0,7 Mo (disponibilité) à 35,8 Mo (présentations) ; `demo rejouer` sur `demo/archive`, bus rebâti, cadence par défaut : **145 Mo** de mémoire résidente maximale (`/usr/bin/time -l`), 164 106 messages, rejeu 9,4 s puis déroulé 4 min 03 s pour 67 h 35 min observées, 18 fichiers publiés, 4 archives écartées, 59 passages sans archive ; `verifier-bus --sortie data/demo --racine demo/archive` : 12/12 conformes en 11,6 s, la référence fichiers conforme aussi ; relance : refus code 2 (`make rebatir`), puis `--reprendre` : rien à rejouer ; `suivre --nombre 30` lancé avant la démo a attendu le topic puis lu 30 messages.
+**Vérifications locales** (commit testé : ce commit, fils de `180f577`)
+| commande | résultat |
+|---|---|
+| `uv run ruff check .`, `ruff format --check .`, `mypy src` | verts (40 fichiers) |
+| `uv run pytest -q` | 470 passed, dont 9 `integration` sur le courtier (avant et après `down -v`) |
+| `python3 infra/agents/test_garde_fou.py`, `sh infra/git-hooks/test-crochets.sh` | OK, conforme |
+| `profil`, `questions verifier`, `evenements` puis `diff -r` contre `4684292` | 0 bloquante ; 25/5/10 ; identique |
+**Écarts à l'ordre** : 1) 59 passages sans archive, pas 49 (le §0 C comptait mal : 12 des 71 passages portent une archive) ; 2) la troisième entité du test d'ordre global (spécialités) vient de `fixtures/bdpm/CIS_bdpm.txt`, `test_rejeu._fixture` accepte désormais un chemin sous `fixtures/` ; 3) `down -v` lancé après avoir prévenu beko dans le fil, sans attendre de réponse (« préviens en une ligne ») ; 4) la ligne d'un fichier retenu sans événement cite le motif sans l'archive, que le bilan garde.
+**Questions pour l'IeC** : aucune.
+**Propositions d'évolution** (PRD, consignes) : aucune.

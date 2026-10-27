@@ -132,7 +132,8 @@ de l'IeC :
    aucun job n'a démarré. Corrigé dans le nom (une virgule), YAML relu par
    `ruby -ryaml` ; un second push a été nécessaire.
 
-Quatre propositions restent à trancher par l'IeC, listées dans la réponse à
-la relecture 1 : tri numérique de l'historique des schémas, sort de
-`Registre.compatible`, refus explicite d'un fichier hors d'ordre, test d'une
-coupure sur un préfixe livré.
+Les quatre propositions de la réponse à la relecture 1 sont tranchées dans le
+contrôle final de l'IeC (`docs/relectures/mission-03/controle-iec-final.md`) :
+aucune n'est faite dans cette mission ; le refus d'un fichier hors d'ordre
+ira dans l'ordre de la mission du VPS, le tri numérique de l'historique avec
+le premier schéma qui y entre.

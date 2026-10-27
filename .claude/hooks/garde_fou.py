@@ -347,6 +347,16 @@ def verifier_git(role: str, mots: list[str]) -> None:
     sous, reste = args[0], args[1:]
     if sous in GIT_LECTURE:
         return
+    if sous == "archive":
+        # Vers la sortie standard seulement, pour extraire un commit dans un dossier
+        # temporaire (git archive <commit> | tar -x -C …) : -o écrirait un fichier,
+        # --remote et --exec s'adressent à un autre dépôt.
+        interdit = next(
+            (a for a in reste if a.startswith(("-o", "--output", "--remote", "--exec"))), None
+        )
+        if interdit:
+            raise Refus(f"git archive {interdit} interdit : l'archive sort sur la sortie standard.")
+        return
     if sous == "branch" and all(
         a in ("--show-current", "--list", "-v", "-vv", "-a") for a in reste
     ):

@@ -98,13 +98,16 @@ et une session ne demande jamais à l'autre de faire ce qui lui a été refusé.
    système. Depuis la mission 03, pour tous les rôles : `docker` hors
    compose ne fait que lire, `docker compose` ne vise que le projet
    `pharmaflux` et ne télécharge aucune image, `colima` ne fait que lire
-   (le colima porte aussi les conteneurs d'Alamel). Test :
+   (le colima porte aussi les conteneurs d'Alamel). `git archive` est
+   permis vers la sortie standard, pour extraire un commit dans un dossier
+   temporaire (`git archive <commit> | tar -x -C …`). Test :
    `python3 infra/agents/test_garde_fou.py`.
 2. **Crochets git** `infra/git-hooks/` (activés par `preparer-mission.sh`) :
    sous Claude Code, pas de push du tout, pas de commit sur `main` ni sur
    une HEAD détachée, pas de chemin réservé dans un commit, trailers
-   obligatoires ; pour tout le monde, pas de push forcé ni de suppression.
-   Test : `sh infra/git-hooks/test-crochets.sh`.
+   obligatoires ; pour tout le monde, pas de push forcé ni de suppression,
+   et pas de workflow `.github/workflows/` au YAML invalide dans un commit
+   (relu par `ruby -ryaml`). Test : `sh infra/git-hooks/test-crochets.sh`.
 3. **Permissions** `.claude/settings.json` (`deny`), premier filet.
 
 Ces couches arrêtent les **accidents et les excès de zèle**, pas un

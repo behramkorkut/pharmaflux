@@ -426,12 +426,19 @@ class GardeFou(unittest.TestCase):
         self.assertTrue(self.bash(self.relecteur, "git switch --detach mission-00-essai"))
         self.assertTrue(self.bash(self.relecteur, "git diff --stat main...HEAD"))
         self.assertTrue(self.bash(self.relecteur, "uv run pytest -q 2>&1 | tail -25"))
+        # Mission 03, relecture 1 : extraire le code fusionné pour un diff -r de référence.
+        temporaire = "/tmp/claude-501/-relecteur/session/scratchpad/ref"
+        self.assertTrue(self.bash(self.relecteur, f"git archive 647fb6a | tar -x -C {temporaire}"))
         for commande in (
             "git add x",
             "git commit -m x",
             "git switch main",
             "git push",
             "gh pr comment 1 -b x",
+            "git archive -o ../pharmaflux-codeur/src/x.tar HEAD",
+            "git archive --output=x.tar HEAD",
+            "git archive --remote=https://exemple.invalid/depot.git HEAD",
+            "git archive --exec=/bin/sh HEAD",
         ):
             with self.subTest(commande=commande):
                 self.assertFalse(self.bash(self.relecteur, commande))

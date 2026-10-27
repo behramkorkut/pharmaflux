@@ -5,10 +5,24 @@
 #     seulement sur sa branche de mission ;
 #   - un commit qui touche un chemin réservé à l'IeC (consignes, ordres de
 #     mission, garde-fous) : ceux-là, beko les committe sur main.
-# Hors Claude Code (beko), il ne fait rien.
+# Pour tout le monde, beko compris, il refuse un workflow GitHub dont le YAML
+# est invalide : GitHub rejette alors le fichier entier et aucun job ne part
+# (mission 03 : un « : » dans un nom d'étape a coûté un second push).
 
 NOM_CROCHET=pre-commit
 . "$(dirname "$0")/commun.sh"
+
+workflows=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^\.github/workflows/.*\.ya?ml$')
+if [ -n "$workflows" ]; then
+  if command -v ruby >/dev/null 2>&1; then
+    for f in $workflows; do
+      erreur=$(git show ":$f" | ruby -EUTF-8 -ryaml -e 'YAML.safe_load(STDIN.read)' 2>&1) \
+        || refus "YAML invalide dans $f : $(echo "$erreur" | sed -n 's/.*(<unknown>): //p' | head -1)"
+    done
+  else
+    echo "$NOM_CROCHET : ruby absent, YAML des workflows non vérifié." >&2
+  fi
+fi
 
 sous_claude_code || exit 0
 

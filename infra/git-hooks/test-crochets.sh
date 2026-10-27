@@ -55,6 +55,20 @@ echo d > d.txt; beko git add d.txt
 attendu refus "agent sur HEAD détachée" agent git commit -qm "x$TRAILERS"
 beko git switch -q mission-00-essai
 
+echo "pre-commit : YAML des workflows"
+if command -v ruby >/dev/null 2>&1; then
+  mkdir -p .github/workflows
+  printf 'jobs:\n  j:\n    steps:\n      - name: Tests (un saut est un échec : la variable)\n' > .github/workflows/ci.yml
+  beko git add .github/workflows/ci.yml
+  attendu refus "beko committe un workflow invalide" beko git commit -qm "ci"
+  attendu refus "agent committe un workflow invalide" agent git commit -qm "ci$TRAILERS"
+  printf 'jobs:\n  j:\n    steps:\n      - name: Tests (un saut est un échec, la variable)\n' > .github/workflows/ci.yml
+  beko git add .github/workflows/ci.yml
+  attendu ok    "agent committe un workflow valide" agent git commit -qm "ci$TRAILERS"
+else
+  echo "  (ruby absent : cas sautés)"
+fi
+
 echo "pre-push"
 TETE=$(git rev-parse HEAD); AVANT=$(git rev-parse HEAD~1); ZERO=0000000000000000000000000000000000000000
 pousse() { # pousse <qui> <ligne stdin>

@@ -68,8 +68,8 @@ make demo    # enregistre les schémas, rejoue demo/archive sur le bus, puis ver
 Ce qu'on voit, à l'heure observée : l'**état initial** du 24/10 à 19 h 41
 (onze fichiers, 164 096 événements `creee`, une trentaine de secondes de
 publication), puis l'horloge qui avance passage par passage, et les
-changements réels tels qu'ils sont arrivés : trois suppressions de
-présentations (le 24 à 23 h 17, le 26 à 0 h 17, le 27 à 0 h 17), le fichier
+changements réels tels qu'ils sont arrivés : dix présentations supprimées,
+en trois fois (2 le 24 à 23 h 17, 1 le 26 à 0 h 17, 7 le 27 à 0 h 17), le fichier
 des informations importantes servi **vide** quatre fois et écarté par le
 garde-fou de volume, puis retenu identique au dernier retenu. La démo finit
 par `verifier-bus --racine demo/archive` : le bus relu, dédoublonné, appliqué

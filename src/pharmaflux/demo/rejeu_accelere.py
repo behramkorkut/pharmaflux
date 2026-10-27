@@ -36,7 +36,7 @@ mission 03, même ``id``).
 publication** (``DemoRefusee``), avec la voie de retour :
 
 =================== =================== ====================== ==============
-topics du projet     ``publication.json`` sans ``reprendre``     avec
+topics de la démo    ``publication.json`` sans ``reprendre``     avec
 =================== =================== ====================== ==============
 aucun               absent              rejeu complet          rejeu complet
 présents            présent             refus : ``make rebatir`` reprise
@@ -44,8 +44,12 @@ présents            absent              refus : ``make rebatir`` refus
 aucun               présent             refus : ``make rebatir`` refus
 =================== =================== ====================== ==============
 
-La cohérence de l'état (fichier publié disparu ou modifié, fichier hors
-d'ordre) reste le contrôle de ``publication.preparer``.
+Les « topics de la démo » sont exactement ceux qu'elle publierait : un par
+entité rejouée, plus la file des échecs. Les topics des tests d'intégration
+(``pharmaflux.test-<suffixe>.…``, effacés à la fin de chaque test, parfois
+encore visibles juste après) ne comptent pas. La cohérence de l'état
+(fichier publié disparu ou modifié, fichier hors d'ordre) reste le contrôle
+de ``publication.preparer``.
 """
 
 from __future__ import annotations
@@ -154,7 +158,7 @@ def executer(
     dire = journal or (lambda _: None)
     topics_du_courtier = bus.verifier_courtier()
     publication.identifiants_de_schema(registre, selection, prefixe)
-    verifier_etat_du_bus(topics_du_courtier, sortie, prefixe, reprendre=reprendre)
+    verifier_etat_du_bus(topics_du_courtier, sortie, selection, prefixe, reprendre=reprendre)
     resume = Resume(facteur=facteur, etat=sortie / publication.NOM_PUBLICATION)
 
     debut_rejeu = maintenant()
@@ -194,33 +198,45 @@ def executer(
 
 
 def verifier_etat_du_bus(
-    topics_du_courtier: list[str], sortie: Path, prefixe: str, *, reprendre: bool
+    topics_du_courtier: list[str],
+    sortie: Path,
+    selection: list[str],
+    prefixe: str,
+    *,
+    reprendre: bool,
 ) -> None:
     """La table du module : refus (``DemoRefusee``) de tout état autre qu'un bus vide sans état,
-    ou qu'un bus publié avec son état quand on reprend."""
-    du_projet = sorted(t for t in topics_du_courtier if t.startswith(f"{prefixe}."))
+    ou qu'un bus publié avec son état quand on reprend. Seuls comptent les topics exacts que la
+    démo publierait (``topics_de_la_demo``) : ceux des tests d'intégration ne font pas refuser."""
+    attendus = set(topics_de_la_demo(selection, prefixe))
+    du_projet = sorted(t for t in topics_du_courtier if t in attendus)
     chemin_etat = sortie / publication.NOM_PUBLICATION
     etat = publication.lire_etat(chemin_etat)  # illisible : PublicationRefusee, code 2
     if du_projet and etat:
         if reprendre:
             return
         raise DemoRefusee(
-            f"le bus a déjà reçu une publication ({len(du_projet)} topic(s) {prefixe}.* sur le"
+            f"le bus a déjà reçu une publication ({len(du_projet)} topic(s) de la démo sur le"
             f" courtier, état {chemin_etat}) : pour rejouer la démo depuis le début, rebâtis le"
             " bus et la sortie (make rebatir) ; pour continuer un rejeu interrompu, relance"
             " avec --reprendre"
         )
     if du_projet:
         raise DemoRefusee(
-            f"bus non vide sans état : {len(du_projet)} topic(s) {prefixe}.* sur le courtier"
+            f"bus non vide sans état : {len(du_projet)} topic(s) de la démo sur le courtier"
             f" ({du_projet[0]}…) et pas de {chemin_etat} ; un événement publié n'est jamais"
             " réécrit : rebâtis le bus (make rebatir)"
         )
     if etat:
         raise DemoRefusee(
-            f"état sans bus : {chemin_etat} existe mais le courtier n'a aucun topic {prefixe}.* ;"
+            f"état sans bus : {chemin_etat} existe mais le courtier n'a aucun topic de la démo ;"
             f" supprime la sortie {sortie} (make rebatir)"
         )
+
+
+def topics_de_la_demo(selection: list[str], prefixe: str) -> list[str]:
+    """Les topics que la démo publierait : un par entité sélectionnée, puis la file des échecs."""
+    return [env.nom_topic(entite, prefixe) for entite in selection] + [env.topic_echecs(prefixe)]
 
 
 def ordre_global(

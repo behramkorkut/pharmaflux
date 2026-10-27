@@ -209,16 +209,28 @@ def test_la_cadence_divise_les_ecarts_observes_par_le_facteur(tmp_path: Path) ->
 
 def test_refus_d_un_bus_inattendu_avant_toute_publication(tmp_path: Path) -> None:
     racine, sortie, bus, registre = _contexte(tmp_path)
-    # Bus non vide (un topic du projet), pas d'état : refus, avec et sans --reprendre, et la
+    # Bus non vide (un topic de la démo), pas d'état : refus, avec et sans --reprendre, et la
     # sortie n'est même pas créée (le rejeu des événements n'a pas tourné).
-    bus.preparer_topics([publication.definition_evenements(env.nom_topic("bdpm.x"))])
+    bus.preparer_topics([publication.definition_evenements(env.nom_topic(DISPO))])
     for reprendre in (False, True):
         with pytest.raises(DemoRefusee, match=r"bus non vide sans état.*make rebatir"):
             _rejouer(racine, sortie, bus, registre, reprendre=reprendre)
         assert not sortie.exists()
-    # Un topic d'un autre projet ne compte pas.
+    # Les topics des tests d'intégration (préfixe pharmaflux.test-…), ceux d'un autre projet ou
+    # d'une entité hors sélection ne comptent pas : seuls les topics exacts de la démo (contrôle 3).
     bus = BusSimule()
-    bus.preparer_topics([publication.definition_evenements("autre.bdpm.x.v1")])
+    bus.preparer_topics(
+        [
+            publication.definition_evenements(f"pharmaflux.test-0000abcd.{PRESENTATIONS}.v1"),
+            publication.definition_echecs("pharmaflux.test-0000abcd.echecs.v1"),
+            publication.definition_evenements("autre.bdpm.x.v1"),
+            publication.definition_evenements(env.nom_topic("bdpm.smr")),
+        ]
+    )
+    assert rejeu_accelere.topics_de_la_demo(TROIS_ENTITES, "pharmaflux") == [
+        *(env.nom_topic(e) for e in TROIS_ENTITES),
+        env.topic_echecs(),
+    ]
     resume, _ = _rejouer(racine, sortie, bus, registre)
     assert resume.publies == FICHIERS_PUBLIES
     # Bus publié, état présent : refus sans --reprendre, « rien à rejouer » avec.

@@ -79,8 +79,8 @@ avant `down -v`.
   machine qui a déjà un volume `pharmaflux` voit `make demo` refuser, puis
   `make rebatir` et `make demo` : le refus fait partie de ce qu'on montre.
 - Ce que la démo montre : l'état initial (onze fichiers, 164 096 `creee`
-  en une trentaine de secondes), trois suppressions réelles de
-  présentations (24/10 23:17, 26/10 00:17, 27/10 00:17), le garde-fou de
+  en une trentaine de secondes), dix présentations supprimées en trois
+  fois (2 le 24/10 à 23:17, 1 le 26/10 à 00:17, 7 le 27/10 à 00:17), le garde-fou de
   volume sur `CIS_InfoImportantes.txt` servi vide quatre fois (écarté sans
   appel, puis retenu identique au dernier retenu : un fichier vide, publié
   avec zéro message), et 59 passages horaires sans archive nouvelle. Ce

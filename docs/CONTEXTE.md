@@ -160,6 +160,43 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 - **Mission close** quand `evenements --reprendre`, `publier --reprendre`
   et `verifier-bus` se suivent sans anomalie sur une copie rapatriée.
 
+## La démo : jeu figé et rejeu accéléré (mission 04)
+
+- **Jeu de démo** (`demo/archive`, `demo/README.md`, ADR 0008) : une
+  archive Pharmaflux réduite aux onze fichiers TSV, coupée au passage
+  `20261027T151708Z` inclus, fabriquée par `pharmaflux demo fabriquer`
+  depuis la copie du Mac et copiée à l'octet (22 archives, 11 entités,
+  781 lignes de manifeste, 71 passages, 6,7 Mo). Seule exception à « rien
+  de `data/` dans git » (`.gitignore` : `!demo/archive/bronze/**/*.gz`).
+  `pharmaflux demo verifier` et `tests/test_demo.py` la contrôlent sur un
+  clone neuf. Un jeu ne se met pas à jour : on en fabrique un autre.
+- **`pharmaflux demo rejouer`** (`demo/rejeu_accelere.py`) : juge l'état du
+  bus (vide sans état → rejeu ; publié avec état → `--reprendre` ; non vide
+  sans état ou état sans bus → code 2, `make rebatir`), lance `evenements`
+  vers `data/demo`, puis publie par le code de `publier`
+  (`publication.preparer`, `publier_fichier`) dans l'ordre global des
+  observations (horodatage de l'archive, puis entité ; les passages sans
+  archive sont affichés), à la cadence `t_reel_depart + (t_obs −
+  t_obs_premiere) / facteur`, facteur 1 000 (`--sans-pause` en CI). Même
+  ordre par topic que `publier`. Codes de `publier`.
+- **`pharmaflux suivre`** (`bus/suivi.py`, `LecteurKafka.suivre`) : une
+  ligne lisible par événement, onze topics depuis leur fin, un topic absent
+  attendu, `--nombre`, `--depuis-le-debut` ; illisibles sur stderr et
+  comptés, code 0.
+- **`Makefile`** (GNU Make 3.81) : `up`, `demo`, `verifier`, `suivre`,
+  `console`, `down`, `rebatir`, `verifications`, `help` ;
+  `infra/demo/prerequis.sh` vérifie Docker, Compose, les images des seuls
+  services que la cible lance (`config --images`) et `uv`, sans rien
+  télécharger. Les agents ne lancent que `make -n`. La CI joue `make demo
+  DEMO_OPTIONS=--sans-pause` dans le job `integration`.
+- **Mesures** (27/10/2026, Mac arm64) : démo entière 4 min 03 s au facteur
+  1 000 pour 67 h 35 min observées, 164 106 messages, 145 Mo résidents ;
+  `evenements` sous `tracemalloc` de 0,7 à 35,8 Mo par entité ;
+  `verifier-bus --racine demo/archive` conforme en 11,6 s.
+- **Mission close** quand un clone neuf enchaîne `make up` et `make demo`
+  jusqu'à un `verifier-bus` conforme ; sur une machine qui a déjà un volume
+  `pharmaflux`, `make demo` refuse d'abord, puis `make rebatir`, `make demo`.
+
 ## Pièges connus
 
 - Deux sources changent d'octets sans changer de fond (ordre des lignes
@@ -187,8 +224,9 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 | Quoi | Où |
 |---|---|
 | Spécifications (PRD) | `01_Specifications/` |
-| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `schemas/` |
+| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `suivi.py`, `schemas/` ; `demo/` : `jeu.py`, `rejeu_accelere.py` |
 | Tests et fixtures | `tests/`, `tests/fixtures/` |
+| Démo : jeu figé, Makefile, prérequis | `demo/` (archive et `README.md`), `Makefile`, `infra/demo/prerequis.sh` |
 | Planification de la collecte (systemd, rapatriement) | `infra/planification/` |
 | Décisions d'architecture | `docs/adr/` (gabarit : `0000-modele.md`) |
 | Journal | `docs/journal.md` (ajout en fin de fichier) |
@@ -204,6 +242,8 @@ Python 3.12 géré par `uv` (`.python-version`), `httpx`, `typer`,
 `src/`, `pytest` (marqueur `integration`). Redpanda et sa console viennent
 de `docker-compose.yml`. La CI (`.github/workflows/ci.yml`) a deux jobs :
 `verifier` rejoue les mêmes commandes plus les tests des garde-fous du
-circuit ; `integration` démarre le Redpanda du fichier compose et lance les
-tests marqués, un saut y étant un échec (`PHARMAFLUX_INTEGRATION_EXIGEE`).
-Aucun appel réseau vers les sources.
+circuit ; `integration` démarre le Redpanda du fichier compose, lance les
+tests marqués, un saut y étant un échec (`PHARMAFLUX_INTEGRATION_EXIGEE`),
+puis `make demo DEMO_OPTIONS=--sans-pause`. `make` (GNU 3.81 sur le Mac, 4.3
+sur le runner) n'ajoute aucune dépendance ; `shellcheck` est tiré par `uvx` à
+la demande. Aucun appel réseau vers les sources.

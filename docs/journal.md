@@ -357,3 +357,37 @@ bloquants corrigés en `57b9be6` (saut d'intégration en échec en CI, courtier
 vérifié au départ de `publier`, ADR 0006). Critère de clôture rejoué sur la
 copie du Mac : 0 archive, 0 fichier, 12 topics conformes. 446 tests.
 `pr.md` écrit, publication à beko.
+
+## 2026-10-27 — Mission 04 : rejeu accéléré et démo (paliers 1 à 3)
+
+Ordre : un jeu de démo figé dans le dépôt, `make demo` qui rejoue la chaîne
+en accéléré sur une donnée réelle, les reliquats de la mission 03. §0
+(`ab31fd3`) tranché par l'addendum 1 : coupure au passage `20261027T151708Z`
+inclus, facteur 1 000, passages affichés, `demo` dépend de `up`, `suivre`
+minimal, journal de `evenements` sur stderr, deux mesures de mémoire,
+prérequis par `config --images`, clôture sur clone neuf (ou refus puis
+`make rebatir` sur une machine qui a déjà le volume). **Palier 1**
+(`642998b`) : `pharmaflux demo fabriquer` / `verifier` (`demo/jeu.py`,
+`manifeste.parcourir_brut`), `demo/archive` (22 archives, 11 entités, 781
+lignes, 71 passages, 6,7 Mo, exception `.gitignore`), `demo/README.md` et sa
+table des sha256 relue par `test_demo.py` ; reliquats F.1 (tri numérique de
+l'historique), F.2 (`SchemaIncompatible` avant d'enregistrer), F.3 (refus
+hors d'ordre avant le premier message), fichier d'événements vide publié et
+compté. **Palier 2** (`aa079da`) : `pharmaflux demo rejouer`
+(`demo/rejeu_accelere.py` : état du bus jugé avant tout, ordre global par
+(horodatage, entité), passages sans archive, horloge sans pause négative,
+reprise), `publication` découpée en `preparer` et `publier_fichier`,
+`pharmaflux suivre` (`bus/suivi.py`, topic absent attendu), tests unitaires
+sur bus simulé (ordre global sur trois entités et sept archives, cadence
+sans dormir, refus, reprise, hors d'ordre), trois tests d'intégration dont
+F.2 contre le vrai registre ; fixtures d'intégration dans `conftest.py`.
+Démonstration sur bus rebâti : 164 106 messages en 4 min 03 s, 145 Mo
+résidents, `verifier-bus` conforme sur les deux références, relance
+refusée. `tracemalloc` par entité de 0,7 à 35,8 Mo. **Palier 3** :
+`Makefile` (GNU Make 3.81 : `up`, `demo`, `verifier`, `suivre`, `console`,
+`down`, `rebatir`, `verifications`, `help`), `infra/demo/prerequis.sh`
+(Docker, Compose, images des seuls services lancés, `uv`), étape CI `make
+demo DEMO_OPTIONS=--sans-pause`, ADR 0008, README « Démo », CONTEXTE. Deux
+refus du garde-fou signalés sans variante : `git count-objects -vH` (beko
+mesure : 6,68 Mio en vrac, pack de 836 Kio avant le jeu) et
+`make --version` (seul `make -n` est permis).

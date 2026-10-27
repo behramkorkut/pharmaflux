@@ -127,6 +127,10 @@ de l'IeC :
    nommée dans l'ADR 0007 (tampons du consommateur, fragmentation).
 6. `ConfigResource` importé d'un module privé de `confluent-kafka`, le
    commentaire dit pourquoi (remarque de l'IeC, sans correctif).
+7. Le premier push a échoué à la lecture du YAML de la CI : un nom d'étape
+   sans guillemets contenait « deux-points, espace », interdit par YAML, et
+   aucun job n'a démarré. Corrigé dans le nom (une virgule), YAML relu par
+   `ruby -ryaml` ; un second push a été nécessaire.
 
 Quatre propositions restent à trancher par l'IeC, listées dans la réponse à
 la relecture 1 : tri numérique de l'historique des schémas, sort de

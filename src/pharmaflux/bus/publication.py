@@ -15,7 +15,11 @@ ligne, jamais celui d'une relecture du fichier après coup.
 Un fichier publié dont le sha256 a changé (un rejeu complet a recalculé la
 sortie autrement) fait **refuser** la publication, sans option pour forcer :
 un événement publié n'est jamais réécrit, la voie documentée est de rebâtir
-le bus. Une ligne illisible ou un message trop gros vont dans la file des
+le bus. De même, un fichier à publier qui se range **avant** le dernier
+fichier publié de son entité fait refuser tout le lot avant le premier
+message : le flux d'une entité est l'ordre des noms, un événement publié
+n'est jamais réordonné (``evenements`` ne produit jamais ce cas, le refus
+attrape un JSONL copié à la main). Une ligne illisible ou un message trop gros vont dans la file des
 messages en échec et la publication continue ; un courtier injoignable ou une
 livraison en échec l'arrêtent, l'état n'avance pas.
 """
@@ -112,6 +116,7 @@ def executer(
     a_publier = [
         (entite, chemin) for entite, chemin in fichiers if chemin not in etat.get(entite, {})
     ]
+    _verifier_ordre(etat, a_publier)
     resumes = {
         entite: ResumeEntite(entite, deja_publies=len(etat.get(entite, {})))
         for entite in sorted({e for e, _ in fichiers} | set(etat))
@@ -171,6 +176,28 @@ def _verifier_inchanges(
                     " un événement publié n'est jamais réécrit : rebâtis le bus"
                     " (docker compose -p pharmaflux down -v, puis publication complète)"
                 )
+
+
+def _verifier_ordre(
+    etat: dict[str, dict[str, FichierPublie]], a_publier: list[tuple[str, str]]
+) -> None:
+    """Chaque fichier à publier se range après tout fichier publié de son entité ; sinon refus.
+
+    Le contrôle porte sur tout le lot, avant le premier message : rien n'est
+    publié, l'état ne bouge pas. Les chemins d'une entité partagent leur
+    dossier, les comparer revient à comparer les noms.
+    """
+    for entite, chemin in a_publier:
+        publies = etat.get(entite)
+        if not publies:
+            continue
+        dernier = max(publies)
+        if chemin < dernier:
+            raise PublicationRefusee(
+                f"{entite} : {Path(chemin).name} se range avant le dernier fichier publié"
+                f" ({Path(dernier).name}) ; un événement publié n'est jamais réordonné :"
+                " rebâtis le bus"
+            )
 
 
 def _identifiants_de_schema(registre: Registre, entites: list[str], prefixe: str) -> dict[str, int]:

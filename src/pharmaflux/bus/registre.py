@@ -20,6 +20,7 @@ le registre : c'est le prix de garder l'événement à l'octet près.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from importlib.resources import files
 from importlib.resources.abc import Traversable
@@ -45,6 +46,12 @@ class SchemaAbsent(Exception):  # noqa: N818 (nom français voulu)
     """Le sujet n'a aucune version enregistrée : lancer ``pharmaflux schemas enregistrer``."""
 
 
+class SchemaIncompatible(Exception):  # noqa: N818 (nom français voulu)
+    """Le schéma courant du dépôt viole la règle du sujet face aux versions déjà enregistrées
+    (code 1) : une évolution incompatible est une nouvelle ``version_schema``, donc un nouveau
+    topic (ADR 0007), jamais une version de plus du même sujet. Rien n'est enregistré pour lui."""
+
+
 def dossier_schemas() -> Traversable:
     return files("pharmaflux.bus") / "schemas"
 
@@ -58,18 +65,18 @@ def charger_schema(nom: str) -> dict[str, object]:
 
 
 def historique(nom: str) -> list[dict[str, object]]:
-    """Les versions déjà publiées de ``nom``, dans l'ordre (``historique/<nom>.<n>.json``)."""
-    racine = nom.removesuffix(".json")
-    dossier = dossier_schemas() / "historique"
-    versions = sorted(
-        (
-            f
-            for f in dossier.iterdir()
-            if f.name.startswith(racine + ".") and f.name.endswith(".json")
-        ),
-        key=lambda f: f.name,
-    )
-    return [json.loads(f.read_text(encoding="utf-8")) for f in versions]
+    """Les versions déjà publiées de ``nom``, par numéro croissant (``historique/<nom>.<n>.json``).
+
+    Le tri est numérique : la version 10 vient après la 2, pas après la 1.
+    """
+    motif = re.compile(rf"^{re.escape(nom.removesuffix('.json'))}\.(\d+)\.json$")
+    numerotes: list[tuple[int, Traversable]] = []
+    for f in (dossier_schemas() / "historique").iterdir():
+        correspondance = motif.match(f.name)
+        if correspondance is not None:
+            numerotes.append((int(correspondance[1]), f))
+    numerotes.sort(key=lambda couple: couple[0])
+    return [json.loads(f.read_text(encoding="utf-8")) for _, f in numerotes]
 
 
 def sujet(topic: str) -> str:
@@ -185,11 +192,26 @@ def _entier(reponse: dict[str, object], cle: str) -> int:
 def enregistrer_tout(
     registre: Registre, entites: list[str], prefixe: str | None = None
 ) -> list[Enregistrement]:
-    """Pose la règle de compatibilité, puis enregistre par sujet l'historique et le courant."""
+    """Pose la règle de compatibilité, puis enregistre par sujet l'historique et le courant.
+
+    L'historique s'enregistre sans contrôle : c'est le passé. Le schéma
+    courant est d'abord soumis à ``compatible`` ; refusé, ``SchemaIncompatible``
+    arrête tout avant de l'enregistrer, avec un message lisible plutôt que le
+    HTTP 409 du registre. Les sujets déjà traités restent enregistrés : la
+    commande est idempotente, les relancer ne change rien.
+    """
     resultats = []
     for sujet_, nom in sujets_du_projet(entites, prefixe):
         registre.poser_compatibilite(sujet_)
         for ancien in historique(nom):
             registre.enregistrer(sujet_, ancien)
-        resultats.append(registre.enregistrer(sujet_, charger_schema(nom)))
+        courant = charger_schema(nom)
+        if not registre.compatible(sujet_, courant):
+            raise SchemaIncompatible(
+                f"le schéma du dépôt {nom} est incompatible avec les versions enregistrées de"
+                f" {sujet_} ({COMPATIBILITE}) : une évolution incompatible est une nouvelle"
+                " version_schema, donc un nouveau topic (ADR 0007) ; rien n'est enregistré pour"
+                " ce sujet"
+            )
+        resultats.append(registre.enregistrer(sujet_, courant))
     return resultats

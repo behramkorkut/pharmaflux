@@ -90,6 +90,8 @@ ARCHIVES = [c for c in SUITE if c.nom is not None]
 def peupler(racine: Path, suite: tuple[Collecte, ...] | list[Collecte]) -> None:
     """Archive chaque collecte et écrit sa ligne de manifeste, dans l'ordre."""
     dernieres: dict[str, tuple[str, str]] = {}  # identifiant → (empreinte, chemin relatif)
+    sha256: str | None = None
+    taille: int | None = None
     for ligne in manifeste.parcourir(racine):
         if ligne.identifiant and ligne.statut == "nouveau" and ligne.chemin_archive:
             dernieres[ligne.identifiant] = (ligne.empreinte_comparaison or "", ligne.chemin_archive)
@@ -101,7 +103,8 @@ def peupler(racine: Path, suite: tuple[Collecte, ...] | list[Collecte]) -> None:
         else:
             contenu = _fixture(collecte.nom)
             empreinte = empreinte_comparaison(e.empreinte, contenu)
-            absolu = chemin_archive(racine, e, collecte.instant, sha256_hex(contenu))
+            sha256, taille = sha256_hex(contenu), len(contenu)
+            absolu = chemin_archive(racine, e, collecte.instant, sha256)
             ecrire_archive(absolu, contenu, collecte.instant)
             chemin = absolu.relative_to(racine).as_posix()
             dernieres[collecte.identifiant] = (empreinte, chemin)
@@ -118,7 +121,9 @@ def peupler(racine: Path, suite: tuple[Collecte, ...] | list[Collecte]) -> None:
                 fin=(collecte.instant + timedelta(seconds=1)).isoformat(),
                 statut=statut,
                 version_collecteur="essai",
+                sha256=sha256 if statut == "nouveau" else None,
                 empreinte_comparaison=empreinte,
+                taille_octets=taille if statut == "nouveau" else None,
                 date_source_affichee=collecte.date_source,
                 chemin_archive=chemin if statut == "nouveau" else None,
             ),
@@ -401,3 +406,23 @@ def test_une_sortie_de_rejeu_complet_repart_de_zero(
     shutil.copy(intrus, sortie / "bilans" / PRESENTATIONS / "00000000T000000Z__intrus.json")
     _executer(bronze_complet, sortie)
     assert _arbre(sortie) == reference, "un fichier d'une exécution précédente ne survit pas"
+
+
+def test_commande_evenements_journalise_sur_la_sortie_d_erreur(
+    bronze_complet: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mission 04 (Q4) : le journal par archive existe et ne se mêle pas à la sortie standard."""
+    import sys
+
+    from pharmaflux import cli
+
+    appels: list[bool] = []
+    monkeypatch.setattr(
+        cli, "configurer_journal", lambda flux=None: appels.append(flux is sys.stderr)
+    )
+    resultat = CliRunner().invoke(
+        application,
+        ["evenements", "--racine", str(bronze_complet), "--sortie", str(tmp_path / "sortie")],
+    )
+    assert resultat.exit_code == 0, resultat.output
+    assert appels == [True], "configuré une fois, sur la sortie d'erreur"

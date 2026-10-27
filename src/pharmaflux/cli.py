@@ -7,7 +7,8 @@ consigner). ``etat`` : ce que contient l'archive, d'après le manifeste.
 ``evenements`` : du bronze aux événements, rejeu complet ou reprise.
 ``publier`` : les fichiers d'événements sur le bus. ``verifier-bus`` : les
 topics relus, dédoublonnés, appliqués et comparés à la référence. ``schemas
-enregistrer`` : les schémas du dépôt dans le registre de Redpanda.
+enregistrer`` : les schémas du dépôt dans le registre de Redpanda. ``demo
+fabriquer`` / ``demo verifier`` : le jeu de démo figé ``demo/archive``.
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ from pharmaflux.bus.registre import (
     VARIABLE_REGISTRE,
     Registre,
     RegistreIndisponible,
+    SchemaIncompatible,
     enregistrer_tout,
 )
 from pharmaflux.collecte import manifeste
@@ -51,6 +53,7 @@ from pharmaflux.contrats.chargeur import charger_tous
 from pharmaflux.contrats.modele import Contrat
 from pharmaflux.contrats.profil import ArchiveIntrouvable, profiler_racine
 from pharmaflux.contrats.rendu import rendre_markdown, resume
+from pharmaflux.demo import jeu
 from pharmaflux.evaluation import questions as jeu_questions
 from pharmaflux.evaluation.verification import formater_bilan, verifier_jeu
 from pharmaflux.evenements import rejeu
@@ -308,8 +311,10 @@ def evenements(
     Sans --reprendre, rejeu complet depuis la première archive de chaque
     fichier (la sortie du fichier est recalculée). Code de sortie 1 si une
     archive est illisible, 2 si la reprise est impossible ; un snapshot écarté
-    est un constat, pas une panne.
+    est un constat, pas une panne. Le journal (une ligne par archive :
+    décision, motif, événements) va sur la sortie d'erreur.
     """
+    configurer_journal(sys.stderr)
     chemin = _racine(racine)
     contrats = charger_tous()
     selection = _selection_contrats(fichier, None, contrats)
@@ -506,17 +511,104 @@ def schemas_enregistrer(registre: OptionRegistre = None) -> None:
     """Pose la règle BACKWARD_TRANSITIVE et enregistre les schémas du dépôt, sujet par sujet.
 
     Idempotent : un schéma déjà connu garde son identifiant. Code 1 si le
-    registre est injoignable ou refuse (schéma incompatible : HTTP 409).
+    registre est injoignable, ou si le schéma courant d'un sujet est
+    incompatible avec ses versions enregistrées (contrôlé avant de
+    l'enregistrer, ADR 0007).
     """
     try:
         with Registre(_registre(registre), fabriquer_transport_registre()) as registre_:
             resultats = enregistrer_tout(registre_, sorted(charger_tous()))
-    except RegistreIndisponible as exc:
+    except (RegistreIndisponible, SchemaIncompatible) as exc:
         typer.echo(f"registre : {exc}", err=True)
         raise typer.Exit(code=1) from exc
     for resultat in resultats:
         etat_ = "nouveau" if resultat.nouveau else "déjà connu"
         typer.echo(f"{resultat.sujet:44} id {resultat.identifiant} ({etat_})")
+
+
+demo = typer.Typer(
+    name="demo",
+    help="Le jeu de démo figé (demo/archive, mission 04) : fabriquer, vérifier.",
+    no_args_is_help=True,
+)
+application.add_typer(demo)
+
+OptionJeu = Annotated[
+    Path,
+    typer.Option(
+        "--racine", help="Le jeu de démo (une archive). Défaut : demo/archive.", show_default=True
+    ),
+]
+
+
+@demo.command("fabriquer")
+def demo_fabriquer(
+    jusqu_au_passage: Annotated[
+        str,
+        typer.Option(
+            "--jusqu-au-passage",
+            help="Identifiant du dernier passage de collecte repris (AAAAMMJJTHHMMSSZ), inclus.",
+        ),
+    ],
+    destination: Annotated[
+        Path,
+        typer.Option("--destination", help="Dossier du jeu, absent ou vide.", show_default=True),
+    ] = jeu.JEU_PAR_DEFAUT,
+    racine: OptionRacine = None,
+    fichier: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--fichier",
+            help="Identifiant (bdpm.presentations) ou nom de fichier (CIS_CIP_bdpm.txt), répétable."
+            " Les onze fichiers TSV par défaut.",
+        ),
+    ] = None,
+) -> None:
+    """Fabrique un jeu de démo : archives et lignes de manifeste, à l'octet, jusqu'au passage.
+
+    La racine n'est jamais écrite. Codes de sortie : 2 si la destination n'est
+    pas vide, est sous la racine, ou si la coupure est mal formée ; 1 si le
+    jeu écrit n'est pas conforme (« demo verifier » dit pourquoi).
+    """
+    selection = _selection_contrats(fichier, None, charger_tous())
+    try:
+        bilan = jeu.fabriquer(_racine(racine), destination, jusqu_au_passage, selection)
+    except jeu.FabricationRefusee as exc:
+        raise typer.BadParameter(str(exc), param_hint="--destination") from exc
+    typer.echo(_resume_jeu(destination, bilan))
+    raise typer.Exit(code=0 if bilan.conforme else 1)
+
+
+@demo.command("verifier")
+def demo_verifier(racine: OptionJeu = jeu.JEU_PAR_DEFAUT) -> None:
+    """Vérifie un jeu de démo : manifeste lisible et ordonné, archives citées présentes et au
+    sha256 près, rien d'autre dans le dossier. Code 1 à la moindre anomalie."""
+    bilan = jeu.verifier(racine)
+    typer.echo(_resume_jeu(racine, bilan))
+    raise typer.Exit(code=0 if bilan.conforme else 1)
+
+
+def _resume_jeu(racine: Path, bilan: jeu.Bilan) -> str:
+    lignes = [
+        f"jeu : {racine}",
+        f"{bilan.lignes} ligne(s) de manifeste, {bilan.passages} passage(s)"
+        + (
+            f" du {bilan.premier_passage} au {bilan.dernier_passage}"
+            if bilan.premier_passage
+            else ""
+        ),
+        f"{len(bilan.archives)} archive(s), {len(bilan.entites)} entité(s)",
+    ]
+    lignes.extend(
+        f"  {identifiant:28} {nombre} archive(s)"
+        for identifiant, nombre in bilan.archives_par_entite().items()
+    )
+    if bilan.conforme:
+        lignes.append("conforme")
+    else:
+        lignes.append(f"NON CONFORME : {len(bilan.anomalies)} anomalie(s)")
+        lignes.extend(f"  {anomalie}" for anomalie in bilan.anomalies)
+    return "\n".join(lignes)
 
 
 def _courtier(courtier: str | None) -> str:

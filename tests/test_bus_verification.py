@@ -305,3 +305,27 @@ def test_commande_verifier_bus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert f"référence introuvable : {sortie / 'etat.json'}" in resultat.output, (
         "cette sortie n'a pas d'etat.json"
     )
+
+
+def test_un_fichier_d_evenements_vide_est_publie_et_compte_par_la_verification(
+    tmp_path: Path,
+) -> None:
+    """Mission 04 : un snapshot retenu « identique au dernier retenu » laisse un JSONL vide ;
+    il est publié (zéro message), inscrit dans l'état, et la vérification le voit comme publié."""
+    sortie, n_pres, _ = _sortie(tmp_path)
+    nom = "20261024T161700Z__eeeeeeeeeeee.jsonl"
+    (sortie / "evenements" / PRESENTATIONS / nom).write_bytes(b"")
+    bus = BusSimule()
+    _, r = _registre_pret()
+    rapport = publication.executer(sortie, bus, r)
+    assert rapport.code_sortie == 0
+    (pres,) = [x for x in rapport.resumes if x.identifiant == PRESENTATIONS]
+    assert (pres.fichiers, pres.messages) == (3, n_pres)
+    etat = publication.lire_etat(sortie / "publication.json")
+    assert etat[PRESENTATIONS][f"evenements/bdpm.presentations/{nom}"].messages == 0
+    verification_ = _verifier(bus, sortie)
+    assert verification_.code_sortie == 0 and verification_.doublons == 0
+    topic = verification_.topics[0]
+    assert topic.entite == PRESENTATIONS and topic.conforme and topic.messages == n_pres
+    assert topic.lignes_bus == topic.lignes_reference > 0
+    assert publication.executer(sortie, bus, r, reprendre=True).topics == {}, "rien à reprendre"

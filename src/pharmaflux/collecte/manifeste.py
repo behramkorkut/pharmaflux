@@ -147,6 +147,18 @@ def _fin_sans_retour_ligne(chemin: Path) -> bool:
 def parcourir(racine: Path) -> Iterator[Enregistrement]:
     """Les lignes du manifeste, une à une et dans l'ordre, sans tout charger.
 
+    Voir ``parcourir_brut`` : ce sont ses lignes, sans leurs octets.
+    """
+    for _, enregistrement in parcourir_brut(racine):
+        yield enregistrement
+
+
+def parcourir_brut(racine: Path) -> Iterator[tuple[bytes, Enregistrement]]:
+    """Chaque ligne lisible du manifeste avec ses octets d'origine (sans le ``\\n`` final).
+
+    Les octets servent à recopier une ligne telle quelle (le jeu de démo) ;
+    tout le reste lit ``parcourir``.
+
     La mémoire ne dépend pas de l'âge du manifeste : une ligne à la fois, plus
     au plus une ligne illisible gardée en attente, le temps de savoir si elle
     est la dernière. Une dernière ligne illisible (coupure pendant
@@ -181,7 +193,7 @@ def parcourir(racine: Path) -> Iterator[Enregistrement]:
                 else:
                     en_attente = (numero, exc)
                 continue
-            yield enregistrement
+            yield ligne, enregistrement
     if en_attente is not None:
         journal.warning(
             "%s : dernière ligne (%d) illisible, ignorée : %s", chemin, en_attente[0], en_attente[1]

@@ -104,7 +104,8 @@ et une session ne demande jamais à l'autre de faire ce qui lui a été refusé.
    permis en lecture seulement (`--get <clé>`, `--list`) ; `git
    count-objects` (taille du dépôt) aussi, depuis la mission 04. Depuis la
    mission 04, `make` ne tourne qu'en simulation (`make -n <cible>`) : ses
-   recettes échappent au crochet ; `make <cible>` est à beko et à la CI.
+   recettes échappent au crochet ; `make <cible>` est à beko et à la CI ;
+   `make --version`, seul, est permis.
    Test :
    `python3 infra/agents/test_garde_fou.py`.
 2. **Crochets git** `infra/git-hooks/` (activés par `preparer-mission.sh`) :

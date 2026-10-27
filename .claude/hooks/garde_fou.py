@@ -109,6 +109,8 @@ SYSTEME = {"launchctl", "crontab", "brew", "sudo", "su", "chmod", "chown"}
 # (docker compris). Les agents l'appellent en simulation, qui affiche les
 # commandes sans les lancer ; make <cible> est à beko et à la CI.
 MAKE_SIMULATION = {"-n", "--dry-run", "--just-print", "--recon"}
+# make --version (ou -v), seul, affiche la version sans lire de Makefile.
+MAKE_VERSION = (["--version"], ["-v"])
 # docker, pour tous les rôles (mission 03) : le colima de beko fait aussi
 # tourner les conteneurs d'Alamel. Hors compose, docker ne fait que lire ;
 # compose ne vise que le projet pharmaflux et ne télécharge aucune image
@@ -536,7 +538,11 @@ def verifier_bash(role: str, commande: str) -> None:
             raise Refus(
                 f"« {tete} » touche au système : beko s'en charge (CLAUDE.md, « Système »)."
             )
-        if tete in ("make", "gmake") and not any(a in MAKE_SIMULATION for a in mots[1:]):
+        if (
+            tete in ("make", "gmake")
+            and mots[1:] not in MAKE_VERSION
+            and not any(a in MAKE_SIMULATION for a in mots[1:])
+        ):
             raise Refus(
                 "make lance des recettes que le garde-fou ne voit pas : « make -n <cible> » "
                 "les affiche, lance ensuite les commandes elles-mêmes ; make <cible> est à beko."

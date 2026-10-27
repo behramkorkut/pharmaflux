@@ -351,7 +351,7 @@ class GardeFou(unittest.TestCase):
                     self.assertFalse(self.bash(dossier, commande))
 
     def test_continuation_de_ligne(self) -> None:
-        """Mission 03, palier 2 : « \\ » en fin de ligne continue la commande, il ne la coupe pas."""
+        """Mission 03, palier 2 : « \\ » en fin de ligne continue la commande, sans la couper."""
         sed_compose = (
             "sed -i '' \\\n  -e 's|(beko) : docker compose -p pharmaflux pull|"
             "(beko) : docker compose -p pharmaflux --profile console pull|' docker-compose.yml"

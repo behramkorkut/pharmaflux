@@ -199,6 +199,29 @@ class GardeFou(unittest.TestCase):
             with self.subTest(commande=commande):
                 self.assertFalse(self.bash(self.codeur, commande))
 
+    def test_find_en_lecture(self) -> None:
+        """Mission 03, palier 2 : find lit, sauf -delete, -fprint, -fls, -exec et -ok."""
+        permises = (
+            "find docs/rapports/mission-03 docs/relectures/mission-03 -name '*.md'",
+            "find docs/missions -type f -newer CLAUDE.md -print",
+            "find . -name '*.yml' -path '*docker*'",
+        )
+        refusees = (
+            "find docs/relectures/mission-03 -name '*.md' -delete",
+            "find docs/missions -fprint docs/missions/liste.txt",
+            "find . -name x -fls CLAUDE.md",
+            "find docs/missions -name '*.md' -exec rm {} ;",
+            "find docs/agents -okdir rm {} +",
+            "find . -name x -exec git push ;",
+            "find . -name x -exec docker stop alamel-dev-postgres ;",
+        )
+        for commande in permises:
+            with self.subTest(commande=commande):
+                self.assertTrue(self.bash(self.codeur, commande))
+        for commande in refusees:
+            with self.subTest(commande=commande):
+                self.assertFalse(self.bash(self.codeur, commande))
+
     def test_boucle_de_lecture_sur_les_reserves(self) -> None:
         """Relecture 1 de la mission 01 : une boucle qui lit docs/relectures/ passe,
         la même boucle qui écrit par sa variable reste refusée."""
@@ -326,6 +349,19 @@ class GardeFou(unittest.TestCase):
             ):
                 with self.subTest(dossier=dossier.name, commande=commande):
                     self.assertFalse(self.bash(dossier, commande))
+
+    def test_continuation_de_ligne(self) -> None:
+        """Mission 03, palier 2 : « \\ » en fin de ligne continue la commande, il ne la coupe pas."""
+        sed_compose = (
+            "sed -i '' \\\n  -e 's|(beko) : docker compose -p pharmaflux pull|"
+            "(beko) : docker compose -p pharmaflux --profile console pull|' docker-compose.yml"
+        )
+        self.assertTrue(self.bash(self.codeur, sed_compose))
+        for dossier in (self.codeur, self.relecteur, self.principal):
+            with self.subTest(dossier=dossier.name):
+                self.assertTrue(self.bash(dossier, "grep -n \\\n  docker docker-compose.yml"))
+                self.assertFalse(self.bash(dossier, "docker \\\n  stop alamel-dev-postgres"))
+                self.assertFalse(self.bash(dossier, "git \\\n  push"))
 
     def test_terminal_et_ecran_interdits_aux_agents(self) -> None:
         for outil in (

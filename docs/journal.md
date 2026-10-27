@@ -357,3 +357,66 @@ bloquants corrigés en `57b9be6` (saut d'intégration en échec en CI, courtier
 vérifié au départ de `publier`, ADR 0006). Critère de clôture rejoué sur la
 copie du Mac : 0 archive, 0 fichier, 12 topics conformes. 446 tests.
 `pr.md` écrit, publication à beko.
+
+## 2026-10-27 — Mission 04 : rejeu accéléré et démo (paliers 1 à 3)
+
+Ordre : un jeu de démo figé dans le dépôt, `make demo` qui rejoue la chaîne
+en accéléré sur une donnée réelle, les reliquats de la mission 03. §0
+(`ab31fd3`) tranché par l'addendum 1 : coupure au passage `20261027T151708Z`
+inclus, facteur 1 000, passages affichés, `demo` dépend de `up`, `suivre`
+minimal, journal de `evenements` sur stderr, deux mesures de mémoire,
+prérequis par `config --images`, clôture sur clone neuf (ou refus puis
+`make rebatir` sur une machine qui a déjà le volume). **Palier 1**
+(`642998b`) : `pharmaflux demo fabriquer` / `verifier` (`demo/jeu.py`,
+`manifeste.parcourir_brut`), `demo/archive` (22 archives, 11 entités, 781
+lignes, 71 passages, 6,7 Mo, exception `.gitignore`), `demo/README.md` et sa
+table des sha256 relue par `test_demo.py` ; reliquats F.1 (tri numérique de
+l'historique), F.2 (`SchemaIncompatible` avant d'enregistrer), F.3 (refus
+hors d'ordre avant le premier message), fichier d'événements vide publié et
+compté. **Palier 2** (`aa079da`) : `pharmaflux demo rejouer`
+(`demo/rejeu_accelere.py` : état du bus jugé avant tout, ordre global par
+(horodatage, entité), passages sans archive, horloge sans pause négative,
+reprise), `publication` découpée en `preparer` et `publier_fichier`,
+`pharmaflux suivre` (`bus/suivi.py`, topic absent attendu), tests unitaires
+sur bus simulé (ordre global sur trois entités et sept archives, cadence
+sans dormir, refus, reprise, hors d'ordre), trois tests d'intégration dont
+F.2 contre le vrai registre ; fixtures d'intégration dans `conftest.py`.
+Démonstration sur bus rebâti : 164 106 messages en 4 min 03 s, 145 Mo
+résidents, `verifier-bus` conforme sur les deux références, relance
+refusée. `tracemalloc` par entité de 0,7 à 35,8 Mo. **Palier 3** :
+`Makefile` (GNU Make 3.81 : `up`, `demo`, `verifier`, `suivre`, `console`,
+`down`, `rebatir`, `verifications`, `help`), `infra/demo/prerequis.sh`
+(Docker, Compose, images des seuls services lancés, `uv`), étape CI `make
+demo DEMO_OPTIONS=--sans-pause`, ADR 0008, README « Démo », CONTEXTE. Deux
+refus du garde-fou signalés sans variante : `git count-objects -vH` (beko
+mesure : 6,68 Mio en vrac, pack de 836 Kio avant le jeu) et
+`make --version` (seul `make -n` est permis).
+
+**Clôture de la mission 04** (27/10). Contrôle 3 : seuls les topics
+exacts de la démo font refuser `demo rejouer` (les topics des tests
+d'intégration ne comptent plus) ; « dix présentations supprimées, en trois
+fois (2, 1, 7) » dans le README et l'ADR 0008 (`7c9e6a8`). Démonstration
+de beko sur le Mac, après `make rebatir` : `make demo` 164 106 messages,
+4 min 03 s, `verifier-bus` 12/12 conforme, code 0. Relecture 1 CONFORME,
+0 bloquant : `prerequis.sh` refuse proprement si `config --images`
+échoue, entrée de passage à arguments nommés, test de `suivre` relu
+(`cd7810e`) ; un refus du garde-fou de plus, `chmod +x` sur une cale de
+test, signalé. `pr.md` écrit ; revue finale de l'IeC, puis publication
+par beko.
+
+**Contrôle final de la mission 04** (27/10, `controle-iec-final.md` sur
+`513a226`) : fusion autorisée, code non repris, trois corrections de
+rédaction dans `pr.md` (la démonstration de beko a suivi `make rebatir`,
+le refus ayant été montré au palier 3 ; `git count-objects` et
+`make --version` sont déjà permis sur `main`, `714b673` et `9ad4b14`).
+Publication par beko ensuite.
+
+**Premier passage de la CI de la mission 04** (27/10) : `integration`
+vert, `verifier` rouge sur `test_commandes_demo_fabriquer_et_verifier`.
+Typer affiche une erreur d'option dans un cadre Rich de 80 colonnes, en
+couleur sur le runner, et la coupure de ligne dépend de la longueur du
+chemin dans le message : « pas un dossier vide » était coupé sur le runner,
+pas sur le Mac. Correctif dans les tests seuls : `texte_nu` (codes ANSI,
+cadre, blancs) devant toute assertion sur le texte d'une erreur à code 2 ;
+suite complète avec `GITHUB_ACTIONS=true` et balayage de la longueur du
+dossier temporaire de 0 à 60, verts.

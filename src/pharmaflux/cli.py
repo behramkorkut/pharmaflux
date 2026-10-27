@@ -7,7 +7,11 @@ consigner). ``etat`` : ce que contient l'archive, d'après le manifeste.
 ``evenements`` : du bronze aux événements, rejeu complet ou reprise.
 ``publier`` : les fichiers d'événements sur le bus. ``verifier-bus`` : les
 topics relus, dédoublonnés, appliqués et comparés à la référence. ``schemas
-enregistrer`` : les schémas du dépôt dans le registre de Redpanda.
+enregistrer`` : les schémas du dépôt dans le registre de Redpanda. ``suivre`` :
+les événements publiés, au fil de l'eau, une ligne par message. ``demo
+fabriquer`` / ``demo verifier`` : le jeu de démo figé ``demo/archive`` ;
+``demo rejouer`` : le jeu rejoué sur le bus, dans l'ordre global des
+observations, à la cadence accélérée.
 """
 
 from __future__ import annotations
@@ -25,7 +29,8 @@ import httpx
 import typer
 
 from pharmaflux import bronze
-from pharmaflux.bus import publication, verification
+from pharmaflux.bus import enveloppe as env
+from pharmaflux.bus import publication, suivi, verification
 from pharmaflux.bus.client import (
     COURTIER_PAR_DEFAUT,
     VARIABLE_COURTIER,
@@ -40,6 +45,7 @@ from pharmaflux.bus.registre import (
     VARIABLE_REGISTRE,
     Registre,
     RegistreIndisponible,
+    SchemaIncompatible,
     enregistrer_tout,
 )
 from pharmaflux.collecte import manifeste
@@ -51,6 +57,7 @@ from pharmaflux.contrats.chargeur import charger_tous
 from pharmaflux.contrats.modele import Contrat
 from pharmaflux.contrats.profil import ArchiveIntrouvable, profiler_racine
 from pharmaflux.contrats.rendu import rendre_markdown, resume
+from pharmaflux.demo import jeu, rejeu_accelere
 from pharmaflux.evaluation import questions as jeu_questions
 from pharmaflux.evaluation.verification import formater_bilan, verifier_jeu
 from pharmaflux.evenements import rejeu
@@ -65,6 +72,7 @@ RACINE_PAR_DEFAUT = Path.home() / "pharmaflux-data"
 fabriquer_transport: Callable[[], httpx.BaseTransport | None] = lambda: None  # noqa: E731
 fabriquer_bus: Callable[[str], Bus | None] = lambda _courtier: None  # noqa: E731
 fabriquer_lecteur: Callable[[str], Lecteur | None] = lambda _courtier: None  # noqa: E731
+fabriquer_suiveur: Callable[[str], suivi.Suiveur | None] = lambda _courtier: None  # noqa: E731
 fabriquer_transport_registre: Callable[[], httpx.BaseTransport | None] = (  # noqa: E731
     lambda: None
 )
@@ -308,8 +316,10 @@ def evenements(
     Sans --reprendre, rejeu complet depuis la première archive de chaque
     fichier (la sortie du fichier est recalculée). Code de sortie 1 si une
     archive est illisible, 2 si la reprise est impossible ; un snapshot écarté
-    est un constat, pas une panne.
+    est un constat, pas une panne. Le journal (une ligne par archive :
+    décision, motif, événements) va sur la sortie d'erreur.
     """
+    configurer_journal(sys.stderr)
     chemin = _racine(racine)
     contrats = charger_tous()
     selection = _selection_contrats(fichier, None, contrats)
@@ -493,6 +503,57 @@ def verifier_bus(
     raise typer.Exit(code=rapport.code_sortie)
 
 
+@application.command()
+def suivre(
+    fichier: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--fichier",
+            help="Identifiant (bdpm.presentations) ou nom de fichier (CIS_CIP_bdpm.txt), répétable."
+            " Les onze fichiers TSV par défaut.",
+        ),
+    ] = None,
+    courtier: OptionCourtier = None,
+    nombre: Annotated[
+        int | None,
+        typer.Option("--nombre", help="S'arrête après N messages (illisibles compris)."),
+    ] = None,
+    depuis_le_debut: Annotated[
+        bool,
+        typer.Option("--depuis-le-debut", help="Part du début des topics au lieu de leur fin."),
+    ] = False,
+) -> None:
+    """Affiche les événements publiés au fil de l'eau : une ligne lisible par message.
+
+    Heure observée, entité, type, clé, colonnes changées. Lit les onze topics
+    d'événements (jamais la file des échecs) depuis leur fin : à lancer avant
+    « demo rejouer ». Un topic absent est attendu. Un message qui n'est pas un
+    événement v1 va sur la sortie d'erreur et est compté. Ctrl-C arrête avec
+    le résumé. Code 0, sauf courtier injoignable (1).
+    """
+    selection = _selection_contrats(fichier, None, charger_tous())
+    topics = [env.nom_topic(entite) for entite in selection]
+    adresse = _courtier(courtier)
+    suiveur = fabriquer_suiveur(adresse) or LecteurKafka(adresse)
+    try:
+        resume = suivi.suivre(
+            suiveur,
+            topics,
+            depuis_le_debut=depuis_le_debut,
+            nombre=nombre,
+            dire=typer.echo,
+            dire_erreur=lambda message: typer.echo(message, err=True),
+        )
+    except CourtierInjoignable as exc:
+        typer.echo(f"suivi interrompu : {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        if isinstance(suiveur, LecteurKafka):
+            suiveur.close()
+    for ligne in suivi.formater_resume(resume):
+        typer.echo(ligne)
+
+
 schemas = typer.Typer(
     name="schemas",
     help="Schémas du bus : enregistrement dans le registre de Redpanda (ADR 0007).",
@@ -506,17 +567,205 @@ def schemas_enregistrer(registre: OptionRegistre = None) -> None:
     """Pose la règle BACKWARD_TRANSITIVE et enregistre les schémas du dépôt, sujet par sujet.
 
     Idempotent : un schéma déjà connu garde son identifiant. Code 1 si le
-    registre est injoignable ou refuse (schéma incompatible : HTTP 409).
+    registre est injoignable, ou si le schéma courant d'un sujet est
+    incompatible avec ses versions enregistrées (contrôlé avant de
+    l'enregistrer, ADR 0007).
     """
     try:
         with Registre(_registre(registre), fabriquer_transport_registre()) as registre_:
             resultats = enregistrer_tout(registre_, sorted(charger_tous()))
-    except RegistreIndisponible as exc:
+    except (RegistreIndisponible, SchemaIncompatible) as exc:
         typer.echo(f"registre : {exc}", err=True)
         raise typer.Exit(code=1) from exc
     for resultat in resultats:
         etat_ = "nouveau" if resultat.nouveau else "déjà connu"
         typer.echo(f"{resultat.sujet:44} id {resultat.identifiant} ({etat_})")
+
+
+demo = typer.Typer(
+    name="demo",
+    help="Le jeu de démo figé (demo/archive, mission 04) : fabriquer, vérifier, rejouer.",
+    no_args_is_help=True,
+)
+application.add_typer(demo)
+
+OptionJeu = Annotated[
+    Path,
+    typer.Option(
+        "--racine", help="Le jeu de démo (une archive). Défaut : demo/archive.", show_default=True
+    ),
+]
+
+
+@demo.command("fabriquer")
+def demo_fabriquer(
+    jusqu_au_passage: Annotated[
+        str,
+        typer.Option(
+            "--jusqu-au-passage",
+            help="Identifiant du dernier passage de collecte repris (AAAAMMJJTHHMMSSZ), inclus.",
+        ),
+    ],
+    destination: Annotated[
+        Path,
+        typer.Option("--destination", help="Dossier du jeu, absent ou vide.", show_default=True),
+    ] = jeu.JEU_PAR_DEFAUT,
+    racine: OptionRacine = None,
+    fichier: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--fichier",
+            help="Identifiant (bdpm.presentations) ou nom de fichier (CIS_CIP_bdpm.txt), répétable."
+            " Les onze fichiers TSV par défaut.",
+        ),
+    ] = None,
+) -> None:
+    """Fabrique un jeu de démo : archives et lignes de manifeste, à l'octet, jusqu'au passage.
+
+    La racine n'est jamais écrite. Codes de sortie : 2 si la destination n'est
+    pas vide, est sous la racine, ou si la coupure est mal formée ; 1 si le
+    jeu écrit n'est pas conforme (« demo verifier » dit pourquoi).
+    """
+    selection = _selection_contrats(fichier, None, charger_tous())
+    try:
+        bilan = jeu.fabriquer(_racine(racine), destination, jusqu_au_passage, selection)
+    except jeu.FabricationRefusee as exc:
+        raise typer.BadParameter(str(exc), param_hint="--destination") from exc
+    typer.echo(_resume_jeu(destination, bilan))
+    raise typer.Exit(code=0 if bilan.conforme else 1)
+
+
+@demo.command("verifier")
+def demo_verifier(racine: OptionJeu = jeu.JEU_PAR_DEFAUT) -> None:
+    """Vérifie un jeu de démo : manifeste lisible et ordonné, archives citées présentes et au
+    sha256 près, rien d'autre dans le dossier. Code 1 à la moindre anomalie."""
+    bilan = jeu.verifier(racine)
+    typer.echo(_resume_jeu(racine, bilan))
+    raise typer.Exit(code=0 if bilan.conforme else 1)
+
+
+@demo.command("rejouer")
+def demo_rejouer(
+    racine: OptionJeu = jeu.JEU_PAR_DEFAUT,
+    sortie: Annotated[
+        Path,
+        typer.Option(
+            "--sortie",
+            help="Sortie de « evenements » et publication.json de la démo. Relative au dossier"
+            " courant, jamais sous la racine.",
+            show_default=True,
+        ),
+    ] = rejeu_accelere.SORTIE_PAR_DEFAUT,
+    fichier: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--fichier",
+            help="Identifiant (bdpm.presentations) ou nom de fichier (CIS_CIP_bdpm.txt), répétable."
+            " Les onze fichiers TSV par défaut.",
+        ),
+    ] = None,
+    facteur: Annotated[
+        float,
+        typer.Option(
+            "--facteur",
+            help="Accélération : une heure observée dure 3 600 / facteur secondes.",
+            show_default=True,
+        ),
+    ] = rejeu_accelere.FACTEUR_PAR_DEFAUT,
+    sans_pause: Annotated[
+        bool, typer.Option("--sans-pause", help="Aucune attente entre les entrées (la CI).")
+    ] = False,
+    sans_passages: Annotated[
+        bool,
+        typer.Option(
+            "--sans-passages", help="Tait les passages de collecte sans archive nouvelle."
+        ),
+    ] = False,
+    reprendre: Annotated[
+        bool,
+        typer.Option(
+            "--reprendre",
+            help="Continue un rejeu interrompu : publie les fichiers absents de publication.json.",
+        ),
+    ] = False,
+    courtier: OptionCourtier = None,
+    registre: OptionRegistre = None,
+) -> None:
+    """Rejoue le jeu de démo sur le bus, dans l'ordre global des observations, en accéléré.
+
+    « evenements » puis, à l'heure observée divisée par le facteur, une ligne
+    par archive lue (ses événements publiés, ou son snapshot écarté) et une
+    par passage sans archive. Refuse un bus qui n'est pas vide sans son état,
+    ou un état sans bus : « make rebatir ». Codes de sortie : ceux de
+    « publier » (1 courtier, registre ou livraison ; 2 refus ; 3 file des
+    échecs), 0 sinon.
+    """
+    if facteur <= 0:
+        raise typer.BadParameter(
+            "un nombre strictement positif est attendu", param_hint="--facteur"
+        )
+    contrats = charger_tous()
+    selection = _selection_contrats(fichier, None, contrats)
+    if sortie.resolve().is_relative_to(racine.resolve()):
+        raise typer.BadParameter(
+            f"{sortie} est sous la racine {racine}, qui ne s'écrit pas", param_hint="--sortie"
+        )
+    adresse = _courtier(courtier)
+    bus = fabriquer_bus(adresse) or BusKafka(adresse)
+    try:
+        with Registre(_registre(registre), fabriquer_transport_registre()) as registre_:
+            resume = rejeu_accelere.executer(
+                racine,
+                sortie,
+                contrats,
+                selection,
+                bus,
+                registre_,
+                reprendre=reprendre,
+                facteur=facteur,
+                sans_pause=sans_pause,
+                sans_passages=sans_passages,
+                journal=typer.echo,
+            )
+    except (rejeu_accelere.DemoRefusee, publication.PublicationRefusee) as exc:
+        typer.echo(f"démo refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except rejeu.ReprendreImpossible as exc:
+        titre = "reprise impossible" if reprendre else "rejeu impossible"
+        typer.echo(f"démo refusée : {titre} : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except publication.LivraisonEchouee as exc:
+        typer.echo(f"démo interrompue : {exc} ; relance avec --reprendre", err=True)
+        raise typer.Exit(code=1) from exc
+    except (CourtierInjoignable, RegistreIndisponible, rejeu_accelere.DemoInterrompue) as exc:
+        typer.echo(f"démo interrompue : {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    for ligne in rejeu_accelere.formater_resume(resume):
+        typer.echo(ligne)
+    raise typer.Exit(code=resume.code_sortie)
+
+
+def _resume_jeu(racine: Path, bilan: jeu.Bilan) -> str:
+    lignes = [
+        f"jeu : {racine}",
+        f"{bilan.lignes} ligne(s) de manifeste, {bilan.passages} passage(s)"
+        + (
+            f" du {bilan.premier_passage} au {bilan.dernier_passage}"
+            if bilan.premier_passage
+            else ""
+        ),
+        f"{len(bilan.archives)} archive(s), {len(bilan.entites)} entité(s)",
+    ]
+    lignes.extend(
+        f"  {identifiant:28} {nombre} archive(s)"
+        for identifiant, nombre in bilan.archives_par_entite().items()
+    )
+    if bilan.conforme:
+        lignes.append("conforme")
+    else:
+        lignes.append(f"NON CONFORME : {len(bilan.anomalies)} anomalie(s)")
+        lignes.extend(f"  {anomalie}" for anomalie in bilan.anomalies)
+    return "\n".join(lignes)
 
 
 def _courtier(courtier: str | None) -> str:

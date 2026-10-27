@@ -25,7 +25,7 @@ from pharmaflux.contrats.chargeur import charger_tous
 from pharmaflux.evenements import rejeu, schema, snapshot
 from pharmaflux.evenements.comparaison import appliquer, etat_du_snapshot
 from pharmaflux.evenements.rejeu import ReprendreImpossible, executer, lire_evenements
-from tests.conftest import FIXTURES, entree
+from tests.conftest import FIXTURES, entree, texte_nu
 
 T0 = datetime(2026, 10, 24, 14, 17, tzinfo=UTC)
 PRESENTATIONS, DISPO = "bdpm.presentations", "bdpm.disponibilite"
@@ -46,8 +46,12 @@ class Collecte:
 
 
 def _fixture(nom: str) -> bytes:
-    dossier = "contrats" if nom.endswith("_anomalies.txt") else "evenements"
-    return (FIXTURES / dossier / nom).read_bytes()
+    """Une archive fabriquée (``evenements/``), un extrait des contrats, ou un chemin sous
+    ``fixtures/`` (``bdpm/CIS_bdpm.txt``)."""
+    for chemin in (FIXTURES / "evenements" / nom, FIXTURES / "contrats" / nom, FIXTURES / nom):
+        if chemin.is_file():
+            return chemin.read_bytes()
+    raise FileNotFoundError(nom)
 
 
 # Toutes entités confondues, dans l'ordre du temps. Présentations (clé) : A, B, vide, A, B
@@ -90,6 +94,8 @@ ARCHIVES = [c for c in SUITE if c.nom is not None]
 def peupler(racine: Path, suite: tuple[Collecte, ...] | list[Collecte]) -> None:
     """Archive chaque collecte et écrit sa ligne de manifeste, dans l'ordre."""
     dernieres: dict[str, tuple[str, str]] = {}  # identifiant → (empreinte, chemin relatif)
+    sha256: str | None = None
+    taille: int | None = None
     for ligne in manifeste.parcourir(racine):
         if ligne.identifiant and ligne.statut == "nouveau" and ligne.chemin_archive:
             dernieres[ligne.identifiant] = (ligne.empreinte_comparaison or "", ligne.chemin_archive)
@@ -101,7 +107,8 @@ def peupler(racine: Path, suite: tuple[Collecte, ...] | list[Collecte]) -> None:
         else:
             contenu = _fixture(collecte.nom)
             empreinte = empreinte_comparaison(e.empreinte, contenu)
-            absolu = chemin_archive(racine, e, collecte.instant, sha256_hex(contenu))
+            sha256, taille = sha256_hex(contenu), len(contenu)
+            absolu = chemin_archive(racine, e, collecte.instant, sha256)
             ecrire_archive(absolu, contenu, collecte.instant)
             chemin = absolu.relative_to(racine).as_posix()
             dernieres[collecte.identifiant] = (empreinte, chemin)
@@ -118,7 +125,9 @@ def peupler(racine: Path, suite: tuple[Collecte, ...] | list[Collecte]) -> None:
                 fin=(collecte.instant + timedelta(seconds=1)).isoformat(),
                 statut=statut,
                 version_collecteur="essai",
+                sha256=sha256 if statut == "nouveau" else None,
                 empreinte_comparaison=empreinte,
+                taille_octets=taille if statut == "nouveau" else None,
                 date_source_affichee=collecte.date_source,
                 chemin_archive=chemin if statut == "nouveau" else None,
             ),
@@ -283,7 +292,7 @@ def test_reprendre_refuse_si_le_contrat_a_change(bronze_complet: Path, tmp_path:
         application,
         ["evenements", "--racine", str(bronze_complet), "--sortie", str(sortie), "--reprendre"],
     )
-    assert resultat.exit_code == 2 and "reprise impossible" in resultat.output
+    assert resultat.exit_code == 2 and "reprise impossible" in texte_nu(resultat.output)
     etat_chemin.write_text('{"version": 1}', encoding="utf-8")
     with pytest.raises(ReprendreImpossible, match="illisible"):
         _executer(bronze_complet, sortie, reprendre=True)
@@ -302,8 +311,8 @@ def test_etat_illisible_sans_reprendre_dit_quoi_faire_et_n_efface_rien(
     resultat = CliRunner().invoke(
         application, ["evenements", "--racine", str(bronze_complet), "--sortie", str(sortie)]
     )
-    assert resultat.exit_code == 2 and "rejeu impossible" in resultat.output
-    assert "relance sans --reprendre" not in resultat.output
+    assert resultat.exit_code == 2 and "rejeu impossible" in texte_nu(resultat.output)
+    assert "relance sans --reprendre" not in texte_nu(resultat.output)
     intact = {c: o for c, o in _arbre(sortie).items() if c != "etat.json"}
     assert intact == {c: o for c, o in reference.items() if c != "etat.json"}, "rien n'est effacé"
     etat_chemin.unlink()
@@ -367,7 +376,7 @@ def test_commande_evenements(bronze_complet: Path, tmp_path: Path) -> None:
             str(bronze_complet / "evenements"),
         ],
     )
-    assert sous_racine.exit_code == 2 and "ne s'écrit pas" in sous_racine.output
+    assert sous_racine.exit_code == 2 and "ne s'écrit pas" in texte_nu(sous_racine.output)
     assert not (bronze_complet / "evenements").exists(), "l'archive n'est jamais écrite"
 
 
@@ -401,3 +410,23 @@ def test_une_sortie_de_rejeu_complet_repart_de_zero(
     shutil.copy(intrus, sortie / "bilans" / PRESENTATIONS / "00000000T000000Z__intrus.json")
     _executer(bronze_complet, sortie)
     assert _arbre(sortie) == reference, "un fichier d'une exécution précédente ne survit pas"
+
+
+def test_commande_evenements_journalise_sur_la_sortie_d_erreur(
+    bronze_complet: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mission 04 (Q4) : le journal par archive existe et ne se mêle pas à la sortie standard."""
+    import sys
+
+    from pharmaflux import cli
+
+    appels: list[bool] = []
+    monkeypatch.setattr(
+        cli, "configurer_journal", lambda flux=None: appels.append(flux is sys.stderr)
+    )
+    resultat = CliRunner().invoke(
+        application,
+        ["evenements", "--racine", str(bronze_complet), "--sortie", str(tmp_path / "sortie")],
+    )
+    assert resultat.exit_code == 0, resultat.output
+    assert appels == [True], "configuré une fois, sur la sortie d'erreur"

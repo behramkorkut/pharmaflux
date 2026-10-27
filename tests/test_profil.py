@@ -12,7 +12,7 @@ from pharmaflux.contrats.chargeur import charger_tous
 from pharmaflux.contrats.modele import Regle
 from pharmaflux.contrats.profil import ArchiveIntrouvable, profiler, profiler_racine
 from pharmaflux.contrats.rendu import nombre, pourcentage, rendre_markdown, tableau
-from tests.conftest import FIXTURES, Lanceur, contenu_fixture, entree, entrees_bdpm_txt
+from tests.conftest import FIXTURES, Lanceur, contenu_fixture, entree, entrees_bdpm_txt, texte_nu
 
 lanceur = CliRunner()
 
@@ -188,7 +188,7 @@ def test_commande_profil(racine_peuplee: Path, tmp_path: Path) -> None:
     resultat = lanceur.invoke(
         application, ["profil", "--racine", str(racine_peuplee), "--fichier", "inconnu.txt"]
     )
-    assert resultat.exit_code == 2 and "inconnu.txt inconnu" in resultat.output
+    assert resultat.exit_code == 2 and "inconnu.txt inconnu" in texte_nu(resultat.output)
 
 
 def test_commande_profil_archive_et_code_de_sortie(racine_peuplee: Path) -> None:
@@ -213,7 +213,7 @@ def test_commande_profil_archive_et_code_de_sortie(racine_peuplee: Path) -> None
     resultat = lanceur.invoke(
         application, ["profil", "--racine", str(racine_peuplee), "--archive", "ailleurs/x.gz"]
     )
-    assert resultat.exit_code == 2 and "déduit" in resultat.output
+    assert resultat.exit_code == 2 and "déduit" in texte_nu(resultat.output)
     resultat = lanceur.invoke(
         application,
         [
@@ -228,4 +228,4 @@ def test_commande_profil_archive_et_code_de_sortie(racine_peuplee: Path) -> None
             "bdpm.smr",
         ],
     )
-    assert resultat.exit_code == 2 and "un seul" in resultat.output
+    assert resultat.exit_code == 2 and "un seul" in texte_nu(resultat.output)

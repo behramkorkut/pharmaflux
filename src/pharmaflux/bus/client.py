@@ -17,6 +17,7 @@ leur configuration : **rétention sans limite**, jamais de compactage,
 
 from __future__ import annotations
 
+import time
 import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -24,6 +25,7 @@ from typing import Protocol
 
 from confluent_kafka import (
     OFFSET_BEGINNING,
+    OFFSET_END,
     Consumer,
     KafkaError,
     KafkaException,
@@ -46,6 +48,7 @@ DELAI_LIVRAISON_S = 120
 PROPAGATION_TOPIC_MS = 30_000  # défaut de librdkafka : délai avant « topic inconnu »
 PRECHARGEMENT_KO = 8_192  # 8 Mo de messages d'avance par consommateur de verifier-bus
 DELAI_COURTIER_S = 5.0
+DELAI_SUIVI_S = 1.0  # un poll de « suivre » ; entre deux, un topic attendu peut être apparu
 
 RETENTION_SANS_LIMITE = {
     "retention.ms": "-1",
@@ -257,6 +260,7 @@ class LecteurKafka:
     pour chacune, à l'offset de fin lu avant de commencer : ce que ``publier``
     écrirait pendant la lecture n'est pas compté, et rien n'est laissé sur le
     courtier. L'ordre est celui de chaque partition, donc de chaque clé.
+    ``suivre`` (mission 04) lit au fil de l'eau avec le même consommateur.
     """
 
     def __init__(self, courtier: str, *, delai_s: float = DELAI_COURTIER_S) -> None:
@@ -266,7 +270,7 @@ class LecteurKafka:
         self._consommateur = Consumer(
             {
                 "bootstrap.servers": courtier,
-                "group.id": f"pharmaflux-verifier-bus-{uuid.uuid4().hex[:8]}",
+                "group.id": f"pharmaflux-lecteur-{uuid.uuid4().hex[:8]}",  # jamais commis
                 "enable.auto.commit": False,
                 "auto.offset.reset": "earliest",
                 # Préchargement borné : 64 Mo par défaut, inutile pour relire et appliquer
@@ -326,23 +330,67 @@ class LecteurKafka:
                     continue  # publié pendant la lecture : hors de la photo prise au départ
                 if offset + 1 >= fins[numero]:
                     restantes.pop(numero, None)
-                brutes = message.headers() or []
-                paires = brutes.items() if isinstance(brutes, dict) else brutes
-                yield MessageLu(
-                    topic=nom,
-                    partition=numero,
-                    offset=offset,
-                    cle=message.key() or b"",
-                    valeur=message.value() or b"",
-                    en_tetes={c: _octets(v) for c, v in paires},
-                    horodatage_ms=message.timestamp()[1],
-                )
+                yield _message_lu(nom, message, numero, offset)
             self._consommateur.unassign()
         except KafkaException as exc:
             raise CourtierInjoignable(f"lecture de {nom} : {_texte(exc)}") from exc
 
+    def suivre(self, topics: list[str], *, depuis_le_debut: bool = False) -> Iterator[MessageLu]:
+        """Les messages des ``topics`` au fil de l'eau, sans fin (``pharmaflux suivre``).
+
+        Toutes les partitions de chaque topic, depuis leur fin (ce qui arrive
+        après le départ) ou leur début. Un topic qui n'existe pas encore est
+        attendu, et assigné dès qu'il apparaît, depuis son début : tout ce qu'il
+        contient est postérieur au départ. C'est le cas d'un bus rebâti où
+        ``suivre`` est lancé avant ``demo rejouer``. Sans groupe actif ni commit.
+        """
+        attendus = set(topics)
+        derniere_recherche = -1.0
+        depart = OFFSET_BEGINNING if depuis_le_debut else OFFSET_END
+        try:
+            while True:
+                if attendus and time.monotonic() - derniere_recherche >= DELAI_SUIVI_S:
+                    derniere_recherche = time.monotonic()
+                    metadonnees = self._admin.list_topics(timeout=self.delai_s)
+                    for nom in sorted(attendus):
+                        topic = metadonnees.topics.get(nom)
+                        if topic is None or topic.error is not None:
+                            continue
+                        self._consommateur.incremental_assign(
+                            [TopicPartition(nom, p, depart) for p in sorted(topic.partitions)]
+                        )
+                        attendus.discard(nom)
+                    depart = OFFSET_BEGINNING  # un topic apparu après le départ : tout est neuf
+                message = self._consommateur.poll(DELAI_SUIVI_S)
+                if message is None:
+                    continue
+                erreur = message.error()
+                if erreur is not None:
+                    raise CourtierInjoignable(f"{message.topic()} : {erreur.str()}")
+                numero, offset = message.partition(), message.offset()
+                assert numero is not None and offset is not None
+                yield _message_lu(message.topic() or "", message, numero, offset)
+        except KafkaException as exc:
+            raise CourtierInjoignable(f"suivi de {', '.join(topics)} : {_texte(exc)}") from exc
+        finally:
+            self._consommateur.unassign()
+
     def close(self) -> None:
         self._consommateur.close()
+
+
+def _message_lu(nom: str, message: Message, partition: int, offset: int) -> MessageLu:
+    brutes = message.headers() or []
+    paires = brutes.items() if isinstance(brutes, dict) else brutes
+    return MessageLu(
+        topic=nom,
+        partition=partition,
+        offset=offset,
+        cle=message.key() or b"",
+        valeur=message.value() or b"",
+        en_tetes={c: _octets(v) for c, v in paires},
+        horodatage_ms=message.timestamp()[1],
+    )
 
 
 def _octets(valeur: str | bytes | None) -> bytes:

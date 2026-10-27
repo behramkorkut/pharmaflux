@@ -1,6 +1,8 @@
 # Données : jamais dans le dépôt (archive sous PHARMAFLUX_DATA, hors dépôt).
 data/
 *.gz
+# Seule exception (CLAUDE.md, « Données ») : le jeu de démo figé de la mission 04.
+!demo/archive/bronze/**/*.gz
 
 # Environnement et caches Python
 .venv/

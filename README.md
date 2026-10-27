@@ -43,6 +43,54 @@ suppressions.
 
 ## Lancer
 
+### Démo : la chaîne entière en quatre minutes, sur une donnée réelle
+
+Le dépôt porte un **jeu de démo figé**, [`demo/archive`](demo/README.md) :
+trois jours de collecte réelle de la BDPM (du 24 au 27 octobre 2026, 71
+passages, 22 archives, 6,7 Mo), repris à l'octet, et la seule donnée admise
+dans git. `make demo` le rejoue sur le bus **en accéléré** : une heure
+observée dure 3,6 s, un jour 86 s.
+
+Prérequis : Docker avec Compose (sur le Mac, colima), [`uv`](https://docs.astral.sh/uv/),
+`make`, et les images du bus déjà téléchargées, une fois :
+
+```bash
+docker compose -p pharmaflux --profile console pull   # une fois ; make ne télécharge jamais
+```
+
+Deux commandes :
+
+```bash
+make up      # vérifie les prérequis (sans rien télécharger) et démarre Redpanda
+make demo    # enregistre les schémas, rejoue demo/archive sur le bus, puis verifier-bus
+```
+
+Ce qu'on voit, à l'heure observée : l'**état initial** du 24/10 à 19 h 41
+(onze fichiers, 164 096 événements `creee`, une trentaine de secondes de
+publication), puis l'horloge qui avance passage par passage, et les
+changements réels tels qu'ils sont arrivés : dix présentations supprimées,
+en trois fois (2 le 24 à 23 h 17, 1 le 26 à 0 h 17, 7 le 27 à 0 h 17), le fichier
+des informations importantes servi **vide** quatre fois et écarté par le
+garde-fou de volume, puis retenu identique au dernier retenu. La démo finit
+par `verifier-bus --racine demo/archive` : le bus relu, dédoublonné, appliqué
+et comparé au dernier snapshot recalculé depuis l'archive, « conforme » sur
+les onze topics. Ce que la copie ne contient pas ne se voit pas : aucune
+`modifiee`, aucun snapshot en attente, une file des échecs vide. Dans un
+second terminal, `make suivre` (à lancer **avant** `make demo`) affiche
+chaque événement publié en une ligne : heure observée, entité, type, clé.
+
+Sur une machine qui a **déjà** un volume `pharmaflux` (le bus d'une mission
+précédente, ou une démo déjà jouée), `make demo` refuse avec le code 2 et le
+message qui renvoie à `make rebatir` : un événement publié ne se réécrit pas ;
+`make rebatir` (efface le seul projet `pharmaflux` et `data/demo`) puis
+`make demo` rejouent tout. Un rejeu interrompu se reprend avec
+`uv run pharmaflux demo rejouer --reprendre` (ou `publier --reprendre
+--sortie data/demo`, sans l'horloge). `make help` liste les cibles ; la même
+démo tourne en CI sans pause (`make demo DEMO_OPTIONS=--sans-pause`). Le
+détail des choix est dans l'[ADR 0008](docs/adr/0008-rejeu-accelere-et-jeu-de-demo.md).
+
+### Les commandes
+
 Prérequis : [`uv`](https://docs.astral.sh/uv/). Python 3.12 est installé
 par `uv` dans le projet.
 
@@ -61,6 +109,9 @@ uv run pharmaflux evenements         # du bronze aux événements : rejeu comple
 uv run pharmaflux schemas enregistrer # les schémas du dépôt dans le registre de Redpanda
 uv run pharmaflux publier            # les fichiers d'événements sur le bus, ou --reprendre
 uv run pharmaflux verifier-bus       # relit le bus et le compare à la référence (--racine : l'archive)
+uv run pharmaflux suivre             # les événements publiés au fil de l'eau, une ligne par message
+uv run pharmaflux demo verifier      # le jeu de démo demo/archive : manifeste, sha256, rien d'autre
+uv run pharmaflux demo rejouer       # le jeu rejoué sur le bus, dans l'ordre observé, en accéléré
 ```
 
 Un passage télécharge la page de téléchargement de la BDPM et ses onze
@@ -141,7 +192,8 @@ La CI a deux jobs : `verifier`, ces commandes plus les tests des garde-fous
 du circuit, et `integration`, qui démarre le Redpanda du même fichier
 compose et lance les tests marqués avec la variable
 `PHARMAFLUX_INTEGRATION_EXIGEE` posée : là, un saut est un échec, un job
-vert a lancé les six tests.
+vert a lancé les neuf tests, puis la démo sans pause (`make demo
+DEMO_OPTIONS=--sans-pause`), vérifiée par `verifier-bus`.
 
 ## Méthode
 

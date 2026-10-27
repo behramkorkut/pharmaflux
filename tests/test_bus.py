@@ -29,7 +29,7 @@ from pharmaflux.bus.client import (
 )
 from pharmaflux.bus.enveloppe import Enveloppe, Motif
 from pharmaflux.bus.publication import LivraisonEchouee, PublicationRefusee
-from pharmaflux.bus.registre import Registre, SchemaAbsent, enregistrer_tout
+from pharmaflux.bus.registre import Registre, SchemaAbsent, SchemaIncompatible, enregistrer_tout
 from pharmaflux.collecte.empreintes import sha256_hex
 from pharmaflux.contrats.chargeur import charger_identifiant, charger_tous
 from pharmaflux.contrats.modele import Regle
@@ -37,7 +37,7 @@ from pharmaflux.evenements import schema, snapshot
 from pharmaflux.evenements.comparaison import comparer
 from pharmaflux.evenements.schema import Evenement, EvenementInvalide, TypeEvenement
 from pharmaflux.evenements.snapshot import Identite, Snapshot
-from tests.conftest import FIXTURES
+from tests.conftest import FIXTURES, texte_nu
 
 SHA_EVENEMENT = "a1e3ab77906cee3f6c9185880a23757c73bbf2e4c8e52c1037850b6dacdcf211"
 SHA_ECHEC = "9f444172fc5e3bc24f5b858abb3971de31dd55fd0ec3cc1e04fe084e1e5e36f2"
@@ -256,6 +256,7 @@ class RegistreSimule:
         self.versions: dict[str, list[str]] = {}
         self.identifiants: dict[str, int] = {}  # schéma (texte) → identifiant global
         self.compatibilites: dict[str, str] = {}
+        self.incompatibles: set[str] = set()  # sujets dont le registre refuse toute évolution
         self.appels: list[str] = []
 
     def transport(self) -> httpx.MockTransport:
@@ -319,7 +320,9 @@ class RegistreSimule:
                 return httpx.Response(
                     404, json={"error_code": 40401, "message": "Subject not found"}
                 )
-            return httpx.Response(200, json={"is_compatible": True})
+            return httpx.Response(
+                200, json={"is_compatible": morceaux[2] not in self.incompatibles}
+            )
         return httpx.Response(500, json={"message": f"inattendu : {methode} {chemin}"})
 
 
@@ -351,11 +354,59 @@ def test_registre_enregistre_et_rend_le_meme_identifiant() -> None:
             r.identifiant("pharmaflux.echecs.v1-value")
         r.supprimer("pharmaflux.echecs.v1-value")  # déjà absent : sans erreur
     debut = simule.appels.index("PUT /config/pharmaflux.bdpm.disponibilite.v1-value")
-    assert simule.appels[debut : debut + 3] == [
+    assert simule.appels[debut : debut + 4] == [
         "PUT /config/pharmaflux.bdpm.disponibilite.v1-value",
+        "POST /compatibility/subjects/pharmaflux.bdpm.disponibilite.v1-value/versions/latest",
         "POST /subjects/pharmaflux.bdpm.disponibilite.v1-value",
         "POST /subjects/pharmaflux.bdpm.disponibilite.v1-value/versions",
-    ]
+    ], "le schéma courant est soumis à la règle avant d'être enregistré (mission 04, F.2)"
+
+
+def test_historique_des_schemas_est_trie_par_numero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dossier = tmp_path / "schemas" / "historique"
+    dossier.mkdir(parents=True)
+    for numero in (10, 2, 1):
+        (dossier / f"evenement.v1.schema.{numero}.json").write_text(json.dumps({"v": numero}))
+    (dossier / "evenement.v1.schema.json").write_text('{"v": "sans numero"}')  # ignoré
+    (dossier / "echec.v1.schema.3.json").write_text('{"v": "autre schema"}')  # ignoré
+    (dossier / "README.md").write_text("ignoré")
+    monkeypatch.setattr(registre, "dossier_schemas", lambda: tmp_path / "schemas")
+    assert [v["v"] for v in registre.historique("evenement.v1.schema.json")] == [1, 2, 10], (
+        "10 après 2, pas après 1 : le tri est numérique"
+    )
+    assert [v["v"] for v in registre.historique("echec.v1.schema.json")] == ["autre schema"]
+
+
+def test_un_schema_courant_incompatible_est_refuse_avant_d_etre_enregistre(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pharmaflux import cli
+    from pharmaflux.cli import application
+
+    simule = RegistreSimule()
+    sujet_pres = registre.sujet(env.nom_topic(PRESENTATIONS))
+    ancien = {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]}
+    with Registre("http://registre.test", simule.transport()) as r:
+        r.enregistrer(sujet_pres, ancien)  # une version déjà publiée sous ce sujet
+        simule.incompatibles.add(sujet_pres)  # le registre juge le schéma du dépôt incompatible
+        with pytest.raises(SchemaIncompatible, match="BACKWARD_TRANSITIVE") as info:
+            enregistrer_tout(r, [DISPO, PRESENTATIONS])
+    assert sujet_pres in str(info.value) and "nouveau topic" in str(info.value)
+    assert simule.versions[sujet_pres] == [json.dumps(ancien, sort_keys=True)], (
+        "rien n'est enregistré pour le sujet refusé"
+    )
+    assert registre.sujet(env.nom_topic(DISPO)) in simule.versions, (
+        "le sujet précédent, compatible, est enregistré : la commande reste idempotente"
+    )
+    assert registre.sujet(env.topic_echecs()) not in simule.versions, "on s'arrête au refus"
+    monkeypatch.setattr(cli, "fabriquer_transport_registre", simule.transport)
+    from typer.testing import CliRunner
+
+    resultat = CliRunner().invoke(application, ["schemas", "enregistrer"])
+    assert resultat.exit_code == 1 and "registre : le schéma du dépôt" in resultat.output
+    assert "incompatible" in resultat.output
 
 
 def test_registre_injoignable_ou_en_erreur() -> None:
@@ -544,6 +595,63 @@ def test_un_fichier_publie_modifie_ou_disparu_fait_refuser(tmp_path: Path) -> No
     assert sum(len(m) for m in bus.messages.values()) == 27, "rien de plus n'est parti"
 
 
+def test_un_fichier_hors_d_ordre_fait_refuser_avant_le_premier_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sortie, n_pres, n_dispo = _sortie(tmp_path)
+    bus = BusSimule()
+    simule, r = _registre_pret()
+    publication.executer(sortie, bus, r)
+    etat_avant = (sortie / "publication.json").read_bytes()
+    initiales, _ = _evenements_presentations()
+    # Un fichier copié à la main, rangé avant le dernier publié de son entité…
+    _ecrire_jsonl(sortie, PRESENTATIONS, "20261024T131700Z__000000000000.jsonl", initiales[:3])
+    # … et un fichier en ordre d'une autre entité : il ne part pas non plus, tout le lot est refusé.
+    en_ordre = list(comparer(None, _snap(DISPO, "dispo_b.txt", "1517")))
+    _ecrire_jsonl(sortie, DISPO, "20261024T151700Z__eeeeeeeeeeee.jsonl", en_ordre)
+    with pytest.raises(
+        PublicationRefusee, match="se range avant le dernier fichier publié"
+    ) as info:
+        publication.executer(sortie, bus, r, reprendre=True)
+    assert "20261024T131700Z__000000000000.jsonl" in str(info.value)
+    assert "20261024T151700Z__bbbbbbbbbbbb.jsonl" in str(info.value), "le dernier publié est nommé"
+    assert "jamais réordonné" in str(info.value)
+    assert (sortie / "publication.json").read_bytes() == etat_avant, "l'état ne bouge pas"
+    assert sum(len(m) for m in bus.messages.values()) == n_pres + n_dispo, "rien n'est parti"
+    from typer.testing import CliRunner
+
+    from pharmaflux import cli
+    from pharmaflux.cli import application
+
+    monkeypatch.setattr(cli, "fabriquer_bus", lambda _courtier: bus)
+    monkeypatch.setattr(cli, "fabriquer_transport_registre", simule.transport)
+    resultat = CliRunner().invoke(application, ["publier", "--sortie", str(sortie), "--reprendre"])
+    assert resultat.exit_code == 2 and "publication refusée" in texte_nu(resultat.output)
+
+
+def test_un_fichier_d_evenements_vide_est_publie_et_inscrit_dans_l_etat(tmp_path: Path) -> None:
+    sortie, n_pres, _ = _sortie(tmp_path)
+    nom = (
+        "20261024T161700Z__eeeeeeeeeeee.jsonl"  # un snapshot retenu « identique au dernier retenu »
+    )
+    vide = _ecrire_jsonl(sortie, PRESENTATIONS, nom, [])
+    assert vide.stat().st_size == 0
+    bus = BusSimule()
+    _, r = _registre_pret()
+    journal: list[str] = []
+    rapport = publication.executer(sortie, bus, r, journal=journal.append)
+    (pres,) = [x for x in rapport.resumes if x.identifiant == PRESENTATIONS]
+    assert (pres.fichiers, pres.messages, pres.echecs) == (3, n_pres, 0)
+    assert f"bdpm.presentations {nom} : 0 message(s), 0 échec(s)" in journal
+    etat = publication.lire_etat(sortie / "publication.json")
+    assert etat[PRESENTATIONS][f"evenements/bdpm.presentations/{nom}"] == publication.FichierPublie(
+        hashlib.sha256(b"").hexdigest(), 0, 0
+    )
+    reprise = publication.executer(sortie, bus, r, reprendre=True)
+    (pres,) = [x for x in reprise.resumes if x.identifiant == PRESENTATIONS]
+    assert (pres.fichiers, pres.deja_publies) == (0, 3), "publié : la reprise ne le reprend pas"
+
+
 def test_ligne_illisible_et_message_trop_gros_vont_dans_la_file(tmp_path: Path) -> None:
     sortie, n_pres, n_dispo = _sortie(tmp_path)
     fichier = sortie / "evenements" / DISPO / "20261024T141700Z__cccccccccccc.jsonl"
@@ -645,7 +753,7 @@ def test_commandes_publier_et_schemas_enregistrer(
     sortie, n_pres, n_dispo = _sortie(tmp_path)
     # Sans schéma enregistré : refus, code 2, et le conseil.
     refus = lanceur.invoke(application, ["publier", "--sortie", str(sortie)])
-    assert refus.exit_code == 2 and "schemas enregistrer" in refus.output
+    assert refus.exit_code == 2 and "schemas enregistrer" in texte_nu(refus.output)
     enregistrement = lanceur.invoke(
         application, ["schemas", "enregistrer", "--registre", "http://r.test"]
     )
@@ -667,7 +775,7 @@ def test_commandes_publier_et_schemas_enregistrer(
     assert f"pharmaflux.bdpm.disponibilite.v1 : {n_dispo} message(s)" in resultat.output
     assert "publication.json" in resultat.output
     deja = lanceur.invoke(application, ["publier", "--sortie", str(sortie)])
-    assert deja.exit_code == 2 and "--reprendre" in deja.output, "état existant"
+    assert deja.exit_code == 2 and "--reprendre" in texte_nu(deja.output), "état existant"
     reprise = lanceur.invoke(application, ["publier", "--sortie", str(sortie), "--reprendre"])
     assert reprise.exit_code == 0 and "(2 déjà), 0 message(s)" in reprise.output
     # Rien de nouveau, mais le courtier est arrêté : code non nul quand même (décision 4).

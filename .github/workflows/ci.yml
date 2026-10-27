@@ -101,6 +101,12 @@ jobs:
         env:
           PHARMAFLUX_INTEGRATION_EXIGEE: "1"
 
+      # Le même Makefile que sur le Mac (mission 04). Le bus est neuf au sens du rejeu : les
+      # tests d'intégration effacent leurs topics et sujets. L'étape finit par verifier-bus
+      # --racine demo/archive : la démo est vérifiée par la référence indépendante des fichiers.
+      - name: Démo sans pause (make demo, bus neuf)
+        run: make demo DEMO_OPTIONS=--sans-pause
+
       - name: Journal du courtier en cas d'échec
         if: failure()
         run: docker compose -p pharmaflux logs --tail=100 redpanda

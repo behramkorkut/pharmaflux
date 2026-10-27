@@ -30,6 +30,7 @@ from pharmaflux.bus.client import (
 )
 from pharmaflux.bus.enveloppe import Enveloppe
 from pharmaflux.contrats.chargeur import charger_tous
+from tests.conftest import texte_nu
 from tests.test_bus import DISPO, PRESENTATIONS, BusSimule, _registre_pret, _sortie
 from tests.test_rejeu import SUITE, _executer, peupler
 
@@ -261,7 +262,7 @@ def test_une_reference_introuvable_est_refusee_avant_de_lire_le_bus(
     monkeypatch.setattr(cli, "fabriquer_lecteur", lambda c: lecteurs_fabriques.append(c))
     resultat = CliRunner().invoke(application, ["verifier-bus", "--sortie", str(sortie)])
     assert resultat.exit_code == 2, resultat.output
-    assert f"référence introuvable : {sortie / 'evenements'}" in resultat.output
+    assert f"référence introuvable : {sortie / 'evenements'}" in texte_nu(resultat.output)
     assert lecteurs_fabriques == [], "le bus n'est pas lu"
 
 
@@ -293,8 +294,8 @@ def test_commande_verifier_bus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         application,
         ["verifier-bus", "--sortie", str(sortie), "--fichier", DISPO, "--courtier", "x:1"],
     )
-    assert resultat.exit_code == 2 and "DIFFÉRENCE : 1 identité(s)" in resultat.output
-    assert "bdpm.presentations" not in resultat.output, "la sélection est respectée"
+    assert resultat.exit_code == 2 and "DIFFÉRENCE : 1 identité(s)" in texte_nu(resultat.output)
+    assert "bdpm.presentations" not in texte_nu(resultat.output), "la sélection est respectée"
     racine = tmp_path / "vide"
     racine.mkdir()
     resultat = lanceur.invoke(
@@ -302,6 +303,30 @@ def test_commande_verifier_bus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         ["verifier-bus", "--sortie", str(sortie), "--racine", str(racine), *selection[:2]],
     )
     assert resultat.exit_code == 2, resultat.output
-    assert f"référence introuvable : {sortie / 'etat.json'}" in resultat.output, (
+    assert f"référence introuvable : {sortie / 'etat.json'}" in texte_nu(resultat.output), (
         "cette sortie n'a pas d'etat.json"
     )
+
+
+def test_un_fichier_d_evenements_vide_est_publie_et_compte_par_la_verification(
+    tmp_path: Path,
+) -> None:
+    """Mission 04 : un snapshot retenu « identique au dernier retenu » laisse un JSONL vide ;
+    il est publié (zéro message), inscrit dans l'état, et la vérification le voit comme publié."""
+    sortie, n_pres, _ = _sortie(tmp_path)
+    nom = "20261024T161700Z__eeeeeeeeeeee.jsonl"
+    (sortie / "evenements" / PRESENTATIONS / nom).write_bytes(b"")
+    bus = BusSimule()
+    _, r = _registre_pret()
+    rapport = publication.executer(sortie, bus, r)
+    assert rapport.code_sortie == 0
+    (pres,) = [x for x in rapport.resumes if x.identifiant == PRESENTATIONS]
+    assert (pres.fichiers, pres.messages) == (3, n_pres)
+    etat = publication.lire_etat(sortie / "publication.json")
+    assert etat[PRESENTATIONS][f"evenements/bdpm.presentations/{nom}"].messages == 0
+    verification_ = _verifier(bus, sortie)
+    assert verification_.code_sortie == 0 and verification_.doublons == 0
+    topic = verification_.topics[0]
+    assert topic.entite == PRESENTATIONS and topic.conforme and topic.messages == n_pres
+    assert topic.lignes_bus == topic.lignes_reference > 0
+    assert publication.executer(sortie, bus, r, reprendre=True).topics == {}, "rien à reprendre"

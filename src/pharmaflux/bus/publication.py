@@ -15,9 +15,22 @@ ligne, jamais celui d'une relecture du fichier après coup.
 Un fichier publié dont le sha256 a changé (un rejeu complet a recalculé la
 sortie autrement) fait **refuser** la publication, sans option pour forcer :
 un événement publié n'est jamais réécrit, la voie documentée est de rebâtir
-le bus. Une ligne illisible ou un message trop gros vont dans la file des
-messages en échec et la publication continue ; un courtier injoignable ou une
-livraison en échec l'arrêtent, l'état n'avance pas.
+le bus. De même, un fichier à publier qui se range **avant** le dernier
+fichier publié de son entité fait refuser tout le lot avant le premier
+message : le flux d'une entité est l'ordre des noms, un événement publié
+n'est jamais réordonné (``evenements`` ne produit jamais ce cas, le refus
+attrape un JSONL copié à la main). Une ligne illisible ou un message trop gros
+vont dans la file des messages en échec et la publication continue ; un
+courtier injoignable ou une livraison en échec l'arrêtent, l'état n'avance pas.
+
+Deux fonctions publiques portent tout cela, pour que ``publier`` et le rejeu
+accéléré de la démo (mission 04) partagent un seul code : ``preparer``
+(courtier, état, contrôles d'inchangé et d'ordre, schémas, topics) rend une
+``Preparation``, et ``publier_fichier`` publie un fichier de ce lot, attend
+ses accusés de réception et réécrit l'état. ``executer`` enchaîne les
+fichiers par entité puis nom ; la démo les prend dans l'ordre global des
+observations, ce qui donne le même ordre par topic (le nom d'un fichier
+commence par l'horodatage de son archive).
 """
 
 from __future__ import annotations
@@ -86,19 +99,52 @@ class Rapport:
         return 3 if any(r.echecs for r in self.resumes) else 0
 
 
-def executer(
+@dataclass(slots=True)
+class Preparation:
+    """Un lot prêt à publier : ce que ``preparer`` a établi, ce que ``publier_fichier`` avance.
+
+    ``a_publier`` est dans l'ordre de ``publier`` (entité, puis nom) ; qui
+    publie dans un autre ordre choisit lui-même ses fichiers dedans.
+    ``topics_du_courtier`` est la liste rendue par ``verifier_courtier``, pour
+    qui veut juger l'état du bus avant de publier.
+    """
+
+    sortie: Path
+    prefixe: str
+    etat: dict[str, dict[str, FichierPublie]]
+    fichiers: list[tuple[str, str]]  # (entité, chemin relatif), tous ceux de la sortie
+    a_publier: list[tuple[str, str]]  # ceux qui manquent à l'état, dans l'ordre de ``publier``
+    identifiants: dict[str, int]  # topic → identifiant de schéma (vide s'il n'y a rien à publier)
+    resumes: dict[str, ResumeEntite]
+    topics_du_courtier: list[str]
+    debut: float = field(default_factory=time.monotonic)
+    topics: dict[str, int] = field(default_factory=dict)  # messages publiés par topic
+
+    @property
+    def chemin_etat(self) -> Path:
+        return self.sortie / NOM_PUBLICATION
+
+    def rapport(self) -> Rapport:
+        return Rapport(list(self.resumes.values()), time.monotonic() - self.debut, self.topics)
+
+
+def preparer(
     sortie: Path,
     bus: Bus,
     registre: Registre,
     *,
     reprendre: bool = False,
     prefixe: str = env.PREFIXE_PAR_DEFAUT,
-    journal: Journal | None = None,
-) -> Rapport:
-    """Publie les fichiers de ``sortie`` qui ne le sont pas encore ; rend le résumé."""
-    dire = journal or (lambda _: None)
-    debut = time.monotonic()
-    bus.verifier_courtier()  # décision 4 : injoignable, code non nul, même sans rien à publier
+) -> Preparation:
+    """Tout ce qui précède le premier message : courtier, état, contrôles, schémas, topics.
+
+    Refuse (``PublicationRefusee``) un état illisible, un état présent sans
+    ``reprendre``, un fichier publié modifié ou disparu, un fichier à publier
+    qui se range avant le dernier publié de son entité, un sujet sans schéma.
+    Rien n'est publié, l'état ne bouge pas. Les schémas et les topics ne sont
+    demandés que s'il reste quelque chose à publier.
+    """
+    topics_du_courtier = bus.verifier_courtier()  # décision 4 : injoignable, code non nul
     chemin_etat = sortie / NOM_PUBLICATION
     etat = lire_etat(chemin_etat)
     if etat and not reprendre:
@@ -112,33 +158,67 @@ def executer(
     a_publier = [
         (entite, chemin) for entite, chemin in fichiers if chemin not in etat.get(entite, {})
     ]
+    _verifier_ordre(etat, a_publier)
     resumes = {
         entite: ResumeEntite(entite, deja_publies=len(etat.get(entite, {})))
         for entite in sorted({e for e, _ in fichiers} | set(etat))
     }
-    if not a_publier:
+    identifiants: dict[str, int] = {}
+    if a_publier:
+        entites = sorted({entite for entite, _ in a_publier})
+        identifiants = identifiants_de_schema(registre, entites, prefixe)
+        bus.preparer_topics(_definitions(entites, prefixe))
+    return Preparation(
+        sortie, prefixe, etat, fichiers, a_publier, identifiants, resumes, topics_du_courtier
+    )
+
+
+def publier_fichier(preparation: Preparation, bus: Bus, entite: str, chemin: str) -> FichierPublie:
+    """Publie un fichier du lot, attend ses accusés de réception, inscrit l'état ; rend le compte.
+
+    Un fichier vide passe par ici comme les autres : inscrit avec zéro
+    message, il compte comme publié. ``LivraisonEchouee`` si un accusé manque :
+    l'état n'avance pas pour ce fichier.
+    """
+    publie = _publier_fichier(
+        preparation.sortie,
+        chemin,
+        entite,
+        bus,
+        preparation.identifiants,
+        preparation.prefixe,
+        preparation.topics,
+    )
+    preparation.etat.setdefault(entite, {})[chemin] = publie
+    ecrire_etat(preparation.chemin_etat, preparation.etat)
+    resume = preparation.resumes.setdefault(entite, ResumeEntite(entite))
+    resume.fichiers += 1
+    resume.messages += publie.messages
+    resume.echecs += publie.echecs
+    return publie
+
+
+def executer(
+    sortie: Path,
+    bus: Bus,
+    registre: Registre,
+    *,
+    reprendre: bool = False,
+    prefixe: str = env.PREFIXE_PAR_DEFAUT,
+    journal: Journal | None = None,
+) -> Rapport:
+    """Publie les fichiers de ``sortie`` qui ne le sont pas encore, entité par entité puis par
+    nom ; rend le résumé."""
+    dire = journal or (lambda _: None)
+    preparation = preparer(sortie, bus, registre, reprendre=reprendre, prefixe=prefixe)
+    if not preparation.a_publier:
         dire("rien à publier : tous les fichiers sont dans l'état")
-        return Rapport(list(resumes.values()), time.monotonic() - debut)
-    entites = sorted({entite for entite, _ in a_publier})
-    identifiants = _identifiants_de_schema(registre, entites, prefixe)
-    bus.preparer_topics(_definitions(entites, prefixe))
-    rapport = Rapport([], 0.0)
-    for entite, chemin in a_publier:
-        publie = _publier_fichier(
-            sortie, chemin, entite, bus, identifiants, prefixe, rapport.topics
-        )
-        etat.setdefault(entite, {})[chemin] = publie
-        ecrire_etat(chemin_etat, etat)
-        resume = resumes[entite]
-        resume.fichiers += 1
-        resume.messages += publie.messages
-        resume.echecs += publie.echecs
+    for entite, chemin in preparation.a_publier:
+        publie = publier_fichier(preparation, bus, entite, chemin)
         dire(
             f"{entite} {Path(chemin).name} : {publie.messages} message(s), {publie.echecs} échec(s)"
         )
-    rapport.resumes = list(resumes.values())
-    rapport.duree_s = time.monotonic() - debut
-    return rapport
+    return preparation.rapport()
 
 
 def lister_fichiers(sortie: Path) -> list[tuple[str, str]]:
@@ -173,8 +253,30 @@ def _verifier_inchanges(
                 )
 
 
-def _identifiants_de_schema(registre: Registre, entites: list[str], prefixe: str) -> dict[str, int]:
-    """topic → identifiant du schéma enregistré ; refus si un sujet n'en a pas."""
+def _verifier_ordre(
+    etat: dict[str, dict[str, FichierPublie]], a_publier: list[tuple[str, str]]
+) -> None:
+    """Chaque fichier à publier se range après tout fichier publié de son entité ; sinon refus.
+
+    Le contrôle porte sur tout le lot, avant le premier message : rien n'est
+    publié, l'état ne bouge pas. Les chemins d'une entité partagent leur
+    dossier, les comparer revient à comparer les noms.
+    """
+    for entite, chemin in a_publier:
+        publies = etat.get(entite)
+        if not publies:
+            continue
+        dernier = max(publies)
+        if chemin < dernier:
+            raise PublicationRefusee(
+                f"{entite} : {Path(chemin).name} se range avant le dernier fichier publié"
+                f" ({Path(dernier).name}) ; un événement publié n'est jamais réordonné :"
+                " rebâtis le bus"
+            )
+
+
+def identifiants_de_schema(registre: Registre, entites: list[str], prefixe: str) -> dict[str, int]:
+    """topic → identifiant du schéma enregistré ; ``PublicationRefusee`` si un sujet n'en a pas."""
     topics = [env.nom_topic(entite, prefixe) for entite in entites] + [env.topic_echecs(prefixe)]
     identifiants = {}
     for topic in topics:

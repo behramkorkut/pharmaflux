@@ -4,7 +4,8 @@
 **Réf. :** PRD v0.5 §4 (Lot 1), §6.4, §7.1, §7.3, §9 · mission 03
 (`pr.md`, `controle-iec-final.md`) · ADR 0006 et 0007 · `CLAUDE.md` ·
 `docs/agents/processus.md`
-**Statut :** ordre rédigé le 27/10/2026 — **§0 à traiter avant de coder**
+**Statut :** ordre rédigé le 27/10/2026 ; §0 tranché par l'addendum 1
+(27/10, en fin de fichier) — **palier 1 à coder**
 **Branche :** `mission-04-rejeu-accelere-et-demo`, dans `pharmaflux-codeur/`
 (préparée par beko avec `preparer-mission.sh`). Trois paliers, chacun
 committé en local et contrôlé par l'IeC ; **aucun push** de ta part.
@@ -281,3 +282,105 @@ démo finit par un `verifier-bus` conforme.
   utilisation de l'API Claude ; tout téléchargement d'image.
 - **Pas d'usage des VPS d'Alamel**, et rien qui touche aux conteneurs
   d'Alamel du colima ni à la pré-production du VPS-1.
+
+## Addendum 1 — le §0 tranché (27/10/2026)
+
+Réponse au §0 du codeur (`points-a-trancher.md`, commit `ab31fd3`). Les
+propositions sont retenues, **sauf les deux corrections ci-dessous** (points
+1 et 2), qui viennent d'une lecture du dépôt (`docker-compose.yml`, job
+`integration`). Ce qui n'est pas cité ici est retenu tel que proposé.
+
+### Corrections
+
+1. **Les prérequis ne vérifient que les images que la cible lance.** Ta
+   proposition E.3 lit toutes les lignes `image:` du fichier compose, la
+   console comprise. Or le job `integration` ne tire que Redpanda
+   (`up -d --wait`, sans profil) : `make demo` y échouerait sur l'image de
+   la console. Pour `up` et `demo`, ne vérifier que les images des services
+   **sans profil** ; l'image de la console ne se vérifie que pour
+   `make console`. Plutôt qu'un `grep` sur le YAML, utilise
+   `docker compose -p pharmaflux config --images` (avec `--profile console`
+   pour la console) : Compose résout lui-même les profils. Avant de l'écrire,
+   vérifie sur le Mac que cette option existe dans la version installée et
+   qu'elle tient compte des profils ; sinon, garde le `grep` en écartant le
+   service `console`. Un test de `prerequis.sh` n'est pas demandé, mais le
+   rapport du palier 3 montre sa sortie dans les deux cas : image présente,
+   et image absente (simulée avec un nom d'image inconnu passé en variable).
+2. **Le clone neuf et le volume existant.** Le volume du projet
+   `pharmaflux` survit à un nouveau clone, puisque son nom vient de `-p`,
+   pas du dossier. Sur le Mac de beko, un clone neuf trouve donc le bus de
+   la mission 03 ou celui du palier 3, et `make demo` refuse, comme ta table
+   C le prévoit (« bus non vide sans état »). La règle de clôture devient :
+   - sur une machine **sans** volume `pharmaflux` : `make up` puis
+     `make demo` ;
+   - sur une machine qui en a un, dont le Mac : `make demo` doit d'abord
+     **refuser**, avec le message qui renvoie à `make rebatir` ; ensuite
+     `make rebatir` puis `make demo` finissent par `verifier-bus` conforme.
+
+   Ce refus fait partie de ce qu'on démontre. Le README le dit en une ligne.
+   `make rebatir` ne vise que le projet `pharmaflux` (`down -v` avec `-p`) :
+   le rapport du palier 3 cite `make -n rebatir` pour le montrer.
+
+### Les six questions
+
+- **Q1, la coupure** : au passage `20261027T151708Z` inclus, la fin de la
+  copie. Les deux passages `inchange` qui suivent l'alternance comptent.
+  `demo/README.md` donne la coupure, les 71 passages et les trois entrées
+  laissées dehors (HTML, PDF, métadonnées d'Open Medic), avec la raison.
+- **Q2** : `demo` dépend de `up`. L'ordre « `make up` puis `make demo` »
+  reste vrai.
+- **Q3** : `pharmaflux suivre` est retenu en version minimale, comme
+  proposé : `--nombre`, `--depuis-le-debut`, onze topics, code 0 ; les
+  messages illisibles vont sur la sortie d'erreur et sont comptés. Pas
+  d'option `--echecs`.
+- **Q4** : oui, pose `configurer_journal()` au début de `evenements`.
+  Vérifie que le journal sort sur la sortie d'erreur et qu'il ne change
+  aucun fichier de sortie : le `diff -r` de non-régression contre
+  `4684292` reste identique. C'est un écart accepté, à citer dans le
+  rapport du palier 1.
+- **Q5, la mémoire** : on mesure et on consigne, sans corriger. Il y a
+  deux mesures au palier 2 :
+  - `evenements`, entité par entité, sous `tracemalloc` ;
+  - la mémoire résidente maximale de `demo rejouer` sur `demo/archive`,
+    rejeu et publication compris. C'est elle qui compte pour la démo.
+
+  L'ADR 0008 les consigne. L'IeC reporte la mesure au PRD §9. Si
+  `demo rejouer` dépasse 256 Mo, arrête-toi et signale-le avant le
+  commit.
+- **Q6** : d'accord sur tout : facteur 1 000, passages horaires affichés
+  par défaut, `--sans-passages`, `--sans-pause`, groupe `pharmaflux demo`
+  (`fabriquer`, `verifier`, `rejouer`), sortie par défaut `data/demo`,
+  table des refus et leurs codes.
+
+### Précisions
+
+- **Le README du jeu ne peut pas s'écarter du manifeste.** `test_demo.py`
+  relit la table des 22 archives de `demo/README.md`, et chaque sha256
+  doit égaler celui de sa ligne `nouveau`, sans ligne en trop ni en moins.
+  Les nombres du README (22 archives, 11 entités, 781 lignes, 71
+  passages) sont vérifiés de la même façon.
+- **Un fichier d'événements vide** (un snapshot retenu « identique au
+  dernier retenu ») passe par `publier_fichier` comme les autres. Il est
+  inscrit dans `publication.json` avec zéro message, et `verifier-bus` le
+  compte comme publié : un test le montre.
+- **Le refus d'un fichier hors d'ordre** se teste sur `publier --reprendre`
+  et sur `demo rejouer --reprendre`, comme proposé en F.3. Un fichier déjà
+  publié, au même nom, reste du ressort du contrôle d'inchangé.
+- **`.gitignore`** : l'exception `!demo/archive/bronze/**/*.gz` est
+  retenue, juste sous `*.gz`, avec une ligne de commentaire qui renvoie à
+  `CLAUDE.md`. Au palier 1, `git status --ignored -- demo` et
+  `git check-ignore -v` sur une archive du jeu montrent qu'elle est suivie ;
+  `git check-ignore -v` sur un `.gz` fabriqué hors de `demo/` montre qu'il
+  reste écarté. Le rapport donne la taille ajoutée au pack
+  (`git count-objects -vH` avant et après).
+- **La CI** : l'étape `make demo DEMO_OPTIONS=--sans-pause` est retenue,
+  après les tests d'intégration et avant `down -v`. Les limites que tu
+  annonces avant le push (architecture amd64, GNU Make 4.3, version de
+  Compose du runner) sont acceptées ; écris-les dans `pr.md`.
+- **Le palier 2** : ta démonstration (décision 7) se fait sur un bus
+  rebâti, sans le volume de la mission 03. Le Makefile n'existe pas encore
+  au palier 2, donc tu lances toi-même, une à une, les commandes
+  `docker compose -p pharmaflux down -v` puis `up -d --wait --pull never` :
+  le garde-fou les permet, elles ne visent que le projet `pharmaflux`.
+  Préviens beko en une ligne avant le `down -v` : il efface le bus de la
+  mission 03.

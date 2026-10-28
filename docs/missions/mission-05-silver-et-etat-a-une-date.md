@@ -310,3 +310,142 @@ vérification conforme sur les 18 archives retenues du jeu.
 - **Pas d'usage des VPS d'Alamel**, et rien qui touche aux conteneurs
   d'Alamel du colima (`alamel-dev-postgres`, `alamel-dev-minio`) ni à la
   pré-production du VPS-1.
+
+## Addendum 1 — le §0 tranché (28/10/2026)
+
+Réponse au §0 du codeur (`points-a-trancher.md`, commit `7103e8b`). Les
+propositions sont retenues, **sauf les deux corrections ci-dessous**. La
+première vient d'une lecture de PyPI et de `uv.lock` ; la seconde, d'une
+lecture de ce que DuckDB permet. Ce qui n'est pas cité ici est retenu tel
+que proposé.
+
+### Corrections
+
+1. **Les versions (A.1) : pas d'`exclude-newer` global.**
+   - Le verrou actuel contient déjà quatre paquets publiés après le 14/10 :
+     `ruff 0.17.2`, `pluggy 1.7.0`, `certifi 2026.10.23` et
+     `ast-serialize 0.13.1`. Un `exclude-newer = "2026-10-14"` les ferait
+     redescendre au prochain `uv lock`. Pour ruff, cela change la base du
+     lint, ce qui sort de la mission.
+   - SQLAlchemy 2.0.46 n'est pas la bonne cible. La dernière 2.0 qui a plus
+     de deux semaines est **2.0.54** (15/09/2026). À l'inverse, un
+     `exclude-newer` seul choisirait **2.1.4** (07/10/2026), dans une
+     branche 2.1 sortie le 24/09.
+
+   La règle retenue :
+   - dans `dependencies`, des bornes basses, comme pour les paquets déjà
+     là : `pyiceberg[sql-sqlite]>=0.12.0`, `pyarrow>=26.0.0` et
+     `duckdb>=1.5.6`. `uv.lock` fixe les versions ;
+   - dans `[tool.uv] constraint-dependencies` : `duckdb<2`,
+     `sqlalchemy>=2.0.54,<2.1`, plus un plafond pour chaque autre paquet
+     transitif **nouveau** publié après le 14/10 (`python-dateutil`,
+     `cachetools`, `tzdata` dans ta liste, à revoir au moment du verrou).
+     Chaque contrainte porte un commentaire d'une ligne qui donne la
+     raison ;
+   - au palier 1, le rapport donne la liste des paquets **ajoutés** à
+     `uv.lock`, avec leur version et leur date de publication (lue dans
+     `upload-time`). Toutes ces dates sont au 14/10/2026 ou avant. Le
+     rapport montre aussi que les paquets **déjà** verrouillés n'ont pas
+     changé de version : `git diff --stat` du verrou, puis un `awk` sur les
+     couples nom et version, avant et après.
+
+   L'ADR 0009 donne la règle : au moins deux semaines pour un paquet ajouté
+   ou mis à jour, appliquée par contraintes, sans toucher au reste du verrou.
+
+2. **`silver sql` (F.2) se fait au palier 1, à condition d'être en lecture
+   seule.**
+   - DuckDB sait écrire (`COPY … TO`, `ATTACH`, `EXPORT DATABASE`), lire
+     n'importe quel fichier du poste (`read_csv('/…')`) et installer des
+     extensions. Une commande qui exécute du SQL libre doit fermer tout
+     cela.
+   - Une fois les vues créées, la connexion pose, dans cet ordre :
+     `autoinstall_known_extensions = false`,
+     `autoload_known_extensions = false`, `allowed_directories` limité au
+     dossier de l'entrepôt, `enable_external_access = false`, puis
+     `lock_configuration = true`.
+   - Les tests montrent un refus pour chacune de ces requêtes :
+     - `COPY (SELECT 1) TO '<tmp>/x.csv'` ;
+     - `read_csv` d'un fichier hors de l'entrepôt ;
+     - `ATTACH` ;
+     - `INSTALL iceberg` ;
+     - un `SET` après le verrou.
+
+     Ils montrent aussi qu'une vue se lit encore.
+   - Si DuckDB 1.5.6 ne permet pas cette combinaison avec des vues
+     lisibles, `silver sql` sort de la mission. Tu le dis dans le rapport
+     du palier 1, et le README s'appuie sur `silver etat` seul.
+   - Le refus quand `plan_files()` rend un fichier de suppression est
+     retenu.
+
+### Les questions
+
+- **A.2** : `pyarrow-stubs` en dépendance de dev, version
+  `20.0.0.20260819` (19/08/2026). Ces stubs décrivent PyArrow 20, et nous
+  verrouillons la 26.
+  - Les appels à Arrow restent dans le paquet `pharmaflux.silver`.
+  - Si les stubs ne connaissent pas une API de la 26 : un
+    `# type: ignore[code]` précis, avec un commentaire.
+  - Au-delà de cinq `type: ignore`, tu retires les stubs et tu poses un
+    bloc `[[tool.mypy.overrides]]` `module = "pyarrow.*"`, avec
+    `ignore_missing_imports`.
+
+  Le rapport du palier 1 dit lequel des deux est retenu et pourquoi.
+- **B.1** : `identite` en clé JSON compacte à clés triées, égale à la clé
+  du message. **B.2** : `anomalies` en `list<struct<colonne, regle>>`. Le
+  refus en cas de changement de version du contrat est retenu, et la
+  colonne `version_contrat` reste.
+- **C.1** : `LOT = 10 000`, avec une option `--lot`. **C.2** : comme
+  proposé. La règle « une seule version ouverte par identité » se vérifie
+  au lot sur les identités du lot, et sur toute la table dans
+  `silver verifier`.
+- **D.1** : l'identifiant de grappe donne un **avertissement**, le contrôle
+  des `id` à `offset − 1` donne le **refus**. Au palier 2, le rapport dit si
+  un `down -v` change l'identifiant de grappe de Redpanda. **D.2** :
+  `--continu` est hors mission. Tu le proposes dans `pr.md`.
+- **E** : retenu, y compris `silver comparer A B` au palier 1. Cette
+  commande sert à ta démonstration du palier 2.
+- **F.1** : code 0 avec le message sur la sortie d'erreur, avant la
+  première observation comme après la dernière. Les règles sur les instants
+  sont retenues : UTC, à la seconde, refus d'un instant sans fuseau.
+- **G** : retenu, y compris :
+  - la vérification des archives écartées : l'état est égal à celui du
+    dernier snapshot retenu ;
+  - les invariants du SCD2 en DuckDB, avec le code 2 si l'un d'eux tombe.
+
+  **Précision sur la décision 7** : le temps de la connaissance est
+  l'horodatage de l'archive, à la seconde. Le second exemple du README
+  dit donc « le 26/10 juste après 14:17:39 », pas « après 14:17 ». Les
+  documents de la mission 04 ne changent pas.
+- **H** : retenu. La cale sur `SqlCatalog.commit_table` dépend du code
+  interne de PyIceberg. Le test cite en commentaire la version (0.12.0) et
+  la fonction visée. S'il casse lors d'une montée de version, c'est voulu :
+  il faudra revoir la reprise.
+- **I** : retenu. `make silver` ne dépend pas de `demo` ; `make etat` prend
+  ses variables ; l'étape de CI vient après `make demo`, avant `down -v`.
+  `pr.md` donne la durée réelle de cette étape sur le runner.
+- **J, la mémoire** :
+  - les commandes `silver` posent l'allocateur système d'Arrow au
+    démarrage (K.4) ;
+  - la cible des 256 Mo ne vaut pas pour le silver en v1 : il tourne sur le
+    Mac, là où est le bus, et le VPS continue de collecter. L'IeC le
+    reporte au PRD §9 ;
+  - **seuil d'alerte : 512 Mo résidents** pour chaque commande `silver` sur
+    le jeu de démo. Si une commande le dépasse, tu t'arrêtes et tu le
+    signales avant le commit. Mesures au palier 1 (`construire`,
+    `verifier`, `etat`) et au palier 2 (`consommer`) ;
+  - la mesure « plus longue que le jeu » est reportée au prochain
+    rapatriement. C'est un écart accepté, à écrire dans `pr.md`.
+
+### Précisions
+
+- **Les imports paresseux (K.1) se testent.** Dans un sous-processus,
+  après `import pharmaflux.cli`, ni `pyarrow`, ni `pyiceberg`, ni `duckdb`
+  ne figurent dans `sys.modules`.
+- **La maquette du §0** : le venv jetable, avec des paquets non verrouillés
+  installés depuis PyPI, est accepté pour mesurer. Rien n'en entre dans le
+  dépôt. Les mesures du palier 1 se refont avec le code de la mission et
+  `uv.lock`.
+- **Les chemins absolus de l'entrepôt (K.3)** : les tests écrivent sous
+  `tmp_path`. Aucun rapport ne cite de chemin du poste.
+- **Le découpage des paliers ne change pas.** `construire`, `etat`, `sql`,
+  `comparer` et `verifier` vont au palier 1, `consommer` au palier 2.

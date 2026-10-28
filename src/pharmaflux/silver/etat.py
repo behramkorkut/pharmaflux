@@ -1,8 +1,10 @@
 """« État à une date » : les versions valides à un instant, et leur rendu (F).
 
-L'instant est en UTC, à la seconde : ``2026-10-26T14:00:00Z`` ou avec un
-décalage, une date seule vaut minuit UTC. Refusés : un instant sans fuseau,
-une fraction de seconde. La règle de validité, ``debut_validite <= a`` et
+L'instant est en UTC, à la seconde, sous trois formes seulement :
+``2026-10-26T14:00:00Z``, ``2026-10-26T16:00:00+02:00`` (un décalage), ou une
+date seule, qui vaut minuit UTC. Refusés : un instant sans fuseau, une fraction
+de seconde (même ``.000``), une heure sans les secondes, la forme compacte ou
+un espace à la place du ``T``. La règle de validité, ``debut_validite <= a`` et
 (``fin_validite`` nulle ou ``> a``), est poussée entière à PyIceberg, qui
 élague les fichiers par leurs bornes puis filtre dans Arrow ; aucun masque
 Arrow maison (§0 K.6). Avant la première observation, aucune version ; après
@@ -27,27 +29,35 @@ from pyiceberg.table import Table
 
 from pharmaflux.silver import Format, SilverRefuse
 from pharmaflux.silver.expressions import egal, est_nul, et, inferieur_ou_egal, ou, superieur
-from pharmaflux.silver.schema import COLONNES_VERSION, colonnes_du_contrat, litteral, texte_instant
+from pharmaflux.silver.schema import litteral, texte_instant
 
 _DATE_SEULE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_A_LA_SECONDE = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
+_INSTANT = re.compile(_A_LA_SECONDE + r"(Z|[+-]\d{2}:\d{2})$")
+_SANS_FUSEAU = re.compile(_A_LA_SECONDE + "$")
+_FRACTION = re.compile(_A_LA_SECONDE + r"[.,]\d")
+FORMES_ACCEPTEES = "AAAA-MM-JJ, AAAA-MM-JJThh:mm:ssZ ou AAAA-MM-JJThh:mm:ss±hh:mm"
 
 
 def lire_instant(texte: str) -> datetime:
-    """L'instant demandé, en UTC ; ``SilverRefuse`` s'il est ambigu ou trop fin."""
+    """L'instant demandé, en UTC ; ``SilverRefuse`` hors des trois formes acceptées."""
     if _DATE_SEULE.match(texte):
-        return datetime.fromisoformat(texte).replace(tzinfo=UTC)
-    try:
-        valeur = datetime.fromisoformat(texte)
-    except ValueError as exc:
-        raise SilverRefuse(f"instant illisible : {texte!r} (ISO 8601 attendu, UTC)") from exc
-    if valeur.tzinfo is None:
+        valeur = datetime.fromisoformat(texte).replace(tzinfo=UTC)
+    elif _INSTANT.match(texte):
+        try:
+            valeur = datetime.fromisoformat(texte)
+        except ValueError as exc:
+            raise SilverRefuse(f"instant illisible : {texte!r} ({FORMES_ACCEPTEES})") from exc
+    elif _SANS_FUSEAU.match(texte):
         raise SilverRefuse(
             f"instant sans fuseau : {texte!r} ; écris-le en UTC (…Z) ou avec un décalage (+02:00)"
         )
-    if valeur.microsecond:
+    elif _FRACTION.match(texte):
         raise SilverRefuse(
             f"instant à la fraction de seconde : {texte!r} ; les observations sont à la seconde"
         )
+    else:
+        raise SilverRefuse(f"instant illisible : {texte!r} ({FORMES_ACCEPTEES})")
     return valeur.astimezone(UTC)
 
 
@@ -169,14 +179,8 @@ def _cellule(valeur: object) -> str:
     return str(valeur)
 
 
-def colonnes_de_donnees(table: Table) -> list[str]:
-    return colonnes_du_contrat(table.schema().as_arrow())
-
-
 __all__ = [
-    "COLONNES_VERSION",
     "bornes",
-    "colonnes_de_donnees",
     "etat_a",
     "filtre_validite",
     "lire_filtres",

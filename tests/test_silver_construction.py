@@ -14,6 +14,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 from typer.testing import CliRunner
 
@@ -24,7 +26,8 @@ from pharmaflux.evenements import rejeu, snapshot
 from pharmaflux.evenements.volume import Decision
 from pharmaflux.silver import SilverRefuse, comparaison, construction, sql, verification
 from pharmaflux.silver import etat as etat_silver
-from pharmaflux.silver.entrepot import Entrepot
+from pharmaflux.silver.entrepot import Entrepot, chemins_parquet
+from pharmaflux.silver.schema import colonnes_du_contrat
 from pharmaflux.silver.verification import _empreintes_silver, _empreintes_snapshot
 from tests.conftest import texte_nu
 from tests.test_rejeu import DISPO, PRESENTATIONS, SUITE, peupler
@@ -126,7 +129,7 @@ def test_etat_a_une_date_egale_le_snapshot_entre_deux_archives(
             if dernier is None:
                 continue
             attendu = _empreintes_snapshot(snapshot.lire(contrat, dernier, racine))
-            colonnes = etat_silver.colonnes_de_donnees(table)
+            colonnes = colonnes_du_contrat(table.schema().as_arrow())
             for decalage in (0, 1, 1799):  # à l'observation, une seconde après, une demi-heure
                 instant = archive.horodatage.replace(microsecond=0) + timedelta(seconds=decalage)
                 obtenu = _empreintes_silver(
@@ -204,6 +207,15 @@ def test_sql_lit_les_vues_et_refuse_tout_le_reste(entrepot: Path, tmp_path: Path
 
     with pytest.raises(duckdb.Error, match="locked"):
         con.execute("SET enable_external_access = true")
+    # Relecture 1, point 3 : la connexion elle-même refuse d'écrire, d'attacher et d'installer.
+    for enonce in (
+        f"COPY (SELECT 1) TO '{tmp_path / 'y.csv'}'",
+        f"ATTACH '{tmp_path / 'autre2.db'}'",
+        "INSTALL iceberg",
+    ):
+        with pytest.raises(duckdb.Error):
+            con.execute(enonce)
+    assert not (tmp_path / "y.csv").exists() and not (tmp_path / "autre2.db").exists()
     assert (
         sql.executer(con, "SELECT count(*) FROM presentations").num_rows == 1
     )  # la vue se lit encore
@@ -429,6 +441,112 @@ def test_verifier_voit_une_version_qui_manque(
     assert pres.invariants and "les bilans comptent" in pres.invariants[-1]
     dispo = next(e for e in rapport.entites if e.entite == DISPO)
     assert dispo.conforme
+
+
+def _avec(ligne: pa.Table, **valeurs: object) -> pa.Table:
+    """Une copie de la ligne Arrow avec quelques colonnes changées (typage du schéma gardé)."""
+    for nom, valeur in valeurs.items():
+        champ = ligne.schema.field(nom)
+        ligne = ligne.set_column(
+            ligne.schema.get_field_index(nom), champ, pa.array([valeur], type=champ.type)
+        )
+    return ligne
+
+
+def test_verifier_voit_chaque_invariant_du_scd2(
+    bronze_et_sortie: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """Relecture 1, point 2 : une version fautive ajoutée par un ``append`` direct fait tomber
+    chacun des quatre invariants SQL, avec son message et le code 2."""
+    racine, sortie = bronze_et_sortie
+    h = timedelta(hours=1)
+
+    def fautives(versions: pa.Table, cas: str) -> list[pa.Table]:
+        ouverte = versions.filter(pc.is_null(versions["fin_validite"])).slice(0, 1)
+        fermee = versions.filter(pc.is_valid(versions["fin_validite"])).slice(0, 1)
+        debut = ouverte["debut_validite"][0].as_py()
+        if cas == "ouvertes":  # la même identité ouverte deux fois
+            return [_avec(ouverte, id_ouverture="faux-1")]
+        if cas == "inversee":  # une fin avant le début
+            return [
+                _avec(
+                    ouverte,
+                    identite="fautive",
+                    id_ouverture="faux-2",
+                    fin_validite=debut - h,
+                    id_fermeture="faux-3",
+                )
+            ]
+        if cas == "chevauchement":  # deux versions fermées qui se recouvrent d'une heure
+            return [
+                _avec(
+                    ouverte,
+                    identite="fautive",
+                    id_ouverture="faux-4",
+                    fin_validite=debut + 2 * h,
+                    id_fermeture="faux-5",
+                ),
+                _avec(
+                    ouverte,
+                    identite="fautive",
+                    id_ouverture="faux-6",
+                    debut_validite=debut + h,
+                    fin_validite=debut + 3 * h,
+                    id_fermeture="faux-7",
+                ),
+            ]
+        return [_avec(fermee, identite="fautive")]  # les id d'une version existante, repris
+
+    attendus = {
+        "ouvertes": "1 identité(s) avec plusieurs versions ouvertes",
+        "inversee": "1 version(s) dont la fin ne suit pas le début",
+        "chevauchement": "1 chevauchement(s) de validités",
+        "ids": "identifiants d'événements répétés : 1 en ouverture, 1 en fermeture",
+    }
+    for cas, attendu in attendus.items():
+        dossier = tmp_path / cas
+        construction.construire(sortie, dossier, charger_tous(), [PRESENTATIONS])
+        table = Entrepot.ouvrir(dossier).table(PRESENTATIONS)
+        assert table is not None
+        for ligne in fautives(table.scan().to_arrow(), cas):
+            table.append(ligne)
+        rapport = verification.verifier(
+            Entrepot.ouvrir(dossier), sortie, racine, charger_tous(), [PRESENTATIONS]
+        )
+        assert rapport.code_sortie == 2, cas
+        invariants = rapport.entites[0].invariants
+        assert attendu in invariants, (cas, invariants)
+        if cas != "ouvertes":
+            assert not any("plusieurs versions ouvertes" in i for i in invariants), cas
+        assert "les bilans comptent" in invariants[-1], cas  # les comptes tombent aussi
+
+
+def test_entrepot_sous_un_chemin_a_espace_et_accent(
+    bronze_et_sortie: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """Relecture 1, bloquant 1 : tout est écrit sous le dossier demandé, rien dans un voisin
+    au nom encodé (``Mes%20projets%20%C3%A9``), et les chemins rendus existent."""
+    racine, sortie = bronze_et_sortie
+    parent = tmp_path / "Mes projets é"
+    dossier = parent / "lakehouse"
+    construction.construire(sortie, dossier, charger_tous(), ENTITES)
+    assert [p.name for p in tmp_path.iterdir()] == ["Mes projets é"]
+    assert [p.name for p in parent.iterdir()] == ["lakehouse"]
+    silver = Entrepot.ouvrir(dossier)
+    racine_uri = f"file://{dossier.resolve()}/"
+    chemins: list[str] = []
+    for entite in ENTITES:
+        table = silver.table(entite)
+        assert table is not None and table.metadata_location.startswith(racine_uri)
+        chemins += chemins_parquet(table)
+    assert chemins and all(Path(c).is_file() for c in chemins)
+    sur_disque = {str(p) for p in dossier.resolve().rglob("*.parquet")}
+    assert set(chemins) <= sur_disque  # le reste : les fichiers des snapshots précédents
+    assert verification.verifier(silver, sortie, racine, charger_tous(), ENTITES).code_sortie == 0
+    for mauvais in ("dièse#1", "quoi?"):  # lus comme la fin d'un URI : refus, rien de créé
+        with pytest.raises(SilverRefuse, match="chemin d'entrepôt refusé"):
+            Entrepot.creer(tmp_path / mauvais)
+        assert not (tmp_path / mauvais).exists()
 
 
 def test_bornes_et_etat_sur_une_table_vide(tmp_path: Path) -> None:

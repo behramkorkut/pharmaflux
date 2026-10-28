@@ -936,8 +936,8 @@ def silver_etat(
         str,
         typer.Option(
             "--a",
-            help="L'instant, UTC à la seconde : 2026-10-26T14:00:00Z, avec un décalage, ou une"
-            " date seule (minuit UTC).",
+            help="L'instant, UTC à la seconde, trois formes : 2026-10-26T14:00:00Z, avec un"
+            " décalage (…T16:00:00+02:00), ou une date seule (minuit UTC). Rien d'autre.",
         ),
     ],
     entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,

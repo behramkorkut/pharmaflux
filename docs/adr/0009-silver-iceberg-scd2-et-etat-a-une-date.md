@@ -52,7 +52,12 @@ SQLite, le seul catalogue persistant sans serveur), les tables dessous
 est écrit, puis la ligne SQLite mise à jour **si elle pointe encore vers
 l'ancien**. PyIceberg veut un entrepôt `file://` absolu, qu'il écrit dans
 chaque métadonnée : un entrepôt déplacé ne se relit pas, on le rebâtit
-(`make rebatir` pour la démo) ; aucune commande n'efface un entrepôt,
+(`make rebatir` pour la démo). Cet URI est le chemin **brut** derrière
+`file://`, pas `Path.as_uri()` : PyIceberg 0.12.0 prend le chemin de l'URI à
+la lettre, et l'encodage d'un espace ou d'un accent (`Mes%20projets`) lui
+ferait écrire dans un dossier voisin, hors de l'entrepôt (relecture 1). Un
+`#` ou un `?` dans le chemin, qu'il lirait comme la fin de l'URI, est refusé
+avant toute écriture ; aucune commande n'efface un entrepôt,
 `construire` refuse un dossier non vide et le nomme. Chaque table porte
 `pharmaflux.entite`, `pharmaflux.version_contrat`, `pharmaflux.origine`
 (`fichiers` ou `bus`) et, pour le bus, `pharmaflux.grappe` et
@@ -114,8 +119,10 @@ jamais sauté : la voie est de rebâtir le bus depuis les fichiers.
 
 **« État à une date »** (`silver etat`) : les versions dont
 `debut_validite <= a` et (`fin_validite` nulle ou `> a`), la règle entière
-poussée à PyIceberg ; instants en UTC à la seconde, refus d'un instant sans
-fuseau ou avec une fraction ; avant la première observation, aucune version ;
+poussée à PyIceberg ; instants en UTC à la seconde, sous trois formes
+seulement (`AAAA-MM-JJThh:mm:ssZ`, avec un décalage `±hh:mm`, ou une date
+seule qui vaut minuit UTC) : refus d'un instant sans fuseau, d'une fraction
+même nulle, d'une heure sans les secondes, de la forme compacte ; avant la première observation, aucune version ;
 après la dernière, les versions ouvertes ; code 0 et un message dans les deux
 cas. Le temps de la connaissance est **l'horodatage de l'archive**, à la
 seconde, pas celui du passage de collecte (l'archive du 27/10 est à

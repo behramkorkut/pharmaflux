@@ -129,6 +129,11 @@ SQL libre, en lecture seule (DuckDB sans aucun accès fichier, seul un
 ```bash
 uv run pharmaflux silver sql --entrepot data/demo/lakehouse \
   "SELECT count(*) AS versions, count(fin_validite) AS fermees FROM presentations"
+# 20 898 versions, 10 fermées : les suppressions des 24, 26 et 27/10
+uv run pharmaflux silver sql --entrepot data/demo/lakehouse \
+  "SELECT count(*) AS versions, count(fin_validite) AS fermees FROM infos_importantes"
+# 10 905 versions, 0 fermée : en neuf archives, dont quatre servies vides et écartées,
+# aucune information importante n'a jamais changé ni disparu
 ```
 
 Le même silver se construit depuis les fichiers d'événements

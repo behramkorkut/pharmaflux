@@ -59,6 +59,7 @@ class Entrepot:
             raise SilverRefuse(
                 f"{dossier} n'est pas vide : supprime-le ou choisis un autre --entrepot"
             )
+        uri_entrepot(dossier.resolve())  # un chemin refusé ne crée rien
         dossier.mkdir(parents=True, exist_ok=True)
         return cls(dossier, _catalogue(dossier))
 
@@ -110,12 +111,30 @@ class Entrepot:
         return cls.creer(dossier)
 
 
+CARACTERES_REFUSES = "#?"
+
+
+def uri_entrepot(absolu: Path) -> str:
+    """L'URI ``file://`` du dossier, **sans encodage** : PyIceberg 0.12.0 prend le chemin de
+    l'URI à la lettre (``urlparse`` sans décodage), si bien que ``Path.as_uri()`` l'aurait fait
+    écrire dans un dossier voisin ``Mes%20projets`` pour un clone sous ``Mes projets``. Un
+    ``#`` ou un ``?`` dans le chemin serait lu comme la fin de l'URI (et du chemin SQLite) :
+    refus avant d'écrire quoi que ce soit."""
+    chemin = str(absolu)
+    if any(c in chemin for c in CARACTERES_REFUSES) or not chemin.isprintable():
+        raise SilverRefuse(
+            f"chemin d'entrepôt refusé : {chemin!r} ; PyIceberg lirait un '#' ou un '?' comme"
+            " la fin de l'URI, choisis un dossier sans ces caractères"
+        )
+    return f"file://{chemin}"
+
+
 def _catalogue(dossier: Path) -> SqlCatalog:
     absolu = dossier.resolve()
     return SqlCatalog(
         "pharmaflux",
         uri=f"sqlite:///{absolu / NOM_CATALOGUE}",
-        warehouse=absolu.as_uri(),
+        warehouse=uri_entrepot(absolu),
     )
 
 

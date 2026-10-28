@@ -279,6 +279,12 @@ def test_lire_instant_utc_a_la_seconde() -> None:
     for mauvais, motif in (
         ("2026-10-26T14:00:00", "sans fuseau"),
         ("2026-10-26T14:00:00.5Z", "fraction"),
+        ("2026-10-26T14:00:00.000Z", "fraction"),  # relecture 1, point 4 : même nulle
+        ("2026-10-26T14:00Z", "illisible"),  # sans les secondes
+        ("2026-10-26 14:00:00Z", "illisible"),  # un espace à la place du T
+        ("20261026T140000Z", "illisible"),  # la forme compacte
+        ("2026-10-26T14:00:00+0200", "illisible"),  # décalage sans deux-points
+        ("2026-13-26T14:00:00Z", "illisible"),  # bien formé, mois impossible
         ("hier", "illisible"),
     ):
         with pytest.raises(SilverRefuse, match=motif):

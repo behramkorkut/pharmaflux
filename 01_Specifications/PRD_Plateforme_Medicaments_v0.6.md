@@ -2,8 +2,8 @@
 
 **Projet :** Pharmaflux — projet portfolio
 **Client :** client fictif — **direction santé d'une mutuelle** de taille moyenne (personas §3). Aucune donnée client : uniquement des données publiques réelles.
-**Version :** 0.5 _(après la mission 03 : écriture en flux, bus Redpanda local, schémas, file des messages en échec, vérification du bus)_
-**Date :** 27 octobre 2026 _(v0.1 : 23 octobre 2026 ; v0.2 à v0.4 : 26 octobre 2026)_
+**Version :** 0.6 _(après la mission 04 : jeu de démo figé, rejeu accéléré, `make demo` ; Lot 2 précisé pour la mission 05)_
+**Date :** 28 octobre 2026 _(v0.1 : 23 octobre 2026 ; v0.2 à v0.4 : 26 octobre 2026 ; v0.5 : 27 octobre 2026)_
 **Auteur :** Behram Korkut
 
 **Sources de données (publiques, réelles) :**
@@ -31,6 +31,7 @@
 | 3 | PRD v0.3 : Lot 0 soldé (§4) ; contrats de schéma v0 et règle de version (§6.2) ; **fichier servi vide** et garde-fou de volume (§6.1, §6.3, §9) ; points 2, 3, 4 et 7 du §10.2 tranchés par les ADR 0001 à 0004 ; annexe A avec colonne « Statut » ; annexe B : comportement attendu, archive citée, réponse avec réserve ; messages directs entre sessions pour la routine (annexe C) | Mission 01 (26/10/2026) : PR #2, contrôles des paliers 3 et 4, relecture 1, passages du 26/10 sur le VPS |
 | 4 | PRD v0.4 : avancement du Lot 1 (§4) ; forme canonique par type et forme déclarée vérifiée par une mesure (§6.2) ; valeur illisible gardée brute, et non rejetée (§6.2) ; schéma d'événement v1, identité d'une ligne sans clé unique, ordre des colonnes et des rangs, garde-fou de volume chiffré, premier snapshot (§6.3) ; reprise égale au rejeu complet (§7.1) ; mémoire de pointe au-dessus du plafond du VPS (§9) | Mission 02 (26/10/2026) : PR #3, ADR 0005 et 0006, contrôles des paliers 1 à 3, relectures 1 et 2 |
 | 5 | PRD v0.5 : avancement du Lot 1 (§4) ; bus précisé : topics, clé, valeur, compatibilité des schémas, rétention, file des messages en échec, vérification (§6.4) ; publication sans perte ni doublon d'identifiant, reprise (§7.1) ; jeu de démo figé dans le dépôt, rejeu accéléré dans l'ordre des observations, `make up` (§7.3) ; risque mémoire levé, rythme réel mesuré (§9) | Mission 03 (27/10/2026) : PR #4, ADR 0007, contrôles des paliers 1 à 3, relecture 1, contrôle final ; ordre de la mission 04 |
+| 6 | PRD v0.6 : Lot 1 fait sur le Mac, seul le VPS reste (§4) ; Lot 2 découpé en deux missions (§4) ; silver précisé : tables Iceberg par entité, historisation sur la date d'observation, « état à une date », vérification contre l'archive, consommateur du bus idempotent (§6.5) ; silver reconstruit identique depuis le bus ou depuis les fichiers d'événements (§7.1) ; mémoire de la démo mesurée (§9) | Mission 04 (27/10/2026) : PR #5, ADR 0008, contrôles des paliers 1 à 3, relecture 1, contrôle final, premier passage de la CI ; ordre de la mission 05 |
 
 ---
 
@@ -154,7 +155,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - Publication des événements dans Redpanda, contrats de schéma, file des messages en échec.
 - Idempotence et rejeu complet depuis le bronze.
 - `docker compose` local, CI (lint, types, tests unitaires et d'intégration).
-- _Avancement : la collecte est en service depuis la mission 00. La mission 02 (fusionnée le 26/10/2026) va du bronze aux événements : `pharmaflux evenements` normalise chaque archive, la compare au dernier snapshot retenu, et écrit les événements et un bilan par archive, avec rejeu complet et reprise. Elle ne tourne que sur le Mac. La mission 03 (fusionnée le 27/10/2026) écrit les événements en flux (474 Mo → 118 à 149 Mo résidents au rejeu complet), les publie dans un Redpanda local (`docker compose`, projet `pharmaflux`), avec un registre de schémas et une file des messages en échec, et vérifie le bus contre le dernier snapshot retenu ; la CI a un job d'intégration. Restent le rejeu accéléré avec un jeu de démo fourni (mission 04) et l'exécution sur le VPS, après le départ de la pré-production voisine (mi-novembre 2026)._
+- _Avancement : la collecte est en service depuis la mission 00. La mission 02 (fusionnée le 26/10/2026) va du bronze aux événements : `pharmaflux evenements` normalise chaque archive, la compare au dernier snapshot retenu, et écrit les événements et un bilan par archive, avec rejeu complet et reprise. Elle ne tourne que sur le Mac. La mission 03 (fusionnée le 27/10/2026) écrit les événements en flux (474 Mo → 118 à 149 Mo résidents au rejeu complet), les publie dans un Redpanda local (`docker compose`, projet `pharmaflux`), avec un registre de schémas et une file des messages en échec, et vérifie le bus contre le dernier snapshot retenu ; la CI a un job d'intégration. La mission 04 (fusionnée le 27/10/2026) fournit un jeu de démo figé dans le dépôt (`demo/archive`, 67 h de collecte réelle) et le rejeu accéléré : sur un clone neuf, `make up` puis `make demo` publient ce jeu dans l'ordre des observations en 4 min, et finissent par un `verifier-bus` conforme ; la CI lance la démo à chaque PR. **Le Lot 1 est fait sur le Mac.** Reste l'exécution sur le VPS, après le départ de la pré-production voisine (mi-novembre 2026)._
 
 ### Lot 2 — Lakehouse, historique et voyage dans le temps
 
@@ -162,6 +163,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - Historisation des référentiels (SCD2) : présentations, disponibilité, MITM, taux de remboursement, groupes génériques.
 - Requête « état au JJ/MM/AAAA HH:MM » et vérification contre le fichier archivé du même jour.
 - Contrôles de qualité automatiques (unicité des clés, référentiel CIS ↔ CIP13 cohérent, volumes attendus).
+- _Découpage (28/10/2026) : le Lot 2 commence sur le Mac, sans attendre le VPS. La **mission 05** construit le silver (un consommateur du bus, une table historisée par entité), la requête « état à une date » et sa vérification contre l'archive. La **mission 06** construira le gold (fiche médicament, disponibilité courante) et les contrôles de qualité._
 
 ### Lot 3 — Assistant gouverné en temps réel
 
@@ -256,8 +258,12 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 ### 6.5 Lakehouse et historique
 
 - Bronze (fichiers bruts), silver (données normalisées et historisées), gold (vues métier : fiche médicament, disponibilité courante, indicateurs).
-- SCD2 sur les référentiels : dates de validité début / fin.
-- Fonction « état à une date » sur toutes les vues gold.
+- **Silver** : une table Iceberg par entité, au format Parquet, dans un entrepôt local hors de git, interrogée avec DuckDB. Une ligne du silver est une **version** d'une ligne de la source : son identité (la clé métier, ou l'empreinte et le rang pour un fichier sans clé unique, §6.3), ses valeurs normalisées, et sa validité.
+- **SCD2 sur la date d'observation** : une version est valide de la date d'observation de l'événement qui l'ouvre (`creee`, `modifiee`) à celle de l'événement qui la ferme (`modifiee`, `supprimee`), borne de fin exclue. C'est le temps de la connaissance, celui de la question « que savait-on le JJ/MM à HH:MM ? » (§2.1). La date de la source voyage dans chaque version, sans servir d'axe. Un snapshot écarté par le garde-fou de volume ne produit aucun événement : l'état ne bouge pas, ce qui est juste.
+- **Les snapshots d'Iceberg ne sont pas l'axe du temps** : ils datent l'écriture, qui diffère de l'observation dès qu'on rejoue. Ils servent à l'audit et à la reprise, pas à « l'état à une date ».
+- **Fonction « état à une date »** : les versions valides à l'instant demandé. Elle sert sur le silver dès la mission 05, puis sur toutes les vues gold.
+- **Vérification contre l'archive** : pour chaque archive retenue, l'état au moment de son observation est égal, empreinte par empreinte, à son snapshot normalisé recalculé depuis le bronze. C'est l'indicateur « reconstruction de l'état à une date passée » du §2.2.
+- **Le consommateur du silver lit le bus** (§5, étape 4). Il est idempotent : il dédoublonne par identifiant d'événement, et une reprise après une coupure, à n'importe quel point, redonne le même silver.
 
 ### 6.6 Référentiels et correspondances
 
@@ -300,6 +306,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - Rejeu complet depuis le bronze à tout moment, avec un résultat identique **à l'octet**.
 - **Reprise égale au rejeu complet** : après une coupure à n'importe quel point, même pendant un rejeu complet, la reprise produit la même sortie que le rejeu complet. Pour cela, chaque fichier de sortie est écrit entier puis renommé, dans l'ordre événements, bilan, état, et l'état ne garde que des chemins d'archives : les snapshots se recalculent. Une reprise est refusée quand une version de contrat a changé.
 - Aucun événement perdu, aucun doublon ; vérifié par un test automatique. Côté bus : la publication reprend au premier fichier non accusé, donc un fichier peut être republié après une coupure ; ses messages en double portent le même identifiant, et les consommateurs les dédoublonnent. Un fichier déjà publié qui a changé fait refuser la publication.
+- **Le silver ne dépend pas du chemin** : construit en lisant le bus, ou en appliquant les fichiers d'événements, il a le même contenu, versions et validités comprises. Les fichiers d'événements restent la référence ; le bus et le silver se vérifient contre eux et contre l'archive.
 - Toute anomalie de source est visible (file des messages en échec, tableau de bord), jamais absorbée.
 
 ### 7.2 Fraîcheur
@@ -354,8 +361,8 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 |---|---|---|---|
 | **Format d'un fichier source modifié sans préavis** | Élevé | Moyenne | Contrats de schéma ; collecte qui s'arrête proprement et alerte ; incident documenté |
 | **Fichier servi vide ou tronqué par la source**, sans erreur HTTP (observé le 26/10/2026) | Élevé | Faible | Archivé tel quel ; garde-fou de volume avant toute comparaison (§6.3) ; jamais d'événement `supprimee` en masse |
-| **Mémoire de pointe au-dessus du plafond du VPS** : 474 Mo au rejeu complet, contre 256 Mo pour l'unité systemd (mission 02) | Élevé | **Levé pour la chaîne** par la mission 03 : 118 à 149 Mo en flux ; `verifier-bus` monte à 190-230 Mo, sans cible | Plafond de l'unité gardé, au service de la pré-production voisine ; mesure à refaire sur le VPS, avec le bus, avant d'y lancer autre chose que la collecte |
-| **Rythme réel de mise à jour faible** (peu d'événements à montrer) : en 45 heures (24-26/10/2026), en dehors de l'état initial, un seul fichier a changé, deux fois, plus un fichier servi vide | Élevé | **Avérée** | Archivage dès le Lot 0 ; mode rejeu accéléré ; la démo montre ce rythme et l'incident tels quels ; mesure honnête publiée ; l'historique s'allonge chaque heure |
+| **Mémoire de pointe au-dessus du plafond du VPS** : 474 Mo au rejeu complet, contre 256 Mo pour l'unité systemd (mission 02) | Élevé | **Levé pour la chaîne** par la mission 03 : 118 à 149 Mo en flux ; `verifier-bus` monte à 190-230 Mo, sans cible. Mission 04 : `demo rejouer` (rejeu et publication du jeu de démo) 145 Mo résidents ; `evenements` de 0,7 à 35,8 Mo par entité sous `tracemalloc` | Plafond de l'unité gardé, au service de la pré-production voisine ; mesure à refaire sur le VPS, avec le bus, avant d'y lancer autre chose que la collecte. Le silver (mission 05) apporte PyArrow : sa mémoire se mesure avant toute idée de le faire tourner sur le VPS |
+| **Rythme réel de mise à jour faible** (peu d'événements à montrer) : en 45 heures (24-26/10/2026), en dehors de l'état initial, un seul fichier a changé, deux fois, plus un fichier servi vide | Élevé | **Avérée** | Archivage dès le Lot 0 ; mode rejeu accéléré (mission 04 : 67 h 35 min observées rejouées en 4 min 03 s) ; la démo montre ce rythme et l'incident tels quels ; mesure honnête publiée ; l'historique s'allonge chaque heure |
 | **Sens d'une disparition de ligne ambigu** (remise à disposition ? arrêt ?) | Moyen | Élevée | ADR 0003 « proposé » (fin de publication, pas remise), revu au plus tard le 07/12/2026 sur les disparitions observées ; libellés prudents dans l'assistant |
 | Granularités incompatibles (dépense annuelle, disponibilité quotidienne) | Moyen | Certaine | Indicateur « dépense exposée » défini et documenté avec ses limites |
 | Correspondance BDPM ↔ Open Medic incomplète | Moyen | Moyenne | Taux mesuré et affiché ; non-correspondances listées |

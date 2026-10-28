@@ -420,3 +420,34 @@ pas sur le Mac. Correctif dans les tests seuls : `texte_nu` (codes ANSI,
 cadre, blancs) devant toute assertion sur le texte d'une erreur à code 2 ;
 suite complète avec `GITHUB_ACTIONS=true` et balayage de la longueur du
 dossier temporaire de 0 à 60, verts.
+
+**Mission 05, correspondance des hashes de `main`** (28/10). Après la
+fusion de la mission 04 (PR #5, `1af4ef9`), les trois commits suivants de
+`main` ont été réécrits par un rebase : `aceb5ba` → `38589dc` (addendum 1
+de la mission 04), `714b673` → `5167314` (`git count-objects` permis en
+lecture à tous les rôles), `9ad4b14` → `5c3fe5a` (`make --version`, seul,
+permis). Les documents de la mission 04 citent les anciens.
+
+**Mission 05, §0 et palier 1** (28/10). Ordre : le silver (Lot 2, PRD
+v0.6 §6.5), une table Iceberg par entité, versions SCD2 sur la date
+d'observation, « état à une date », vérification contre l'archive, puis un
+consommateur du bus (palier 2) et `make silver` (palier 3). §0 (`7103e8b`) :
+mesures sur une maquette hors dépôt (PyIceberg 0.12.0, PyArrow 26.0.0,
+DuckDB 1.5.6, catalogue SQL sur SQLite) ; silver du jeu en 6,5 s, 18/18
+conforme, mémoire de 276 à 610 Mo selon l'allocateur d'Arrow ; la copie du
+Mac est le jeu de démo. Addendum 1 (`b5b9420`) : contraintes de versions
+(`constraint-dependencies`) au lieu d'un `exclude-newer` global, `silver
+sql` en lecture seule verrouillée ou rien, `pyarrow-stubs`, identité en clé
+JSON, anomalies en liste de structures, lots de 10 000, seuil d'alerte
+512 Mo, le silver ne vise pas le VPS en v1. **Palier 1** : paquet
+`pharmaflux.silver` (`entrepot`, `schema`, `expressions`, `application`,
+`construction`, `etat`, `sql`, `comparaison`, `verification`) et les
+commandes `silver construire`, `etat`, `sql`, `comparer`, `verifier` ;
+imports paresseux (testés), allocateur système d'Arrow posé avant le
+premier import de PyArrow ; DuckDB sans aucun accès fichier (jeux Arrow,
+`enable_external_access = false`, verrou, `SELECT` seul) après qu'un
+`COPY … TO` dans le dossier autorisé a passé sur la maquette ; 24 paquets
+ajoutés au verrou, tous publiés au 14/10/2026 ou avant, aucun paquet
+existant changé ; 490 tests (20 nouveaux). Sur le jeu : `construire` 9,7 s
+et 297 Mo, `verifier` 22/22 conforme en 10,2 s et 342 Mo, `etat` 182 Mo,
+`sql` 173 Mo, `comparer` 432 Mo.

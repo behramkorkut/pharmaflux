@@ -7,7 +7,10 @@ requires-python = ">=3.12"
 authors = [{ name = "Behram Korkut" }]
 dependencies = [
     "confluent-kafka>=2.16.0",
+    "duckdb>=1.5.6",
     "httpx>=0.28",
+    "pyarrow>=26.0.0",
+    "pyiceberg[sql-sqlite]>=0.12.0",
     "typer>=0.15",
 ]
 
@@ -21,6 +24,7 @@ pharmaflux = "pharmaflux.cli:application"
 dev = [
     "jsonschema>=4.26.0",
     "mypy>=1.16",
+    "pyarrow-stubs>=20.0.0.20260819",
     "pytest>=8.3",
     "ruff>=0.12",
 ]
@@ -28,6 +32,17 @@ dev = [
 [build-system]
 requires = ["uv_build>=0.9,<0.11"]
 build-backend = "uv_build"
+
+[tool.uv]
+# Mission 05 (addendum 1) : un paquet ajouté ou mis à jour a au moins deux semaines le jour
+# du verrou (28/10/2026), sans toucher au reste de uv.lock. Chaque contrainte dit pourquoi.
+constraint-dependencies = [
+    "duckdb<2",                 # 2.0.0 du 21/10/2026 a sept jours ; 1.5.6 du 28/09
+    "sqlalchemy>=2.0.54,<2.0.55",  # branche 2.1 trop neuve (24/09) ; 2.0.55 du 16/10 ; 2.0.54 du 15/09
+    "cachetools<7.2.2",         # 7.2.2 à 7.2.6 publiées du 15 au 26/10 (transitif de pyiceberg)
+    "python-dateutil<3",        # 3.0.0 du 21/10 (transitif de pyiceberg) ; 2.9.0 de 2024
+    "tzdata<2026.6",            # 2026.6 du 28/10 (transitif de pyiceberg) ; 2026.5 du 03/10
+]
 
 [tool.ruff]
 line-length = 100

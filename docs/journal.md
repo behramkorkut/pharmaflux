@@ -475,3 +475,20 @@ d'intégration sur le courtier. Démonstration sur le bus de la démo du Mac
 (grappe `redpanda.990d5d4e-…`) : 164 106 messages en 12,9 s et 357 Mo,
 `comparer` identique au silver des fichiers, `verifier` 22/22 conforme ;
 seconde exécution 0,3 s, rien de nouveau. 498 tests.
+
+**Mission 05, palier 3** (28/10). `make silver` (après `make demo` :
+`silver consommer` vers `data/demo/lakehouse`, puis `silver verifier`
+contre `demo/archive`, qui a le dernier mot) et `make etat` (`ENTITE`,
+`A`, `ETAT_OPTIONS`) ; l'étape `make silver` dans le job `integration` de
+la CI, après `make demo` ; ADR 0009 ; la section « Le silver » du README
+avec les deux exemples réels du jeu (une présentation présente à 23:17:11
+et absente à 23:17:12 le 24/10, les informations importantes inchangées
+le 26/10 juste après 14:17:39) ; `CONTEXTE.md`. beko a enchaîné `make
+rebatir`, `make demo`, `make silver` sur le Mac : 164 106 messages en
+14,4 s, 22/22 archives conformes en 10,4 s, mêmes comptes et positions
+qu'au palier 2. D.1 tranché par un entrepôt témoin construit avant le
+`down -v` et relu après : l'identifiant de grappe change
+(`redpanda.990d5d4e-…` → `redpanda.f614c4ee-…`), l'avertissement sort, et
+le contrôle des identifiants conclut « rien de nouveau », parce que les
+`id` des événements sont des sha256 de leur contenu et que `make demo`
+republie le même jeu dans le même ordre. 498 tests.

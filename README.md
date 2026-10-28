@@ -89,6 +89,53 @@ message qui renvoie à `make rebatir` : un événement publié ne se réécrit p
 démo tourne en CI sans pause (`make demo DEMO_OPTIONS=--sans-pause`). Le
 détail des choix est dans l'[ADR 0008](docs/adr/0008-rejeu-accelere-et-jeu-de-demo.md).
 
+### Le silver : l'histoire interrogeable, et vérifiée contre l'archive
+
+Après `make demo`, une troisième commande construit le **silver** (mission 05,
+[ADR 0009](docs/adr/0009-silver-iceberg-scd2-et-etat-a-une-date.md)) : une
+table Iceberg par entité sous `data/demo/lakehouse`, où chaque ligne est une
+**version** datée d'une ligne de la source, valable de la date d'observation
+qui l'ouvre à celle qui la ferme (SCD2 sur le temps de la connaissance, borne
+de fin exclue). Le consommateur lit le bus, garde sa position dans le commit
+Iceberg lui-même, et reconnaît les doublons ; puis la vérification recalcule
+le snapshot de chaque archive retenue depuis le bronze et le compare,
+empreinte par empreinte, à l'état du silver au moment de son observation.
+
+```bash
+make silver  # consommer le bus → data/demo/lakehouse, puis silver verifier : 22/22 conforme
+```
+
+Deux questions sur le jeu, « que savait-on à cet instant ? », avec le temps
+de la connaissance à la seconde : l'horodatage d'une archive est celui de
+son téléchargement (`20261024T231712Z`), pas celui du passage de collecte.
+
+```bash
+# Une présentation déclarée en arrêt de commercialisation disparaît le 24/10 à 23:17:12 :
+# encore là une seconde avant (une version ouverte), plus là à l'instant de l'archive.
+make etat ENTITE=bdpm.presentations A=2026-10-24T23:17:11Z \
+  ETAT_OPTIONS="--ou code_cip13=3400938844948 --format tableau --colonne code_cis --colonne etat_commercialisation --colonne fin_validite"
+make etat ENTITE=bdpm.presentations A=2026-10-24T23:17:12Z ETAT_OPTIONS="--ou code_cip13=3400938844948"
+
+# Le 26/10 juste après 14:17:39, le fichier des informations importantes a été servi vide
+# et écarté par le garde-fou : l'état n'a pas bougé, 10 905 versions, toutes ouvertes.
+make etat ENTITE=bdpm.infos_importantes A=2026-10-26T14:17:39Z ETAT_OPTIONS="--format csv --colonne code_cis --colonne fin_validite"
+```
+
+La première commande rend une version (`fin_validite` à `2026-10-24T23:17:12Z`),
+la deuxième aucune, la troisième 10 905 lignes sans fin de validité. Et du
+SQL libre, en lecture seule (DuckDB sans aucun accès fichier, seul un
+`SELECT` passe) :
+
+```bash
+uv run pharmaflux silver sql --entrepot data/demo/lakehouse \
+  "SELECT count(*) AS versions, count(fin_validite) AS fermees FROM presentations"
+```
+
+Le même silver se construit depuis les fichiers d'événements
+(`uv run pharmaflux silver construire --sortie data/demo --entrepot <dossier>`),
+et `silver comparer` montre qu'il est identique à celui du bus : le silver ne
+dépend pas du chemin. `make rebatir` efface aussi `data/demo/lakehouse`.
+
 ### Les commandes
 
 Prérequis : [`uv`](https://docs.astral.sh/uv/). Python 3.12 est installé
@@ -112,6 +159,12 @@ uv run pharmaflux verifier-bus       # relit le bus et le compare à la référe
 uv run pharmaflux suivre             # les événements publiés au fil de l'eau, une ligne par message
 uv run pharmaflux demo verifier      # le jeu de démo demo/archive : manifeste, sha256, rien d'autre
 uv run pharmaflux demo rejouer       # le jeu rejoué sur le bus, dans l'ordre observé, en accéléré
+uv run pharmaflux silver consommer   # le bus → le silver Iceberg (une table par entité), position dans le commit
+uv run pharmaflux silver construire  # le même silver, depuis les fichiers d'événements
+uv run pharmaflux silver etat        # les versions valides à un instant (--entite, --a, --ou, --format)
+uv run pharmaflux silver sql         # du SQL DuckDB sur le silver, en lecture seule
+uv run pharmaflux silver comparer    # deux entrepôts : mêmes versions, mêmes validités
+uv run pharmaflux silver verifier    # l'état à chaque observation contre le snapshot recalculé
 ```
 
 Un passage télécharge la page de téléchargement de la BDPM et ses onze

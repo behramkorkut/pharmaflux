@@ -29,6 +29,7 @@ PROP_ENTITE = "pharmaflux.entite"
 PROP_VERSION_CONTRAT = "pharmaflux.version_contrat"
 PROP_ORIGINE = "pharmaflux.origine"
 PROP_POSITIONS = "pharmaflux.positions"  # consommateur du bus (mission 05, palier 2)
+PROP_GRAPPE = "pharmaflux.grappe"  # identifiant de grappe du courtier qui a construit la table
 ORIGINE_FICHIERS = "fichiers"
 ORIGINE_BUS = "bus"
 
@@ -82,7 +83,9 @@ class Entrepot:
         except (NoSuchTableError, NoSuchNamespaceError):
             return None
 
-    def creer_table(self, contrat: Contrat, origine: str) -> Table:
+    def creer_table(
+        self, contrat: Contrat, origine: str, proprietes: dict[str, str] | None = None
+    ) -> Table:
         """La table d'une entité, vide, au schéma du contrat ; refusée si elle existe."""
         source, nom = identifiant_table(contrat.identifiant)
         self.catalogue.create_namespace_if_not_exists(source)
@@ -95,8 +98,16 @@ class Entrepot:
                 PROP_ENTITE: contrat.identifiant,
                 PROP_VERSION_CONTRAT: contrat.version,
                 PROP_ORIGINE: origine,
+                **(proprietes or {}),
             },
         )
+
+    @classmethod
+    def ouvrir_ou_creer(cls, dossier: Path) -> Entrepot:
+        """L'entrepôt du dossier s'il existe, sinon un neuf (le dossier doit être vide)."""
+        if (dossier / NOM_CATALOGUE).is_file():
+            return cls.ouvrir(dossier)
+        return cls.creer(dossier)
 
 
 def _catalogue(dossier: Path) -> SqlCatalog:

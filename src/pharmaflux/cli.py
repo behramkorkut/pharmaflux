@@ -12,8 +12,8 @@ les événements publiés, au fil de l'eau, une ligne par message. ``demo
 fabriquer`` / ``demo verifier`` : le jeu de démo figé ``demo/archive`` ;
 ``demo rejouer`` : le jeu rejoué sur le bus, dans l'ordre global des
 observations, à la cadence accélérée. ``silver construire`` / ``etat`` /
-``sql`` / ``comparer`` / ``verifier`` : le silver Iceberg (mission 05), dont
-les bibliothèques ne s'importent que dans ces commandes.
+``sql`` / ``comparer`` / ``verifier`` / ``consommer`` : le silver Iceberg
+(mission 05), dont les bibliothèques ne s'importent que dans ces commandes.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from importlib.metadata import version as version_du_paquet
 from pathlib import Path
-from typing import Annotated, TextIO
+from typing import TYPE_CHECKING, Annotated, TextIO
 
 import httpx
 import typer
@@ -65,6 +65,9 @@ from pharmaflux.evaluation.verification import formater_bilan, verifier_jeu
 from pharmaflux.evenements import rejeu
 from pharmaflux.silver import ENTREPOT_PAR_DEFAUT, LOT_PAR_DEFAUT, Format, SilverRefuse
 
+if TYPE_CHECKING:  # le silver ne s'importe que dans ses commandes (K.1)
+    from pharmaflux.silver.consommation import LecteurSilver
+
 VARIABLE_RACINE = "PHARMAFLUX_DATA"
 QUESTIONS_PAR_DEFAUT = Path("evaluation/questions-reference-v0.toml")
 SORTIE_PAR_DEFAUT = Path("data/evenements")  # ignoré par git ; jamais sous la racine de l'archive
@@ -79,6 +82,7 @@ fabriquer_suiveur: Callable[[str], suivi.Suiveur | None] = lambda _courtier: Non
 fabriquer_transport_registre: Callable[[], httpx.BaseTransport | None] = (  # noqa: E731
     lambda: None
 )
+fabriquer_lecteur_silver: Callable[[str], LecteurSilver | None] = lambda _courtier: None  # noqa: E731
 
 application = typer.Typer(
     name="pharmaflux",
@@ -1127,3 +1131,59 @@ def silver_verifier(
         f" durée : {rapport.duree_s:.1f} s"
     )
     raise typer.Exit(code=rapport.code_sortie)
+
+
+@silver.command("consommer")
+def silver_consommer(
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    courtier: OptionCourtier = None,
+    fichier: OptionFichierSilver = None,
+    lot: Annotated[
+        int, typer.Option("--lot", help="Messages par commit Iceberg.", show_default=True)
+    ] = LOT_PAR_DEFAUT,
+) -> None:
+    """Lit le bus et alimente le silver : chaque topic depuis la position gardée dans sa table.
+
+    Toutes les partitions à la fois, jusqu'aux offsets de fin lus au départ ;
+    un commit Iceberg par lot, qui porte la position ; les doublons sont
+    reconnus à leur identifiant. L'entrepôt est créé s'il n'existe pas, et
+    repris sinon. Codes : 1 courtier injoignable ; 2 refus (silver construit
+    depuis les fichiers, bus rebâti ou vide, message qui n'est pas un
+    événement v1, autre version de contrat) : rien n'est écrit.
+    """
+    configurer_journal(sys.stderr)
+    from pharmaflux.silver import consommation
+    from pharmaflux.silver.entrepot import allocateur_systeme
+
+    allocateur_systeme()
+    contrats = charger_tous()
+    selection = _selection_contrats(fichier, None, contrats)
+    adresse = _courtier(courtier)
+    lecteur = fabriquer_lecteur_silver(adresse) or LecteurKafka(adresse)
+    try:
+        rapport = consommation.consommer(
+            lecteur, entrepot, contrats, selection, lot=lot, journal=_journal_silver
+        )
+    except CourtierInjoignable as exc:
+        typer.echo(f"consommation interrompue : {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except SilverRefuse as exc:
+        typer.echo(f"consommation refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    finally:
+        if isinstance(lecteur, LecteurKafka):
+            lecteur.close()
+    for avertissement in rapport.avertissements:
+        typer.echo(f"AVERTISSEMENT : {avertissement}", err=True)
+    for entite_ in rapport.resumes:
+        positions = ", ".join(f"p{p} → {v.suivant}" for p, v in sorted(entite_.positions.items()))
+        notes = f" ; {' ; '.join(entite_.notes)}" if entite_.notes else ""
+        typer.echo(
+            f"{entite_.identifiant:28} {entite_.messages} message(s), {entite_.doublons}"
+            f" doublon(s), {entite_.ouvertures} ouverture(s), {entite_.fermetures} fermeture(s),"
+            f" {entite_.commits} commit(s) ; positions : {positions or 'aucune'}{notes}"
+        )
+    typer.echo(
+        f"entrepôt : {rapport.entrepot} ; grappe : {rapport.grappe or 'inconnue'} ;"
+        f" {rapport.messages} message(s) ; durée : {rapport.duree_s:.1f} s"
+    )

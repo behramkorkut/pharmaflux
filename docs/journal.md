@@ -451,3 +451,27 @@ ajoutés au verrou, tous publiés au 14/10/2026 ou avant, aucun paquet
 existant changé ; 490 tests (20 nouveaux). Sur le jeu : `construire` 9,7 s
 et 297 Mo, `verifier` 22/22 conforme en 10,2 s et 342 Mo, `etat` 182 Mo,
 `sql` 173 Mo, `comparer` 432 Mo.
+
+**Mission 05, palier 2** (28/10). Le consommateur du bus :
+`pharmaflux silver consommer` lit chaque topic depuis la position gardée
+dans les propriétés de sa table (`pharmaflux.positions` : par partition,
+l'offset suivant et l'`id` du dernier message appliqué), toutes les
+partitions à la fois, jusqu'aux offsets de fin lus au départ ; un commit
+Iceberg par lot, qui porte la position (aucune fenêtre entre le silver et
+sa position), la plage d'offsets dans le résumé du snapshot ; doublons
+reconnus à l'`id`. Refus : silver des fichiers, position hors des bornes,
+message à `offset − 1` qui ne porte pas l'`id` gardé (bus rebâti
+autrement), autre version de contrat, message qui n'est pas du v1 (jamais
+sauté), bus vide ; identifiant de grappe différent = avertissement.
+`LecteurKafka` gagne `identifiant_grappe`, `bornes`, `derniers_messages`
+(consommateur dédié, `fetch.wait.max.ms` 50 : la relecture d'un message en
+fin de partition coûtait une seconde avec le consommateur de `lire`),
+`lire_depuis`. Tests sur un bus simulé à trois partitions réparties par la
+clé : égalité avec le silver des fichiers et avec l'archive, reprise après
+publication en deux fois et après doublons, coupures pendant la lecture, entre
+le `metadata.json` et SQLite (cale sur `SqlCatalog._write_metadata`,
+PyIceberg 0.12.0) et après le commit, refus, commande ; deux tests
+d'intégration sur le courtier. Démonstration sur le bus de la démo du Mac
+(grappe `redpanda.990d5d4e-…`) : 164 106 messages en 12,9 s et 357 Mo,
+`comparer` identique au silver des fichiers, `verifier` 22/22 conforme ;
+seconde exécution 0,3 s, rien de nouveau. 498 tests.

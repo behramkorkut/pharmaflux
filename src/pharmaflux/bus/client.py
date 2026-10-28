@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -374,6 +374,124 @@ class LecteurKafka:
             raise CourtierInjoignable(f"suivi de {', '.join(topics)} : {_texte(exc)}") from exc
         finally:
             self._consommateur.unassign()
+
+    # --- Le consommateur du silver (mission 05, palier 2) ---------------------------------------
+    # Lire depuis une position par partition, jusqu'aux offsets de fin lus au départ ; relire un
+    # seul message ; les bornes d'un topic ; l'identifiant de grappe. Sans groupe actif, sans
+    # commit : la position vit dans le commit Iceberg (ADR 0009).
+
+    def identifiant_grappe(self) -> str | None:
+        """L'identifiant de grappe du courtier (``redpanda.<uuid>``), None s'il ne le dit pas."""
+        try:
+            resultat = self._admin.describe_cluster(request_timeout=self.delai_s).result()
+        except KafkaException:
+            return None
+        identifiant = resultat.cluster_id
+        return str(identifiant) if identifiant else None
+
+    def bornes(self, nom: str) -> dict[int, tuple[int, int]]:
+        """Partition → (premier offset présent, offset de fin), pour toutes les partitions."""
+        try:
+            metadonnees = self._admin.list_topics(timeout=self.delai_s)
+            topic = metadonnees.topics.get(nom)
+            if topic is None or topic.error is not None:
+                raise CourtierInjoignable(f"{nom} : topic absent du courtier")
+            bornes = {}
+            for partition in sorted(topic.partitions):
+                debut, fin = self._consommateur.get_watermark_offsets(
+                    TopicPartition(nom, partition), timeout=self.delai_s
+                )
+                bornes[partition] = (debut, fin)
+            return bornes
+        except KafkaException as exc:
+            raise CourtierInjoignable(f"bornes de {nom} : {_texte(exc)}") from exc
+
+    def derniers_messages(
+        self, nom: str, offsets: Mapping[int, int]
+    ) -> dict[int, MessageLu | None]:
+        """Le message de chaque partition à l'offset donné, None s'il n'y est pas (ou plus).
+
+        Un consommateur à part, qui n'attend pas le courtier (``fetch.wait.max.ms``
+        court) : relire un message par partition en fin de topic coûtait une
+        seconde par partition avec le consommateur de ``lire``.
+        """
+        bornes = self.bornes(nom)
+        resultat: dict[int, MessageLu | None] = {p: None for p in offsets}
+        attendus = {
+            p: o for p, o in offsets.items() if p in bornes and bornes[p][0] <= o < bornes[p][1]
+        }
+        if not attendus:
+            return resultat
+        consommateur = Consumer(
+            {
+                "bootstrap.servers": self.courtier,
+                "group.id": f"pharmaflux-controle-{uuid.uuid4().hex[:8]}",  # jamais commis
+                "enable.auto.commit": False,
+                "fetch.wait.max.ms": 50,
+                "queued.max.messages.kbytes": 1_024,
+            }
+        )
+        try:
+            consommateur.assign([TopicPartition(nom, p, o) for p, o in sorted(attendus.items())])
+            restants = dict(attendus)
+            while restants:
+                message = consommateur.poll(self.delai_s)
+                if message is None:
+                    raise CourtierInjoignable(
+                        f"{nom} : rien reçu en {self.delai_s} s pour les offsets {sorted(restants)}"
+                    )
+                erreur = message.error()
+                if erreur is not None:
+                    raise CourtierInjoignable(f"{nom} : {erreur.str()}")
+                numero, lu = message.partition(), message.offset()
+                assert numero is not None and lu is not None
+                attendu = restants.get(numero)
+                if attendu is None or lu < attendu:
+                    continue
+                resultat[numero] = _message_lu(nom, message, numero, lu) if lu == attendu else None
+                del restants[numero]
+        except KafkaException as exc:
+            raise CourtierInjoignable(f"lecture de {nom} : {_texte(exc)}") from exc
+        finally:
+            consommateur.close()
+        return resultat
+
+    def lire_depuis(
+        self, nom: str, debuts: Mapping[int, int], fins: Mapping[int, int]
+    ) -> Iterator[MessageLu]:
+        """Les messages de chaque partition depuis ``debuts`` (inclus) jusqu'à ``fins`` (exclus).
+
+        Toutes les partitions à la fois, chacune dans l'ordre de ses offsets ;
+        ce qui est publié après le départ n'est pas lu. Une partition dont le
+        début atteint la fin n'est pas assignée.
+        """
+        restantes = {p: fins[p] for p in fins if debuts.get(p, 0) < fins[p]}
+        if not restantes:
+            return
+        try:
+            self._consommateur.assign(
+                [TopicPartition(nom, p, debuts.get(p, 0)) for p in sorted(restantes)]
+            )
+            while restantes:
+                message = self._consommateur.poll(self.delai_s)
+                if message is None:
+                    raise CourtierInjoignable(
+                        f"{nom} : rien reçu en {self.delai_s} s, partitions encore attendues"
+                        f" {sorted(restantes)}"
+                    )
+                erreur = message.error()
+                if erreur is not None:
+                    raise CourtierInjoignable(f"{nom} : {erreur.str()}")
+                numero, offset = message.partition(), message.offset()
+                assert numero is not None and offset is not None
+                if numero not in restantes or offset >= restantes[numero]:
+                    continue  # publié pendant la lecture : hors de la photo prise au départ
+                if offset + 1 >= restantes[numero]:
+                    restantes.pop(numero, None)
+                yield _message_lu(nom, message, numero, offset)
+            self._consommateur.unassign()
+        except KafkaException as exc:
+            raise CourtierInjoignable(f"lecture de {nom} : {_texte(exc)}") from exc
 
     def close(self) -> None:
         self._consommateur.close()

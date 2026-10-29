@@ -1,17 +1,21 @@
 #!/bin/sh
 # Les prérequis de la démo Pharmaflux (mission 04), sans rien télécharger ni démarrer.
 #
-# Usage : sh infra/demo/prerequis.sh [console]
+# Usage : sh infra/demo/prerequis.sh [console | index MODELE]
 #   console   vérifie aussi l'image de la console (profil « console » du fichier compose),
 #             pour « make console » ; sans lui, seules les images des services sans profil,
-#             celles que « make up » et « make demo » lancent.
+#             celles que « make up » et « make demo » lancent (Redpanda et Qdrant).
+#   index     vérifie aussi, sans réseau, les fichiers épinglés du modèle MODELE (présents sous
+#             PHARMAFLUX_MODELES, sha256 justes), pour « make index » ; rien si MODELE est
+#             « test », l'encodeur de test de la CI (mission 07).
 #
-# Quatre contrôles, chacun avec le geste à faire s'il échoue :
+# Quatre contrôles (cinq avec « index »), chacun avec le geste à faire s'il échoue :
 #   1. docker est installé et le démon répond ;
 #   2. Compose lit docker-compose.yml (le bloc « configs: content: » demande la 2.23.1 au moins) ;
 #   3. les images que la cible lance sont déjà présentes : « make up » passe --pull never, le
 #      premier téléchargement est un geste à part (beko) ;
-#   4. uv est installé.
+#   4. uv est installé ;
+#   5. avec « index », les fichiers du modèle sont en place et justes.
 # La liste des images vient de « docker compose config --images », qui résout les profils
 # lui-même (Compose 5.1.4 sur le Mac : vérifié, la console n'y figure que sous --profile console).
 # PHARMAFLUX_IMAGES remplace cette liste (noms séparés par des espaces) : pour montrer le refus
@@ -22,10 +26,13 @@
 set -eu
 
 profil=""
+modele=""
 if [ "${1:-}" = "console" ]; then
     profil="--profile console"
+elif [ "${1:-}" = "index" ] && [ -n "${2:-}" ]; then
+    modele="$2"
 elif [ -n "${1:-}" ]; then
-    echo "usage : $0 [console]" >&2
+    echo "usage : $0 [console | index MODELE]" >&2
     exit 2
 fi
 
@@ -74,6 +81,13 @@ if command -v uv >/dev/null 2>&1; then
     echo "uv : $(uv --version 2>/dev/null || echo présent)"
 else
     refus "uv introuvable" "installe uv : https://docs.astral.sh/uv/"
+fi
+
+if [ -n "$modele" ] && [ "$modele" != "test" ] && command -v uv >/dev/null 2>&1; then
+    if ! uv run pharmaflux index modele verifier "$modele"; then
+        refus "fichiers du modèle $modele absents ou altérés" \
+            "beko les télécharge une fois : uv run pharmaflux index modele installer $modele"
+    fi
 fi
 
 if [ "$echec" -ne 0 ]; then

@@ -1,7 +1,7 @@
 # Pharmaflux : la démo en deux commandes, « make up » puis « make demo » (mission 04, ADR 0008),
 # puis « make silver » pour le silver Iceberg et sa vérification contre l'archive (mission 05, ADR 0009),
 # puis « make gold » pour les contrôles de qualité et les questions recalculées depuis le gold
-# (mission 06, ADR 0010).
+# (mission 06, ADR 0010), puis « make index » pour l'index de l'assistant (mission 07, ADR 0011).
 #
 # GNU Make 3.81 (celui des outils de ligne de commande du Mac) suffit : recettes en tabulations,
 # .PHONY, « ?= », rien de 3.82 ni de 4.x. Les agents Claude Code ne lancent que « make -n <cible> » ;
@@ -25,9 +25,13 @@ ETAT_OPTIONS ?=
 CIS ?= 65999556
 FICHE_A = $(if $(filter command line,$(origin A)),--a $(A),)
 FICHE_OPTIONS ?= --format texte
+# make index [INDEX_MODELE=test] : le modèle épinglé par défaut ; « test » pour l'encodeur de test
+# (la CI, sans téléchargement).
+INDEX_MODELE ?= e5-small-int8
+INDEX_OPTIONS = --entrepot $(ENTREPOT_DEMO) --modele $(INDEX_MODELE)
 
 .PHONY: help prerequis up demo verifier suivre console down rebatir verifications silver etat \
-	gold fiche
+	gold fiche index
 
 help:
 	@echo "make up             vérifie les prérequis (images déjà présentes) et démarre le bus"
@@ -40,12 +44,16 @@ help:
 	@echo "                    ETAT_OPTIONS=\"--ou code_cip13=… --format tableau\""
 	@echo "make gold           après make silver : les contrôles de qualité du gold (code 2 si un bloquant"
 	@echo "                    tombe), puis les 25 questions recalculées depuis le gold, qui doivent concorder"
+	@echo "make index          après make gold : l'index de l'assistant ; construit en entier s'il n'en existe"
+	@echo "                    pas, sinon mis à jour par incréments (la sortie dit lequel), puis vérifié"
+	@echo "                    contre sa reconstruction depuis le gold ; INDEX_MODELE=test sans modèle"
 	@echo "make fiche          la fiche médicament en texte : CIS=65999556 A=2026-10-24T20:00:00Z"
 	@echo "                    (sans A : la dernière observation du silver)"
 	@echo "make suivre         les événements publiés au fil de l'eau (à lancer avant make demo)"
 	@echo "make console        la console Redpanda sur http://127.0.0.1:18080"
 	@echo "make down           arrête le bus, garde les données"
-	@echo "make rebatir        efface le bus (volume du projet pharmaflux) et data/demo (silver compris), redémarre"
+	@echo "make rebatir        efface le bus et l'index (volumes du projet pharmaflux) et data/demo (silver"
+	@echo "                    compris), redémarre ; le cache des vecteurs (data/index) reste"
 	@echo "make verifications  ruff, mypy, pytest, comme la CI"
 
 prerequis:
@@ -72,6 +80,20 @@ etat:
 gold:
 	$(PHARMAFLUX) gold qualite --entrepot $(ENTREPOT_DEMO)
 	$(PHARMAFLUX) questions verifier --racine $(JEU) --entrepot $(ENTREPOT_DEMO)
+
+# Une construction complète s'il n'y a pas d'index lisible (aucun, ou un alias que l'état ne
+# décrit pas : une construction coupée), sinon une mise à jour ; puis la vérification, qui a le
+# dernier mot (code 1 au moindre écart).
+index:
+	sh infra/demo/prerequis.sh index $(INDEX_MODELE)
+	@if $(PHARMAFLUX) index etat > /dev/null 2>&1; then \
+		echo "make index : un index existe, mise à jour par incréments (index mettre-a-jour)"; \
+		$(PHARMAFLUX) index mettre-a-jour $(INDEX_OPTIONS); \
+	else \
+		echo "make index : aucun index lisible, construction complète (index construire)"; \
+		$(PHARMAFLUX) index construire $(INDEX_OPTIONS); \
+	fi
+	$(PHARMAFLUX) index verifier $(INDEX_OPTIONS)
 
 fiche:
 	$(PHARMAFLUX) gold fiche --entrepot $(ENTREPOT_DEMO) --cis $(CIS) $(FICHE_A) $(FICHE_OPTIONS)

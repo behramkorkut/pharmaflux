@@ -67,7 +67,7 @@ jobs:
     # arm64 sur le Mac ; les images sont multi-architecture) et la version de
     # Compose (le bloc « configs: content: » demande au moins la 2.23.1).
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -84,7 +84,7 @@ jobs:
           docker version --format '{{.Server.Os}}/{{.Server.Arch}} {{.Server.Version}}'
           docker compose version
 
-      - name: Démarrer Redpanda (compose du dépôt, images épinglées)
+      - name: Démarrer Redpanda et Qdrant (compose du dépôt, images épinglées)
         run: docker compose -p pharmaflux up -d --wait
 
       - name: La grappe est amorcée comme sur le Mac (création automatique coupée)
@@ -130,6 +130,35 @@ jobs:
       - name: Gold du jeu, contrôles de qualité et questions (make gold)
         run: make gold
 
+      # L'index du jeu (mission 07, ADR 0011), avec l'encodeur de test : toute la chaîne, sans
+      # modèle à télécharger. Le premier make index construit (aucun index), le second met à
+      # jour (rien à faire) ; chacun finit par index verifier, qui a le dernier mot.
+      - name: Index du jeu, encodeur de test (make index, deux fois)
+        run: |
+          make index INDEX_MODELE=test
+          make index INDEX_MODELE=test
+
+      # Le vrai modèle, téléchargé à la révision de son TOML, chaque fichier vérifié par son
+      # sha256 avant d'être mis en place (un fichier altéré fait échouer l'étape).
+      - name: Modèle épinglé (e5-small-int8, sha256 vérifiés)
+        run: uv run pharmaflux index modele installer e5-small-int8
+
+      # Ses tests (les jetons égaux à tokenizer.json, les vecteurs), puis un index réduit aux
+      # CIS du jeu de questions v0 et trois recherches réelles : le modèle se charge et trouve.
+      - name: Le vrai modèle sur un sous-ensemble (tests « modele », index réduit, recherches)
+        env:
+          PHARMAFLUX_MODELE_EXIGE: "1"
+        run: |
+          uv run pytest -q -rE -rs -m modele
+          uv run pharmaflux index construire --entrepot data/demo/lakehouse \
+            --cis 60007960 --cis 60016589 --cis 60143654 --cis 60234100 --cis 60921824 \
+            --cis 62011103 --cis 63210923 --cis 63930084 --cis 65143010 --cis 65999556 \
+            --cis 66890524 --cis 67026956 --cis 67851912 --cis 68081368 --cis 68486929 \
+            --cis 68705771
+          uv run pharmaflux index chercher "LARIAM 250 mg est-il en rupture de stock ?" -k 3
+          uv run pharmaflux index chercher "Quel est le taux de remboursement de LEVOCARNIL ?" -k 3
+          uv run pharmaflux index chercher "MICROVAL est-il en tension d'approvisionnement ?" -k 3
+
       # Tout le journal (--tail=100 n'avait gardé que 4 s au run de main sur 98505d3), la santé
       # de la grappe et la mémoire du conteneur, en artefact plutôt que dans le journal du job.
       - name: Diagnostic du courtier en cas d'échec
@@ -149,6 +178,6 @@ jobs:
           path: diagnostic/
           retention-days: 14
 
-      - name: Arrêter Redpanda
+      - name: Arrêter Redpanda et Qdrant (volumes effacés)
         if: always()
         run: docker compose -p pharmaflux down -v

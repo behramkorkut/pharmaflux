@@ -1600,6 +1600,14 @@ def index_fragments(
     cis: Annotated[
         list[str] | None, typer.Option("--cis", help="Seulement ce CIS ; répétable.")
     ] = None,
+    depuis: Annotated[
+        str | None,
+        typer.Option(
+            "--depuis",
+            help="Seulement les CIS touchés depuis cet instant (celui de l'index) : versions"
+            " ouvertes ou fermées, liens vers les avis, bascules du jour.",
+        ),
+    ] = None,
     a: OptionInstantGold = None,
     entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
     sortie: Annotated[
@@ -1614,32 +1622,50 @@ def index_fragments(
     Un fragment par ligne, dans l'ordre des CIS, puis des sections (identite,
     presentations, avis, disponibilite, informations), puis des parties.
     L'instant n'est pas dans les fragments : il est dit sur la sortie d'erreur
-    et, avec --sortie, dans <sortie>.bilan.json ; l'index le tient. Code 2 :
-    CIS inconnu à l'instant, ou refus (instant, entrepôt).
+    et, avec --sortie, dans <sortie>.bilan.json, avec les CIS touchés si
+    --depuis ; l'index le tient. Code 2 : CIS inconnu à l'instant, instant
+    antérieur à --depuis (le silver serait en arrière de l'index), ou refus
+    (instant, entrepôt).
     """
     import pyarrow as pa
     import pyarrow.compute as pc
 
+    from pharmaflux.index.changements import cis_touches
     from pharmaflux.index.fragments import FORMAT, fragments_des_fiches
+    from pharmaflux.silver import etat as etat_silver
+    from pharmaflux.silver.entrepot import Entrepot
     from pharmaflux.silver.schema import texte_instant
 
     try:
-        _, vues_ = _vues_gold(a, entrepot)
+        etats, vues_ = _vues_gold(a, entrepot)
+        toutes = vues_.fiche
+        instant = toutes["instant"][0].as_py()
+        touches = None
+        if depuis is not None:
+            t0 = etat_silver.lire_instant(depuis)
+            if instant < t0:
+                raise SilverRefuse(
+                    f"le silver ({texte_instant(instant)}) est en arrière de l'index"
+                    f" ({texte_instant(t0)}) : reconstruire l'index"
+                )
+            touches = cis_touches(Entrepot.ouvrir(entrepot), etats, t0, instant)
     except SilverRefuse as exc:
         typer.echo(f"fragments refusés : {exc}", err=True)
         raise typer.Exit(code=2) from exc
-    fiches = vues_.fiche
-    if cis:
-        fiches = fiches.filter(pc.is_in(fiches["code_cis"], value_set=pa.array(cis, pa.string())))
-        inconnus = sorted(set(cis) - set(fiches["code_cis"].to_pylist()))
-        if inconnus:
-            typer.echo(
-                f"fragments refusés : aucun fichier ne cite le(s) CIS {', '.join(inconnus)}"
-                " à cet instant",
-                err=True,
-            )
-            raise typer.Exit(code=2)
-    instant = fiches["instant"][0].as_py() if fiches.num_rows else None
+    fiches = toutes
+    selection = set(cis or ()) | set(touches.cis if touches else ())
+    if cis or touches is not None:
+        fiches = fiches.filter(
+            pc.is_in(fiches["code_cis"], value_set=pa.array(sorted(selection), pa.string()))
+        )
+    inconnus = sorted(set(cis or ()) - set(fiches["code_cis"].to_pylist()))
+    if inconnus:
+        typer.echo(
+            f"fragments refusés : aucun fichier ne cite le(s) CIS {', '.join(inconnus)}"
+            " à cet instant",
+            err=True,
+        )
+        raise typer.Exit(code=2)
     nombre = 0
     provisoire = None if sortie is None else sortie.with_name(sortie.name + ".partiel")
     flux = sys.stdout if provisoire is None else provisoire.open("w", encoding="utf-8")
@@ -1650,24 +1676,35 @@ def index_fragments(
     finally:
         if flux is not sys.stdout:
             flux.close()
+    bilan: dict[str, object] = {
+        "instant": texte_instant(instant),
+        "fiches": fiches.num_rows,
+        "fiches_total": toutes.num_rows,
+        "fragments": nombre,
+        "format": FORMAT,
+    }
+    if touches is not None:
+        bilan |= {
+            "depuis": depuis,
+            "cis_touches": sorted(touches.cis),
+            "par_version": touches.par_version,
+            "par_bascule": touches.par_bascule,
+        }
     if provisoire is not None and sortie is not None:
         provisoire.replace(sortie)
         # Le bilan à côté, pour le processus de l'index, qui n'ouvre pas le gold (ADR 0011).
         sortie.with_name(sortie.name + ".bilan.json").write_text(
-            json.dumps(
-                {
-                    "instant": texte_instant(instant) if instant else None,
-                    "fiches": fiches.num_rows,
-                    "fragments": nombre,
-                    "format": FORMAT,
-                }
-            )
-            + "\n",
-            encoding="utf-8",
+            json.dumps(bilan) + "\n", encoding="utf-8"
         )
+    touches_texte = (
+        ""
+        if touches is None
+        else f" ; {len(touches.cis)} CIS touché(s) depuis {depuis}"
+        f" ({touches.par_version} par une version, {touches.par_bascule} par le jour)"
+    )
     typer.echo(
         f"{nombre} fragment(s) de {fiches.num_rows} fiche(s), format {FORMAT}, état au"
-        f" {texte_instant(instant) if instant else '?'}",
+        f" {texte_instant(instant)}{touches_texte}",
         err=True,
     )
 
@@ -1702,6 +1739,12 @@ def _qdrant(url: str | None) -> str:
 
 @index.command("construire")
 def index_construire(
+    cis: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--cis", help="Un index réduit à ces CIS (la CI, avec le vrai modèle) ; répétable."
+        ),
+    ] = None,
     entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
     qdrant: OptionQdrant = None,
     modele_: OptionModele = MODELE_PAR_DEFAUT,
@@ -1721,7 +1764,7 @@ def index_construire(
     try:
         with construction.verrou(travail):
             encodeur_ = encodeur.charger(modele_)
-            fragments = construction.calculer_fragments(entrepot, travail)
+            fragments = construction.calculer_fragments(entrepot, travail, cis or ())
             cache = construction.Cache(travail, encodeur_.empreinte)
             try:
                 with Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as client:
@@ -1765,6 +1808,99 @@ def _memoire_des_deux_processus() -> str:
         f"résident maximal : encodage {_resident_max()} Mo, fragments (sous-processus)"
         f" {_resident_max(resource.RUSAGE_CHILDREN)} Mo"
     )
+
+
+@index.command("mettre-a-jour")
+def index_mettre_a_jour(
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    qdrant: OptionQdrant = None,
+    modele_: OptionModele = MODELE_PAR_DEFAUT,
+    travail: OptionTravail = TRAVAIL_INDEX,
+) -> None:
+    """Met l'index à jour par incréments, de son instant à la dernière observation du silver.
+
+    Seuls les CIS touchés sont recalculés depuis le gold (versions ouvertes ou
+    fermées, liens vers les avis, bascules du jour) ; leurs fragments sont
+    écrits s'ils ont changé, ceux qui ont disparu sont retirés. Idempotente,
+    elle reprend après une coupure. « Rien à faire » est un succès. Code 2 :
+    refus (pas d'index, alias et état en désaccord, modèle, silver en arrière
+    de l'index, verrou), Qdrant injoignable.
+    """
+    from pharmaflux.index import construction, encodeur
+    from pharmaflux.index.qdrant import Qdrant, QdrantIndisponible
+
+    try:
+        with (
+            construction.verrou(travail),
+            Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as client,
+        ):
+            etat = construction.etat_exige(client)
+            encodeur_ = encodeur.charger(modele_)
+            construction.encodeur_de_l_index(etat, encodeur_)
+            fragments = construction.calculer_fragments(entrepot, travail, depuis=etat["instant"])
+            cache = construction.Cache(travail, encodeur_.empreinte)
+            try:
+                bilan = construction.mettre_a_jour(client, encodeur_, fragments, cache)
+            finally:
+                cache.close()
+    except (construction.IndexRefuse, encodeur.ModeleIndisponible, QdrantIndisponible) as exc:
+        typer.echo(f"mise à jour refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if bilan.reprise:
+        typer.echo("reprise d'une mise à jour interrompue", err=True)
+    if bilan.cis_touches == 0:
+        typer.echo(
+            f"index à jour : rien à faire de {bilan.depuis} à {bilan.instant} ;"
+            f" {bilan.fragments} fragments"
+        )
+    else:
+        typer.echo(
+            f"index mis à jour de {bilan.depuis} à {bilan.instant} : {bilan.cis_touches} CIS"
+            f" touché(s) ({bilan.par_version} par une version, {bilan.par_bascule} par le jour) ;"
+            f" fragments {bilan.ajoutes} ajouté(s), {bilan.remplaces} remplacé(s),"
+            f" {bilan.retires} retiré(s), {bilan.inchanges} inchangé(s) ; {bilan.encodes}"
+            f" encodé(s) ; {bilan.fragments} fragments ; {bilan.duree_s:.0f} s"
+        )
+    typer.echo(_memoire_des_deux_processus(), err=True)
+
+
+@index.command("verifier")
+def index_verifier(
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    qdrant: OptionQdrant = None,
+    modele_: OptionModele = MODELE_PAR_DEFAUT,
+    travail: OptionTravail = TRAVAIL_INDEX,
+) -> None:
+    """L'index est-il égal à sa reconstruction complète depuis le gold, au même instant ?
+
+    Mêmes identifiants (aucun manquant, aucun orphelin), mêmes textes et
+    métadonnées, chaque vecteur égal à celui du cache pour son texte, un
+    échantillon fixe de 100 fragments réencodé (cosinus ≥ 0,99 ; égalité avec
+    l'encodeur de test), aucune mise à jour en suspens. Code 0 conforme ; 1
+    écart ; 2 refus (pas d'index, alias et état en désaccord, modèle, Qdrant).
+    """
+    from pharmaflux.index import construction, encodeur
+    from pharmaflux.index.qdrant import Qdrant, QdrantIndisponible
+
+    try:
+        with Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as client:
+            etat = construction.etat_exige(client)
+            encodeur_ = encodeur.charger(modele_)
+            construction.encodeur_de_l_index(etat, encodeur_)
+            fragments = construction.calculer_fragments(entrepot, travail, a=etat["instant"])
+            cache = construction.Cache(travail, encodeur_.empreinte)
+            try:
+                rapport = construction.verifier(client, encodeur_, fragments, cache)
+            finally:
+                cache.close()
+    except (construction.IndexRefuse, encodeur.ModeleIndisponible, QdrantIndisponible) as exc:
+        typer.echo(f"vérification refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for ligne in construction.formater_verification(rapport):
+        typer.echo(ligne)
+    typer.echo(_memoire_des_deux_processus(), err=True)
+    if not rapport.conforme:
+        raise typer.Exit(code=1)
 
 
 class FormatRecherche(StrEnum):

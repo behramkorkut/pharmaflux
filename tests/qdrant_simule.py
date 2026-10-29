@@ -8,6 +8,7 @@ vérifient le même comportement contre le vrai Qdrant.
 
 from __future__ import annotations
 
+import bisect
 import json
 import math
 from typing import Any
@@ -20,9 +21,24 @@ class QdrantSimule:
         self.collections: dict[str, dict[str, Any]] = {}  # nom → {"dimension", "points"}
         self.alias: dict[str, str] = {}
         self.appels: list[str] = []
+        self.ecritures = 0  # invalide le tri mis en cache du parcours
+        self._cache_tries: tuple[object, list[str]] = (None, [])
+        self._coupures: list[tuple[str, int]] = []  # (début de « METHODE chemin », rang restant)
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self._repondre)
+
+    def couper(self, prefixe: str, rang: int = 1) -> None:
+        """Une coupure de connexion avant le ``rang``-ième appel qui commence par ``prefixe``."""
+        self._coupures.append((prefixe, rang))
+
+    def _tries(self, nom: str, filtre: dict[str, Any] | None) -> list[str]:
+        """Les identifiants gardés par le filtre, triés ; mis en cache tant que rien ne change."""
+        points = self.collections[nom]["points"]
+        cle = (nom, json.dumps(filtre, sort_keys=True), len(points), self.ecritures)
+        if self._cache_tries[0] != cle:
+            self._cache_tries = (cle, sorted(i for i, p in points.items() if _garde(p, filtre)))
+        return self._cache_tries[1]
 
     def points(self, nom: str) -> dict[str, dict[str, Any]]:
         return self.collections[self.alias.get(nom, nom)]["points"]
@@ -31,6 +47,18 @@ class QdrantSimule:
         methode, morceaux = requete.method, requete.url.path.strip("/").split("/")
         corps = json.loads(requete.content) if requete.content else {}
         self.appels.append(f"{methode} {requete.url.path}")
+        appel = f"{methode} {requete.url.path}"
+        for rang, (prefixe, reste_) in enumerate(self._coupures):
+            if appel.startswith(prefixe):
+                if reste_ == 1:
+                    del self._coupures[rang]
+                    raise httpx.ConnectError(f"coupure simulée avant {appel}", request=requete)
+                self._coupures[rang] = (prefixe, reste_ - 1)
+                break
+        if methode in ("PUT", "POST", "DELETE") and not requete.url.path.endswith(
+            ("/scroll", "/count", "/query")
+        ):
+            self.ecritures += 1
         if morceaux == ["collections"] and methode == "GET":
             return _ok({"collections": [{"name": n} for n in self.collections]})
         if morceaux == ["aliases"]:
@@ -77,15 +105,19 @@ class QdrantSimule:
         if reste == ["points"] and methode == "POST":
             return _ok([_vu(points[i], True, False) for i in corps["ids"] if i in points])
         if reste == ["points", "delete"]:
-            for i in [i for i, p in points.items() if _garde(p, corps["filter"])]:
-                del points[i]
+            if "points" in corps:
+                for i in corps["points"]:
+                    points.pop(i, None)
+            else:
+                for i in [i for i, p in points.items() if _garde(p, corps["filter"])]:
+                    del points[i]
             return _ok({"status": "completed"})
         if reste == ["points", "count"]:
             filtre = corps.get("filter")
             return _ok({"count": sum(1 for p in points.values() if _garde(p, filtre))})
         if reste == ["points", "scroll"]:
-            tries = sorted(i for i, p in points.items() if _garde(p, corps.get("filter")))
-            debut = tries.index(corps["offset"]) if "offset" in corps else 0
+            tries = self._tries(nom, corps.get("filter"))
+            debut = bisect.bisect_left(tries, corps["offset"]) if "offset" in corps else 0
             page = tries[debut : debut + corps["limit"]]
             suivant = tries[debut + corps["limit"]] if debut + corps["limit"] < len(tries) else None
             return _ok(

@@ -624,3 +624,16 @@ dans le compose ; `index construire`, `chercher` (exacte : l'approchée ne
 rendait que 82 % des dix premiers), `etat`, `evaluer`. Les trois actions de
 la CI sont épinglées par empreinte. Les scores denses sont serrés (0,905
 contre 0,873 hors périmètre) : une donnée pour l'abstention de la mission 08.
+
+**Mission 07, palier 3** (29/10). `index mettre-a-jour` ne recalcule que les
+CIS touchés depuis l'instant de l'index : versions ouvertes ou fermées, liens
+vers les avis, bascules du jour. Il écrit avant de retirer, `vise` d'abord et
+l'instant à la fin ; une coupure à chaque étape est rejouée en test. `index
+verifier` compare l'index à sa reconstruction depuis le gold : identifiants,
+charges, vecteurs égaux au cache, 100 réencodés à un cosinus ≥ 0,99. Le jeu
+publié en quatre tranches reste égal à sa reconstruction à chaque étape. Un
+alias que l'état ne décrit pas fait refuser la lecture. Le parcours de Qdrant
+passe à des pages de 100 : par pages de 1 000, `verifier` montait à 815 Mo,
+il tient en 422. `make index` (construire ou mettre à jour, la sortie dit
+lequel, puis vérifier), `prerequis.sh index`, l'étape de CI (encodeur de test
+sur tout le jeu, vrai modèle sur un sous-ensemble), ADR 0011, README.

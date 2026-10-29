@@ -30,7 +30,10 @@ COLLECTION_ETAT = f"{ESPACE}-index-etat"
 VECTEUR = "dense"
 CHAMPS_INDEXES = ("code_cis", "section")  # filtres de chercher, de la mise à jour, de l'état
 DELAI_S = 60.0
-LOT_PARCOURS = 1000
+# Points par page du parcours. Mesuré au palier 3 sur l'index du jeu, vecteurs compris : 82 Mo
+# résidents au plus par pages de 100, 446 Mo par pages de 1 000 (l'allocateur garde les gros
+# blocs des grandes réponses).
+LOT_PARCOURS = 100
 ID_ETAT = str(uuid.uuid5(uuid.NAMESPACE_URL, "https://github.com/behramkorkut/pharmaflux/etat"))
 
 
@@ -117,6 +120,14 @@ class Qdrant:
         self._appeler(
             "POST", f"/collections/{collection}/points/delete?wait=true", {"filter": filtre}
         )
+
+    def supprimer_ids(self, collection: str, identifiants: Sequence[str]) -> None:
+        if identifiants:
+            self._appeler(
+                "POST",
+                f"/collections/{collection}/points/delete?wait=true",
+                {"points": list(identifiants)},
+            )
 
     def compter(self, collection: str, filtre: dict[str, object] | None = None) -> int:
         corps: dict[str, object] = {"exact": True}

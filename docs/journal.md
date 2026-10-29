@@ -548,3 +548,12 @@ colonnes typées. Deux garde-fous de plus : un instant où l'une des onze
 entités n'est pas encore observée est refusé (sinon « aucun signalement »
 serait affirmé avant d'avoir lu le fichier), et la sortie JSON se fait par
 lots (la fiche entière passait de 552 à 415 Mo).
+
+**Mission 06, palier 3** (29/10). `make gold` (`gold qualite`, puis
+`questions verifier --entrepot`) et `make fiche CIS=… A=…` ; l'étape « make
+gold » dans le job `integration`, après « make silver ». ADR 0010, avec ses
+limites (une brute illisible égale à la forme canonique précédente ne fait pas
+d'événement), la règle des instants et le jour UTC ; README (la fiche de
+63830632 à 23:17:11 et 23:17:12 le 24/10, la disponibilité de LARIAM couverte
+par une ligne sans CIP13), `CONTEXTE.md`. Le refus d'un instant non observé
+donne le premier instant où les onze entités le sont.

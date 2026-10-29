@@ -105,16 +105,21 @@ def exiger_les_onze(entrepot: Entrepot, instant: datetime) -> None:
     manquantes = [e for e in ENTITES_GOLD if entrepot.table(e) is None]
     if manquantes:
         raise SilverRefuse(f"le gold croise les onze entités ; absentes : {', '.join(manquantes)}")
-    pas_encore = []
+    premieres: dict[str, datetime | None] = {}
     for entite in ENTITES_GOLD:
         table = entrepot.table(entite)
         assert table is not None
-        premiere = _premiere(table)
-        if premiere is None or premiere > instant:
-            pas_encore.append(entite)
+        premieres[entite] = _premiere(table)
+    pas_encore = [e for e, p in premieres.items() if p is None or p > instant]
     if pas_encore:
+        connues = [p for p in premieres.values() if p is not None]
+        conseil = (
+            f" ; les onze sont observées à partir de {texte_instant(max(connues))}"
+            if len(connues) == len(premieres)
+            else " ; une entité n'a encore aucune observation"
+        )
         raise SilverRefuse(
-            f"à {texte_instant(instant)}, pas encore observées : {', '.join(pas_encore)}"
+            f"à {texte_instant(instant)}, pas encore observées : {', '.join(pas_encore)}{conseil}"
         )
 
 

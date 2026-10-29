@@ -113,6 +113,12 @@ jobs:
       - name: Silver du jeu depuis le bus, puis vérification contre l'archive (make silver)
         run: make silver
 
+      # Le gold du jeu, calculé depuis ce silver (mission 06, ADR 0010) : les quatorze contrôles
+      # de qualité (code 2 si un bloquant tombe), puis les 25 questions recalculées depuis le
+      # gold, qui doivent concorder avec le calcul depuis le bronze (code 2 sinon).
+      - name: Gold du jeu, contrôles de qualité et questions (make gold)
+        run: make gold
+
       - name: Journal du courtier en cas d'échec
         if: failure()
         run: docker compose -p pharmaflux logs --tail=100 redpanda

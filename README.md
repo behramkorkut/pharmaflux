@@ -141,6 +141,86 @@ Le même silver se construit depuis les fichiers d'événements
 et `silver comparer` montre qu'il est identique à celui du bus : le silver ne
 dépend pas du chemin. `make rebatir` efface aussi `data/demo/lakehouse`.
 
+### Le gold : la fiche médicament, la disponibilité, contrôlées et datées
+
+Après `make silver`, une quatrième commande montre le **gold** (mission 06,
+[ADR 0010](docs/adr/0010-gold-calcule-a-la-demande-types-vues-controles.md)).
+Il n'est pas stocké : c'est une fonction du silver et d'un instant. Chaque
+colonne y prend le type de son contrat (un prix est un décimal exact, une
+date une date), et une valeur illisible dans la source reste **vide**, jamais
+devinée ; trois vues métier s'en déduisent : la fiche médicament, la
+disponibilité courante par présentation, les alternatives d'un groupe
+générique.
+
+```bash
+make gold  # 14 contrôles de qualité (aucun bloquant), puis les 25 questions recalculées depuis le gold
+```
+
+`make gold` lance les quatorze contrôles de qualité (quatre bloquants, qui
+sortent en code 2, et dix mesurés, toujours affichés : 4 présentations dont la
+spécialité est absente du référentiel, 5 562 CIS cités ailleurs et absents de
+`CIS_bdpm.txt`, une valeur illisible…), puis recalcule chacune des 25
+questions du jeu de référence depuis le gold, à l'instant de son archive, et
+exige qu'elle concorde avec le calcul depuis le bronze.
+
+La fiche d'une spécialité, aux deux secondes qui encadrent la disparition de
+sa présentation (le même cas que le silver plus haut) :
+
+```bash
+make fiche CIS=63830632 A=2026-10-24T23:17:11Z
+make fiche CIS=63830632 A=2026-10-24T23:17:12Z
+```
+
+```text
+CIS 63830632 — FOSINOPRIL HYDROCHLOROTHIAZIDE EG 20 mg/12,5 mg, comprimé sécable
+État au 2026-10-24T23:17:11Z
+Spécialité : comprimé sécable ; voie(s) orale ; Autorisation abrogée depuis le 2008-10-08 (Procédure nationale) ; Non commercialisée ; titulaire(s) EG LABO - LABORATOIRES EUROGENERICS
+Présentations (1) :
+  - 3400938844948 : plaquette(s) aluminium de 30 comprimé(s) ; Déclaration d'arrêt de commercialisation ; taux — ; prix public — €
+…
+Disponibilité (signalements en cours) : aucun signalement dans le fichier de disponibilité (ce n'est pas « disponible »)
+Sources (4) :
+  - CIS_COMPO_bdpm.txt : observée depuis le 2026-10-24T19:41:48Z, source du 2026-09-29
+  - CIS_CPD_bdpm.txt : observée depuis le 2026-10-24T19:41:59Z, source du 2026-09-29
+  - CIS_CIP_bdpm.txt : observée depuis le 2026-10-24T19:41:46Z, source du 2026-10-23
+  - CIS_bdpm.txt : observée depuis le 2026-10-24T19:41:43Z, source du 2026-09-29
+```
+
+Une seconde plus tard, la même fiche dit `Présentations : —`, et ses sources
+ne citent plus `CIS_CIP_bdpm.txt`. Chaque section dit d'où elle vient, la date
+de sa source et depuis quand la valeur est observée.
+
+La disponibilité d'une présentation de LARIAM, que le fichier de l'ANSM ne
+cite pas : la ligne de rupture vise la spécialité (sans CIP13), et le gold le
+dit (`portee = specialite`), sans en dire plus.
+
+```bash
+uv run pharmaflux gold disponibilite --entrepot data/demo/lakehouse --cip13 3400933961688 \
+  --colonne code_cip13 --colonne denomination --colonne etat_signalement \
+  --colonne libelle_statut --colonne date_debut --colonne portee
+```
+
+```text
+code_cip13     denomination                     etat_signalement  libelle_statut    date_debut  portee
+-------------  -------------------------------  ----------------  ----------------  ----------  ----------
+3400933961688  LARIAM 250 mg, comprimé sécable  declare           Rupture de stock  2026-06-25  specialite
+```
+
+Une présentation que rien ne cite est `aucun_signalement`, ce qui ne veut pas
+dire « disponible » ; une fiche que l'ANSM cesse de publier devient
+`fin_de_publication`, ce qui ne veut pas dire « remise à disposition »
+(ADR 0003). Un instant où l'un des onze fichiers n'a pas encore été observé
+est refusé, avec le premier instant où ils le sont tous : le gold ne dit pas
+« aucun signalement » avant d'avoir lu le fichier. Et du SQL, sur les
+entités typées et les trois vues (`fiche_medicament`,
+`disponibilite_courante`, `alternatives`) :
+
+```bash
+uv run pharmaflux gold sql --entrepot data/demo/lakehouse \
+  "SELECT etat_signalement, portee, count(*) AS n FROM disponibilite_courante GROUP BY ALL ORDER BY ALL"
+# aucun_signalement 20 004 ; declare, presentation 36 ; declare, specialite 878
+```
+
 ### Les commandes
 
 Prérequis : [`uv`](https://docs.astral.sh/uv/). Python 3.12 est installé
@@ -156,7 +236,7 @@ uv run pharmaflux catalogue          # les quatorze entrées collectées
 uv run pharmaflux collecte           # un passage : télécharge, compare, archive, consigne
 uv run pharmaflux etat               # dernière archive, dernier changement, erreurs, 24 h
 uv run pharmaflux profil             # chaque archive contre son contrat : anomalies, clé, colonnes, liens
-uv run pharmaflux questions verifier # le jeu de questions de référence rejoué sur l'archive
+uv run pharmaflux questions verifier # le jeu de questions rejoué sur l'archive ; --entrepot : aussi depuis le gold
 uv run pharmaflux evenements         # du bronze aux événements : rejeu complet, ou --reprendre
 uv run pharmaflux schemas enregistrer # les schémas du dépôt dans le registre de Redpanda
 uv run pharmaflux publier            # les fichiers d'événements sur le bus, ou --reprendre
@@ -170,6 +250,12 @@ uv run pharmaflux silver etat        # les versions valides à un instant (--ent
 uv run pharmaflux silver sql         # du SQL DuckDB sur le silver, en lecture seule
 uv run pharmaflux silver comparer    # deux entrepôts : mêmes versions, mêmes validités
 uv run pharmaflux silver verifier    # l'état à chaque observation contre le snapshot recalculé
+uv run pharmaflux gold etat          # l'état typé d'une entité à un instant (--entite, --a, --ou, --format)
+uv run pharmaflux gold fiche         # la fiche médicament d'un CIS (--cis, --format texte) ou toutes (--tout)
+uv run pharmaflux gold disponibilite # la disponibilité courante par présentation (--cis, --cip13)
+uv run pharmaflux gold alternatives  # les autres présentations du groupe générique (--cip13, --cis, --groupe)
+uv run pharmaflux gold qualite       # les quatorze contrôles de qualité ; code 2 si un bloquant tombe
+uv run pharmaflux gold sql           # du SQL DuckDB sur le gold à un instant, en lecture seule
 ```
 
 Un passage télécharge la page de téléchargement de la BDPM et ses onze

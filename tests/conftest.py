@@ -10,8 +10,11 @@ saute, et le dit (un échec en CI, ``PHARMAFLUX_INTEGRATION_EXIGEE``).
 
 from __future__ import annotations
 
-# L'allocateur système d'Arrow, posé avant que le premier module de test n'importe PyArrow :
-# les tests mesurent la mémoire comme la ligne de commande la consomme (ADR 0009).
+# Ne pas retirer cet import, ni le déplacer : ``pharmaflux.silver`` pose
+# ARROW_DEFAULT_MEMORY_POOL=system, qui ne vaut que s'il précède le premier import de PyArrow
+# (ADR 0009). Les modules de test importent PyArrow tôt ; sans cet import en tête, Arrow prend
+# jemalloc et le test des vues sur le jeu de démo monte à 945 Mo au lieu de 524 (mission 06,
+# palier 2). Les tests mesurent ainsi la mémoire comme la ligne de commande la consomme.
 import pharmaflux.silver  # noqa: F401  # isort: skip
 
 import os

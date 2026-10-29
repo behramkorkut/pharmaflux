@@ -573,3 +573,4 @@ def test_un_instant_avant_la_premiere_observation_est_refuse(
         )
         assert resultat.exit_code == 2, commande
         assert "pas encore observées : bdpm.asmr" in texte_nu(resultat.output)
+        assert f"les onze sont observées à partir de {A0}" in texte_nu(resultat.output)

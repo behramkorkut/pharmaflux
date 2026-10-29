@@ -492,3 +492,21 @@ qu'au palier 2. D.1 tranché par un entrepôt témoin construit avant le
 le contrôle des identifiants conclut « rien de nouveau », parce que les
 `id` des événements sont des sha256 de leur contenu et que `make demo`
 republie le même jeu dans le même ordre. 498 tests.
+
+**Mission 05, relectures et `pr.md`** (29/10). Contrôle du palier 3
+(`f0aac28`) : conforme, mission à la relecture. Relecture 1 NON CONFORME,
+un bloquant : `Path.as_uri()` encodait un espace ou un accent du chemin de
+l'entrepôt et PyIceberg 0.12.0, qui prend le chemin de l'URI à la lettre,
+écrivait Parquet et métadonnées dans un dossier voisin (`Mes%20projets`) ;
+l'URI est maintenant le chemin brut derrière `file://`, `#` et `?` refusés
+avant toute écriture, test sous un dossier à espace et accent. Quatre points
+non bloquants : un test fait tomber chacun des quatre invariants SQL du
+SCD2, `COPY`/`ATTACH`/`INSTALL` refusés par la connexion DuckDB elle-même,
+`lire_instant` limité à trois formes, code mort retiré (`4fa1cb3`).
+Relecture 2 CONFORME, 0 bloquant : une date seule impossible est refusée en
+code 2 au lieu d'une trace (`c53d714`). Non-régression complète rejouée sur
+`c53d714` pour `pr.md` : `evenements` sur `~/pharmaflux-data` identique à
+`1af4ef9` par `diff -r`, `profil` 0 bloquante, `questions verifier` 25/5/10,
+`demo verifier` et `verifier-bus` conformes ; mémoire de toutes les commandes
+silver sous 512 Mo (`comparer` 424 Mo, le plus lourd). 500 tests. Revue
+finale de l'IeC, puis publication par beko.

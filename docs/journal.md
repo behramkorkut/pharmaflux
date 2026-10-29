@@ -420,3 +420,93 @@ pas sur le Mac. Correctif dans les tests seuls : `texte_nu` (codes ANSI,
 cadre, blancs) devant toute assertion sur le texte d'une erreur à code 2 ;
 suite complète avec `GITHUB_ACTIONS=true` et balayage de la longueur du
 dossier temporaire de 0 à 60, verts.
+
+**Mission 05, correspondance des hashes de `main`** (28/10). Après la
+fusion de la mission 04 (PR #5, `1af4ef9`), les trois commits suivants de
+`main` ont été réécrits par un rebase : `aceb5ba` → `38589dc` (addendum 1
+de la mission 04), `714b673` → `5167314` (`git count-objects` permis en
+lecture à tous les rôles), `9ad4b14` → `5c3fe5a` (`make --version`, seul,
+permis). Les documents de la mission 04 citent les anciens.
+
+**Mission 05, §0 et palier 1** (28/10). Ordre : le silver (Lot 2, PRD
+v0.6 §6.5), une table Iceberg par entité, versions SCD2 sur la date
+d'observation, « état à une date », vérification contre l'archive, puis un
+consommateur du bus (palier 2) et `make silver` (palier 3). §0 (`7103e8b`) :
+mesures sur une maquette hors dépôt (PyIceberg 0.12.0, PyArrow 26.0.0,
+DuckDB 1.5.6, catalogue SQL sur SQLite) ; silver du jeu en 6,5 s, 18/18
+conforme, mémoire de 276 à 610 Mo selon l'allocateur d'Arrow ; la copie du
+Mac est le jeu de démo. Addendum 1 (`b5b9420`) : contraintes de versions
+(`constraint-dependencies`) au lieu d'un `exclude-newer` global, `silver
+sql` en lecture seule verrouillée ou rien, `pyarrow-stubs`, identité en clé
+JSON, anomalies en liste de structures, lots de 10 000, seuil d'alerte
+512 Mo, le silver ne vise pas le VPS en v1. **Palier 1** : paquet
+`pharmaflux.silver` (`entrepot`, `schema`, `expressions`, `application`,
+`construction`, `etat`, `sql`, `comparaison`, `verification`) et les
+commandes `silver construire`, `etat`, `sql`, `comparer`, `verifier` ;
+imports paresseux (testés), allocateur système d'Arrow posé avant le
+premier import de PyArrow ; DuckDB sans aucun accès fichier (jeux Arrow,
+`enable_external_access = false`, verrou, `SELECT` seul) après qu'un
+`COPY … TO` dans le dossier autorisé a passé sur la maquette ; 24 paquets
+ajoutés au verrou, tous publiés au 14/10/2026 ou avant, aucun paquet
+existant changé ; 490 tests (20 nouveaux). Sur le jeu : `construire` 9,7 s
+et 297 Mo, `verifier` 22/22 conforme en 10,2 s et 342 Mo, `etat` 182 Mo,
+`sql` 173 Mo, `comparer` 432 Mo.
+
+**Mission 05, palier 2** (28/10). Le consommateur du bus :
+`pharmaflux silver consommer` lit chaque topic depuis la position gardée
+dans les propriétés de sa table (`pharmaflux.positions` : par partition,
+l'offset suivant et l'`id` du dernier message appliqué), toutes les
+partitions à la fois, jusqu'aux offsets de fin lus au départ ; un commit
+Iceberg par lot, qui porte la position (aucune fenêtre entre le silver et
+sa position), la plage d'offsets dans le résumé du snapshot ; doublons
+reconnus à l'`id`. Refus : silver des fichiers, position hors des bornes,
+message à `offset − 1` qui ne porte pas l'`id` gardé (bus rebâti
+autrement), autre version de contrat, message qui n'est pas du v1 (jamais
+sauté), bus vide ; identifiant de grappe différent = avertissement.
+`LecteurKafka` gagne `identifiant_grappe`, `bornes`, `derniers_messages`
+(consommateur dédié, `fetch.wait.max.ms` 50 : la relecture d'un message en
+fin de partition coûtait une seconde avec le consommateur de `lire`),
+`lire_depuis`. Tests sur un bus simulé à trois partitions réparties par la
+clé : égalité avec le silver des fichiers et avec l'archive, reprise après
+publication en deux fois et après doublons, coupures pendant la lecture, entre
+le `metadata.json` et SQLite (cale sur `SqlCatalog._write_metadata`,
+PyIceberg 0.12.0) et après le commit, refus, commande ; deux tests
+d'intégration sur le courtier. Démonstration sur le bus de la démo du Mac
+(grappe `redpanda.990d5d4e-…`) : 164 106 messages en 12,9 s et 357 Mo,
+`comparer` identique au silver des fichiers, `verifier` 22/22 conforme ;
+seconde exécution 0,3 s, rien de nouveau. 498 tests.
+
+**Mission 05, palier 3** (28/10). `make silver` (après `make demo` :
+`silver consommer` vers `data/demo/lakehouse`, puis `silver verifier`
+contre `demo/archive`, qui a le dernier mot) et `make etat` (`ENTITE`,
+`A`, `ETAT_OPTIONS`) ; l'étape `make silver` dans le job `integration` de
+la CI, après `make demo` ; ADR 0009 ; la section « Le silver » du README
+avec les deux exemples réels du jeu (une présentation présente à 23:17:11
+et absente à 23:17:12 le 24/10, les informations importantes inchangées
+le 26/10 juste après 14:17:39) ; `CONTEXTE.md`. beko a enchaîné `make
+rebatir`, `make demo`, `make silver` sur le Mac : 164 106 messages en
+14,4 s, 22/22 archives conformes en 10,4 s, mêmes comptes et positions
+qu'au palier 2. D.1 tranché par un entrepôt témoin construit avant le
+`down -v` et relu après : l'identifiant de grappe change
+(`redpanda.990d5d4e-…` → `redpanda.f614c4ee-…`), l'avertissement sort, et
+le contrôle des identifiants conclut « rien de nouveau », parce que les
+`id` des événements sont des sha256 de leur contenu et que `make demo`
+republie le même jeu dans le même ordre. 498 tests.
+
+**Mission 05, relectures et `pr.md`** (29/10). Contrôle du palier 3
+(`f0aac28`) : conforme, mission à la relecture. Relecture 1 NON CONFORME,
+un bloquant : `Path.as_uri()` encodait un espace ou un accent du chemin de
+l'entrepôt et PyIceberg 0.12.0, qui prend le chemin de l'URI à la lettre,
+écrivait Parquet et métadonnées dans un dossier voisin (`Mes%20projets`) ;
+l'URI est maintenant le chemin brut derrière `file://`, `#` et `?` refusés
+avant toute écriture, test sous un dossier à espace et accent. Quatre points
+non bloquants : un test fait tomber chacun des quatre invariants SQL du
+SCD2, `COPY`/`ATTACH`/`INSTALL` refusés par la connexion DuckDB elle-même,
+`lire_instant` limité à trois formes, code mort retiré (`4fa1cb3`).
+Relecture 2 CONFORME, 0 bloquant : une date seule impossible est refusée en
+code 2 au lieu d'une trace (`c53d714`). Non-régression complète rejouée sur
+`c53d714` pour `pr.md` : `evenements` sur `~/pharmaflux-data` identique à
+`1af4ef9` par `diff -r`, `profil` 0 bloquante, `questions verifier` 25/5/10,
+`demo verifier` et `verifier-bus` conformes ; mémoire de toutes les commandes
+silver sous 512 Mo (`comparer` 424 Mo, le plus lourd). 500 tests. Revue
+finale de l'IeC, puis publication par beko.

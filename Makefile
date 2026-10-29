@@ -1,4 +1,5 @@
-# Pharmaflux : la démo en deux commandes, « make up » puis « make demo » (mission 04, ADR 0008).
+# Pharmaflux : la démo en deux commandes, « make up » puis « make demo » (mission 04, ADR 0008),
+# puis « make silver » pour le silver Iceberg et sa vérification contre l'archive (mission 05, ADR 0009).
 #
 # GNU Make 3.81 (celui des outils de ligne de commande du Mac) suffit : recettes en tabulations,
 # .PHONY, « ?= », rien de 3.82 ni de 4.x. Les agents Claude Code ne lancent que « make -n <cible> » ;
@@ -12,18 +13,27 @@ PHARMAFLUX = uv run pharmaflux
 DEMO_OPTIONS ?=
 SORTIE_DEMO = data/demo
 JEU = demo/archive
+ENTREPOT_DEMO = $(SORTIE_DEMO)/lakehouse
+# make etat ENTITE=bdpm.presentations A=2026-10-26T14:00:00Z [ETAT_OPTIONS="--ou code_cip13=…"]
+ENTITE ?= bdpm.presentations
+A ?= 2026-10-26T14:00:00Z
+ETAT_OPTIONS ?=
 
-.PHONY: help prerequis up demo verifier suivre console down rebatir verifications
+.PHONY: help prerequis up demo verifier suivre console down rebatir verifications silver etat
 
 help:
 	@echo "make up             vérifie les prérequis (images déjà présentes) et démarre le bus"
 	@echo "make demo           up, enregistre les schémas, rejoue demo/archive sur le bus à la cadence"
 	@echo "                    accélérée, puis verifier-bus ; DEMO_OPTIONS=--sans-pause pour la CI"
 	@echo "make verifier       verifier-bus seul (référence : le jeu, --racine demo/archive)"
+	@echo "make silver         après make demo : le silver Iceberg du jeu depuis le bus (data/demo/lakehouse),"
+	@echo "                    puis silver verifier contre l'archive (18 retenues, 4 écartées)"
+	@echo "make etat           l'état à une date : ENTITE=bdpm.presentations A=2026-10-26T14:00:00Z"
+	@echo "                    ETAT_OPTIONS=\"--ou code_cip13=… --format tableau\""
 	@echo "make suivre         les événements publiés au fil de l'eau (à lancer avant make demo)"
 	@echo "make console        la console Redpanda sur http://127.0.0.1:18080"
 	@echo "make down           arrête le bus, garde les données"
-	@echo "make rebatir        efface le bus (volume du projet pharmaflux) et data/demo, redémarre"
+	@echo "make rebatir        efface le bus (volume du projet pharmaflux) et data/demo (silver compris), redémarre"
 	@echo "make verifications  ruff, mypy, pytest, comme la CI"
 
 prerequis:
@@ -39,6 +49,13 @@ demo: up
 
 verifier:
 	$(PHARMAFLUX) verifier-bus --sortie $(SORTIE_DEMO) --racine $(JEU)
+
+silver:
+	$(PHARMAFLUX) silver consommer --entrepot $(ENTREPOT_DEMO)
+	$(PHARMAFLUX) silver verifier --entrepot $(ENTREPOT_DEMO) --sortie $(SORTIE_DEMO) --racine $(JEU)
+
+etat:
+	$(PHARMAFLUX) silver etat --entrepot $(ENTREPOT_DEMO) --entite $(ENTITE) --a $(A) $(ETAT_OPTIONS)
 
 suivre:
 	$(PHARMAFLUX) suivre

@@ -107,6 +107,12 @@ jobs:
       - name: Démo sans pause (make demo, bus neuf)
         run: make demo DEMO_OPTIONS=--sans-pause
 
+      # Le silver du jeu depuis le bus que la démo vient de remplir (mission 05, ADR 0009) : une
+      # table Iceberg par entité sous data/demo/lakehouse, puis la vérification contre l'archive,
+      # qui a le dernier mot (code 2 à la moindre différence).
+      - name: Silver du jeu depuis le bus, puis vérification contre l'archive (make silver)
+        run: make silver
+
       - name: Journal du courtier en cas d'échec
         if: failure()
         run: docker compose -p pharmaflux logs --tail=100 redpanda

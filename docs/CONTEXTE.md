@@ -224,7 +224,7 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 | Quoi | Où |
 |---|---|
 | Spécifications (PRD) | `01_Specifications/` |
-| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `suivi.py`, `schemas/` ; `demo/` : `jeu.py`, `rejeu_accelere.py` |
+| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `suivi.py`, `schemas/` ; `demo/` : `jeu.py`, `rejeu_accelere.py` ; `silver/` : `entrepot.py`, `schema.py`, `expressions.py`, `application.py`, `construction.py`, `consommation.py`, `etat.py`, `sql.py`, `comparaison.py`, `verification.py` |
 | Tests et fixtures | `tests/`, `tests/fixtures/` |
 | Démo : jeu figé, Makefile, prérequis | `demo/` (archive et `README.md`), `Makefile`, `infra/demo/prerequis.sh` |
 | Planification de la collecte (systemd, rapatriement) | `infra/planification/` |
@@ -237,8 +237,10 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 ## Outillage
 
 Python 3.12 géré par `uv` (`.python-version`), `httpx`, `typer`,
-`confluent-kafka` (la seule dépendance de production ajoutée par la mission
-03 ; `jsonschema` en test) ; `ruff` (lint et format), `mypy --strict` sur
+`confluent-kafka` (mission 03), `pyiceberg[sql-sqlite]`, `pyarrow` et `duckdb`
+(mission 05, avec `sqlalchemy` pour le catalogue ; `jsonschema` et
+`pyarrow-stubs` en dev ; un paquet ajouté a au moins deux semaines, par
+`constraint-dependencies`) ; `ruff` (lint et format), `mypy --strict` sur
 `src/`, `pytest` (marqueur `integration`). Redpanda et sa console viennent
 de `docker-compose.yml`. La CI (`.github/workflows/ci.yml`) a deux jobs :
 `verifier` rejoue les mêmes commandes plus les tests des garde-fous du
@@ -247,3 +249,36 @@ tests marqués, un saut y étant un échec (`PHARMAFLUX_INTEGRATION_EXIGEE`),
 puis `make demo DEMO_OPTIONS=--sans-pause`. `make` (GNU 3.81 sur le Mac, 4.3
 sur le runner) n'ajoute aucune dépendance ; `shellcheck` est tiré par `uvx` à
 la demande. Aucun appel réseau vers les sources.
+
+## Le silver : tables Iceberg SCD2 et « état à une date » (mission 05)
+
+- **Entrepôt local** (`silver/entrepot.py`, ADR 0009) : un dossier sous
+  `data/` (`data/lakehouse`, `data/demo/lakehouse` pour la démo), le
+  catalogue SQL de PyIceberg sur `catalogue.sqlite`, une table Iceberg par
+  entité (`bdpm.presentations`), chemins `file://` absolus (un entrepôt
+  déplacé se rebâtit, `make rebatir` pour la démo). Aucun service, aucune
+  extension DuckDB, pas de MinIO. Propriétés de table : entité, version du
+  contrat, origine (`fichiers` ou `bus`), grappe et positions pour le bus.
+- **Versions SCD2 sur la date d'observation** (`silver/schema.py`,
+  `application.py`) : les colonnes du contrat en chaînes, puis `identite`
+  (clé JSON du message, ou `<empreinte>#<rang>`), `debut_validite`,
+  `fin_validite` (nulle = ouverte, borne exclue), les `id` et archives qui
+  ouvrent et ferment, `version_contrat`, `etat_initial`, `anomalies`.
+  `appliquer_lot` : doublons par `id`, SCD2 dans l'ordre du lot, rangs comptés
+  comme `appliquer`, refus sans rien écrire, une transaction par lot
+  (`set_properties`, `delete`, `append`). Le temps de la connaissance est
+  **l'horodatage de l'archive**, à la seconde.
+- **Commandes** : `silver construire` (fichiers d'événements, entrepôt
+  neuf), `silver consommer` (le bus, position dans le commit, reprise à tout
+  point, refus si le bus n'est pas celui du silver), `silver etat` (UTC à la
+  seconde, `--ou`, `--format`), `silver sql` (DuckDB sans accès fichier,
+  verrouillé, `SELECT` seul), `silver comparer`, `silver verifier` (snapshot
+  recalculé par archive retenue, archives écartées, invariants du SCD2,
+  code 2). Imports paresseux ; allocateur système d'Arrow.
+- **`make silver`** après `make demo`, `make etat` ; la CI lance `make
+  silver` dans le job `integration`. Mesures (28/10/2026) : `consommer`
+  164 106 messages en 12,9 s et 357 Mo, `verifier` 22/22 en 10,3 s et
+  341 Mo, `construire` 9,7 s et 297 Mo ; seuil d'alerte 512 Mo.
+- **Mission close** quand `make rebatir`, `make demo` puis `make silver`
+  finissent sur une vérification conforme des 18 archives retenues.
+

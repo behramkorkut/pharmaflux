@@ -11,7 +11,9 @@ enregistrer`` : les schémas du dépôt dans le registre de Redpanda. ``suivre``
 les événements publiés, au fil de l'eau, une ligne par message. ``demo
 fabriquer`` / ``demo verifier`` : le jeu de démo figé ``demo/archive`` ;
 ``demo rejouer`` : le jeu rejoué sur le bus, dans l'ordre global des
-observations, à la cadence accélérée.
+observations, à la cadence accélérée. ``silver construire`` / ``etat`` /
+``sql`` / ``comparer`` / ``verifier`` / ``consommer`` : le silver Iceberg
+(mission 05), dont les bibliothèques ne s'importent que dans ces commandes.
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from importlib.metadata import version as version_du_paquet
 from pathlib import Path
-from typing import Annotated, TextIO
+from typing import TYPE_CHECKING, Annotated, TextIO
 
 import httpx
 import typer
@@ -61,6 +63,10 @@ from pharmaflux.demo import jeu, rejeu_accelere
 from pharmaflux.evaluation import questions as jeu_questions
 from pharmaflux.evaluation.verification import formater_bilan, verifier_jeu
 from pharmaflux.evenements import rejeu
+from pharmaflux.silver import ENTREPOT_PAR_DEFAUT, LOT_PAR_DEFAUT, Format, SilverRefuse
+
+if TYPE_CHECKING:  # le silver ne s'importe que dans ses commandes (K.1)
+    from pharmaflux.silver.consommation import LecteurSilver
 
 VARIABLE_RACINE = "PHARMAFLUX_DATA"
 QUESTIONS_PAR_DEFAUT = Path("evaluation/questions-reference-v0.toml")
@@ -76,6 +82,7 @@ fabriquer_suiveur: Callable[[str], suivi.Suiveur | None] = lambda _courtier: Non
 fabriquer_transport_registre: Callable[[], httpx.BaseTransport | None] = (  # noqa: E731
     lambda: None
 )
+fabriquer_lecteur_silver: Callable[[str], LecteurSilver | None] = lambda _courtier: None  # noqa: E731
 
 application = typer.Typer(
     name="pharmaflux",
@@ -835,3 +842,348 @@ def _racine(racine: Path | None) -> Path:
         return racine
     variable = os.environ.get(VARIABLE_RACINE)
     return Path(variable) if variable else RACINE_PAR_DEFAUT
+
+
+# --- silver (mission 05) -----------------------------------------------------------------------
+# PyArrow, PyIceberg et DuckDB pèsent 100 Mo résidents : ils ne s'importent que dans ces
+# commandes (addendum 1, K.1), et un test le vérifie.
+
+silver = typer.Typer(
+    name="silver",
+    help="Le silver (mission 05) : tables Iceberg SCD2 par entité, état à une date, SQL en"
+    " lecture seule, comparaison de deux entrepôts, vérification contre l'archive.",
+    no_args_is_help=True,
+)
+application.add_typer(silver)
+
+OptionEntrepot = Annotated[
+    Path,
+    typer.Option(
+        "--entrepot",
+        help="Dossier de l'entrepôt Iceberg (catalogue SQLite et tables), hors git.",
+        show_default=True,
+    ),
+]
+OptionFichierSilver = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--fichier",
+        help="Identifiant (bdpm.presentations) ou nom de fichier (CIS_CIP_bdpm.txt), répétable."
+        " Les onze fichiers TSV par défaut.",
+    ),
+]
+OptionFormat = Annotated[
+    Format, typer.Option("--format", help="jsonl (une version par ligne), tableau ou csv.")
+]
+
+
+def _journal_silver(message: str) -> None:
+    logging.getLogger("pharmaflux.silver").info(message)
+
+
+@silver.command("construire")
+def silver_construire(
+    sortie: Annotated[
+        Path,
+        typer.Option(
+            "--sortie",
+            help="Sortie de « evenements » : ses fichiers d'événements, dans l'ordre des noms.",
+            show_default=True,
+        ),
+    ] = SORTIE_PAR_DEFAUT,
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    fichier: OptionFichierSilver = None,
+    lot: Annotated[
+        int, typer.Option("--lot", help="Événements par commit Iceberg.", show_default=True)
+    ] = LOT_PAR_DEFAUT,
+) -> None:
+    """Construit le silver depuis les fichiers d'événements, dans un entrepôt neuf.
+
+    Une table Iceberg par entité, une version SCD2 par ligne (PRD §6.5), un
+    commit par lot. Refuse un entrepôt non vide et ne l'efface jamais (code 2) ;
+    code 2 aussi quand un événement ne peut pas être appliqué. Le journal (une
+    ligne par fichier) va sur la sortie d'erreur.
+    """
+    configurer_journal(sys.stderr)
+    from pharmaflux.silver import construction
+    from pharmaflux.silver.entrepot import allocateur_systeme
+
+    allocateur_systeme()
+    contrats = charger_tous()
+    selection = _selection_contrats(fichier, None, contrats)
+    try:
+        rapport = construction.construire(
+            sortie, entrepot, contrats, selection, lot=lot, journal=_journal_silver
+        )
+    except SilverRefuse as exc:
+        typer.echo(f"construction refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for entite_ in rapport.resumes:
+        typer.echo(
+            f"{entite_.identifiant:28} {entite_.fichiers} fichier(s), {entite_.evenements}"
+            f" événement(s), {entite_.ouvertures} ouverture(s), {entite_.fermetures} fermeture(s),"
+            f" {entite_.doublons} doublon(s), {entite_.commits} commit(s)"
+        )
+    typer.echo(f"entrepôt : {rapport.entrepot} ; durée : {rapport.duree_s:.1f} s")
+
+
+@silver.command("etat")
+def silver_etat(
+    entite: Annotated[
+        str, typer.Option("--entite", help="Identifiant (bdpm.presentations) ou nom de fichier.")
+    ],
+    a: Annotated[
+        str,
+        typer.Option(
+            "--a",
+            help="L'instant, UTC à la seconde, trois formes : 2026-10-26T14:00:00Z, avec un"
+            " décalage (…T16:00:00+02:00), ou une date seule (minuit UTC). Rien d'autre.",
+        ),
+    ],
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    ou: Annotated[
+        list[str] | None,
+        typer.Option("--ou", help="Filtre colonne=valeur (égalité sur la chaîne), répétable."),
+    ] = None,
+    format_: OptionFormat = Format.JSONL,
+    colonne: Annotated[
+        list[str] | None,
+        typer.Option("--colonne", help="Colonnes à écrire, répétable ; toutes par défaut."),
+    ] = None,
+) -> None:
+    """Les versions valides à un instant : ce que l'on savait alors (PRD §2.1, objectif 2).
+
+    Une version vaut de la date d'observation qui l'ouvre à celle qui la ferme,
+    borne de fin exclue. Avant la première observation : aucune version ; après
+    la dernière : les versions ouvertes ; code 0 et un message sur la sortie
+    d'erreur dans les deux cas. Code 2 : instant refusé, entité ou colonne
+    inconnue, entrepôt absent.
+    """
+    from pharmaflux.silver import etat as etat_silver
+    from pharmaflux.silver.entrepot import Entrepot, allocateur_systeme
+    from pharmaflux.silver.schema import texte_instant
+
+    allocateur_systeme()
+    contrats = charger_tous()
+    (identifiant,) = _selection_contrats([entite], None, contrats)
+    try:
+        instant = etat_silver.lire_instant(a)
+        filtres = etat_silver.lire_filtres(ou or [])
+        table = Entrepot.ouvrir(entrepot).table(identifiant)
+        if table is None:
+            raise SilverRefuse(f"aucune table {identifiant} dans {entrepot}")
+        versions = etat_silver.ordonner(etat_silver.etat_a(table, instant, filtres))
+        premiere, derniere = etat_silver.bornes(table)
+        lignes = list(etat_silver.rendre(versions, format_, colonne))
+    except SilverRefuse as exc:
+        typer.echo(f"état refusé : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for ligne in lignes:
+        typer.echo(ligne)
+    typer.echo(
+        f"{identifiant} à {texte_instant(instant)} : {versions.num_rows} version(s) valide(s)",
+        err=True,
+    )
+    if premiere is None or derniere is None:
+        typer.echo("le silver de cette entité est vide", err=True)
+    elif instant < premiere:
+        typer.echo(
+            f"aucune version : l'instant précède la première observation"
+            f" ({texte_instant(premiere)})",
+            err=True,
+        )
+    elif instant > derniere:
+        typer.echo(
+            f"le silver s'arrête à la dernière observation ({texte_instant(derniere)}) :"
+            " ce sont les versions ouvertes",
+            err=True,
+        )
+
+
+@silver.command("sql")
+def silver_sql(
+    requete: Annotated[
+        str,
+        typer.Argument(
+            help="Une requête SELECT ; les tables portent le nom court de l'entité (presentations)."
+        ),
+    ],
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    format_: OptionFormat = Format.TABLEAU,
+) -> None:
+    """Du SQL (DuckDB) sur le silver, en lecture seule et verrouillé.
+
+    DuckDB ne touche aucun fichier : les tables lui sont données en Arrow, l'accès
+    externe est coupé, la configuration verrouillée, et seul un SELECT passe.
+    Code 2 pour toute autre requête, ou une requête en erreur.
+    """
+    from pharmaflux.silver import etat as etat_silver
+    from pharmaflux.silver import sql as sql_silver
+    from pharmaflux.silver.entrepot import Entrepot, allocateur_systeme
+
+    allocateur_systeme()
+    try:
+        con = sql_silver.connexion(Entrepot.ouvrir(entrepot))
+        resultat = sql_silver.executer(con, requete)
+        lignes = list(etat_silver.rendre(resultat, format_))
+    except SilverRefuse as exc:
+        typer.echo(f"requête refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for ligne in lignes:
+        typer.echo(ligne)
+    typer.echo(f"{resultat.num_rows} ligne(s)", err=True)
+
+
+@silver.command("comparer")
+def silver_comparer(
+    a: Annotated[Path, typer.Argument(help="Premier entrepôt.")],
+    b: Annotated[Path, typer.Argument(help="Second entrepôt.")],
+) -> None:
+    """Compare deux entrepôts : mêmes tables, mêmes versions, mêmes validités (PRD §7.1).
+
+    Les métadonnées des snapshots, les fichiers Parquet et les propriétés de
+    table sont hors de la comparaison. Code 2 à la première différence.
+    """
+    from pharmaflux.silver import comparaison
+    from pharmaflux.silver.entrepot import Entrepot, allocateur_systeme
+
+    allocateur_systeme()
+    try:
+        premier, second = Entrepot.ouvrir(a), Entrepot.ouvrir(b)
+        differences = comparaison.comparer(premier, second)
+    except SilverRefuse as exc:
+        typer.echo(f"comparaison refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for difference in differences:
+        typer.echo(f"DIFFÉRENCE : {difference}")
+    if differences:
+        raise typer.Exit(code=2)
+    entites = premier.entites()
+    typer.echo(f"identiques : {len(entites)} table(s) ({', '.join(entites)})")
+
+
+@silver.command("verifier")
+def silver_verifier(
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    sortie: Annotated[
+        Path,
+        typer.Option(
+            "--sortie",
+            help="Sortie de « evenements » : ses bilans donnent les archives et leur verdict.",
+            show_default=True,
+        ),
+    ] = SORTIE_PAR_DEFAUT,
+    racine: OptionRacine = None,
+    fichier: OptionFichierSilver = None,
+) -> None:
+    """Vérifie le silver contre l'archive : l'état à chaque observation égale le snapshot.
+
+    Pour chaque archive retenue, le snapshot normalisé est recalculé depuis le
+    bronze et comparé, empreinte par empreinte, à l'état du silver à son
+    horodatage ; une archive écartée doit laisser l'état du dernier retenu.
+    Puis les invariants du SCD2 (DuckDB). Toute différence : code 2 ; référence
+    introuvable (pas de bilans) : code 2 avant toute lecture.
+    """
+    configurer_journal(sys.stderr)
+    from pharmaflux.silver import verification as verification_silver
+    from pharmaflux.silver.entrepot import Entrepot, allocateur_systeme
+
+    allocateur_systeme()
+    contrats = charger_tous()
+    selection = _selection_contrats(fichier, None, contrats)
+    try:
+        rapport = verification_silver.verifier(
+            Entrepot.ouvrir(entrepot),
+            sortie,
+            _racine(racine),
+            contrats,
+            selection,
+            journal=_journal_silver,
+        )
+    except SilverRefuse as exc:
+        typer.echo(f"vérification refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for resultat in rapport.entites:
+        for archive in resultat.archives:
+            verdict = (
+                "conforme"
+                if archive.conforme
+                else "DIFFÉRENCE : " + " | ".join(archive.differences)
+            )
+            typer.echo(
+                f"{resultat.entite:28} {Path(archive.archive).name[:16]} ({archive.decision},"
+                f" observée {archive.observee}) {archive.identites} identité(s) : {verdict}"
+            )
+        for note in resultat.notes:
+            typer.echo(f"{resultat.entite:28} note : {note}")
+        invariants = (
+            "conformes"
+            if not resultat.invariants
+            else "TOMBÉS : " + " | ".join(resultat.invariants)
+        )
+        typer.echo(
+            f"{resultat.entite:28} {resultat.versions} version(s), {resultat.ouvertes} ouverte(s),"
+            f" {resultat.fichiers} fichier(s) Parquet, {resultat.snapshots} snapshot(s) ;"
+            f" invariants : {invariants}"
+        )
+    typer.echo(
+        f"{rapport.archives_conformes}/{rapport.archives_verifiees} archive(s) conforme(s) ;"
+        f" durée : {rapport.duree_s:.1f} s"
+    )
+    raise typer.Exit(code=rapport.code_sortie)
+
+
+@silver.command("consommer")
+def silver_consommer(
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    courtier: OptionCourtier = None,
+    fichier: OptionFichierSilver = None,
+    lot: Annotated[
+        int, typer.Option("--lot", help="Messages par commit Iceberg.", show_default=True)
+    ] = LOT_PAR_DEFAUT,
+) -> None:
+    """Lit le bus et alimente le silver : chaque topic depuis la position gardée dans sa table.
+
+    Toutes les partitions à la fois, jusqu'aux offsets de fin lus au départ ;
+    un commit Iceberg par lot, qui porte la position ; les doublons sont
+    reconnus à leur identifiant. L'entrepôt est créé s'il n'existe pas, et
+    repris sinon. Codes : 1 courtier injoignable ; 2 refus (silver construit
+    depuis les fichiers, bus rebâti ou vide, message qui n'est pas un
+    événement v1, autre version de contrat) : rien n'est écrit.
+    """
+    configurer_journal(sys.stderr)
+    from pharmaflux.silver import consommation
+    from pharmaflux.silver.entrepot import allocateur_systeme
+
+    allocateur_systeme()
+    contrats = charger_tous()
+    selection = _selection_contrats(fichier, None, contrats)
+    adresse = _courtier(courtier)
+    lecteur = fabriquer_lecteur_silver(adresse) or LecteurKafka(adresse)
+    try:
+        rapport = consommation.consommer(
+            lecteur, entrepot, contrats, selection, lot=lot, journal=_journal_silver
+        )
+    except CourtierInjoignable as exc:
+        typer.echo(f"consommation interrompue : {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except SilverRefuse as exc:
+        typer.echo(f"consommation refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    finally:
+        if isinstance(lecteur, LecteurKafka):
+            lecteur.close()
+    for avertissement in rapport.avertissements:
+        typer.echo(f"AVERTISSEMENT : {avertissement}", err=True)
+    for entite_ in rapport.resumes:
+        positions = ", ".join(f"p{p} → {v.suivant}" for p, v in sorted(entite_.positions.items()))
+        notes = f" ; {' ; '.join(entite_.notes)}" if entite_.notes else ""
+        typer.echo(
+            f"{entite_.identifiant:28} {entite_.messages} message(s), {entite_.doublons}"
+            f" doublon(s), {entite_.ouvertures} ouverture(s), {entite_.fermetures} fermeture(s),"
+            f" {entite_.commits} commit(s) ; positions : {positions or 'aucune'}{notes}"
+        )
+    typer.echo(
+        f"entrepôt : {rapport.entrepot} ; grappe : {rapport.grappe or 'inconnue'} ;"
+        f" {rapport.messages} message(s) ; durée : {rapport.duree_s:.1f} s"
+    )

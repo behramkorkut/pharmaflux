@@ -1774,6 +1774,7 @@ def index_construire(
                         fragments,
                         cache,
                         lambda m: typer.echo(f"{m} ; résident max {_resident_max()} Mo", err=True),
+                        reduit=cis or (),
                     )
             finally:
                 cache.close()
@@ -1876,18 +1877,26 @@ def index_verifier(
     Mêmes identifiants (aucun manquant, aucun orphelin), mêmes textes et
     métadonnées, chaque vecteur égal à celui du cache pour son texte, un
     échantillon fixe de 100 fragments réencodé (cosinus ≥ 0,99 ; égalité avec
-    l'encodeur de test), aucune mise à jour en suspens. Code 0 conforme ; 1
-    écart ; 2 refus (pas d'index, alias et état en désaccord, modèle, Qdrant).
+    l'encodeur de test), aucune mise à jour en suspens. Un index réduit
+    (construire --cis) se compare à la reconstruction de ses seuls CIS. Prend
+    le verrou : il écrit dans le dossier de travail. Code 0 conforme ; 1
+    écart ; 2 refus (pas d'index, alias et état en désaccord, modèle, Qdrant,
+    verrou).
     """
     from pharmaflux.index import construction, encodeur
     from pharmaflux.index.qdrant import Qdrant, QdrantIndisponible
 
     try:
-        with Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as client:
+        with (
+            construction.verrou(travail),
+            Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as client,
+        ):
             etat = construction.etat_exige(client)
             encodeur_ = encodeur.charger(modele_)
             construction.encodeur_de_l_index(etat, encodeur_)
-            fragments = construction.calculer_fragments(entrepot, travail, a=etat["instant"])
+            fragments = construction.calculer_fragments(
+                entrepot, travail, etat.get("cis_reduits") or (), a=etat["instant"]
+            )
             cache = construction.Cache(travail, encodeur_.empreinte)
             try:
                 rapport = construction.verifier(client, encodeur_, fragments, cache)
@@ -1966,10 +1975,19 @@ def index_chercher(
 
 
 @index.command("etat")
-def index_etat(qdrant: OptionQdrant = None) -> None:
+def index_etat(
+    qdrant: OptionQdrant = None,
+    complet: Annotated[
+        bool,
+        typer.Option(
+            "--complet", help="Code 2 aussi pour un index réduit (construire --cis) : make index."
+        ),
+    ] = False,
+) -> None:
     """L'état de l'index : instant, mise à jour en suspens, format, modèle, fragments par section.
 
-    Code 2 : pas d'index, ou Qdrant injoignable.
+    Code 2 : pas d'index, alias et état en désaccord, Qdrant injoignable ;
+    avec --complet, aussi un index réduit, qu'une mise à jour élargirait.
     """
     from pharmaflux.index import construction
     from pharmaflux.index.fragments import SECTIONS
@@ -1990,10 +2008,16 @@ def index_etat(qdrant: OptionQdrant = None) -> None:
     typer.echo(f"format            {etat['format']}")
     typer.echo(f"modèle            {etat['empreinte_modele']} ({etat['dimension']} dimensions)")
     typer.echo(f"collection        {etat['collection']} (alias {alias})")
+    reduits = etat.get("cis_reduits")
     typer.echo(f"fiches            {etat['fiches']}")
+    if reduits:
+        typer.echo(f"réduit à         {len(reduits)} CIS (construire --cis) : {' '.join(reduits)}")
     typer.echo(f"fragments         {total}")
     for s, n in par_section.items():
         typer.echo(f"  {s:15} {n}")
+    if complet and reduits:
+        typer.echo("index réduit : il faut le reconstruire en entier", err=True)
+        raise typer.Exit(code=2)
 
 
 @index.command("evaluer")

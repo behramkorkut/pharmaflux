@@ -242,6 +242,17 @@ l'instant de l'index** :
 Avec l'encodeur de test, chaque vecteur est réencodé et doit être égal.
 Codes : 0 conforme, 1 écart, 2 refus.
 
+`verifier` prend le verrou : son sous-processus écrit dans le dossier de
+travail. Un index réduit (`construire --cis`, la CI) se compare à la
+reconstruction de ses seuls CIS. L'état garde ces CIS : `mettre-a-jour`
+refuse un index réduit, qu'il élargirait, et `make index` le reconstruit en
+entier.
+
+**Perdre le cache des vecteurs** (`data/index/cache-vecteurs.sqlite`) rend
+un index juste NON CONFORME (« vecteurs absents du cache »), et `verifier`
+le dit. Seul `index construire` le refait, en réencodant tout (18 min sur le
+jeu).
+
 **Le test par tranches** : le jeu publié au silver en quatre tranches, du
 24/10 au 27/10. L'index est construit, puis mis à jour après chaque tranche,
 et `verifier` est conforme à chaque étape. À la fin, l'index est égal, point

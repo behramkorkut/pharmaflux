@@ -279,9 +279,9 @@ uv run pharmaflux index chercher "LARIAM 250 mg est-il en rupture de stock ?" -k
 
 Ce n'est pas encore l'assistant : ni seuil, ni réponse rédigée (mission 08).
 
-**Les mesures, sur le jeu.** La construction complète tient en 415 Mo pour
-l'encodage, et en 416 Mo pour le calcul des fragments, qui tourne dans un
-sous-processus. La recherche est exacte : 7 ms par requête sur les 72 296
+**Les mesures, sur le jeu.** À la clôture de la mission, la construction
+complète a tenu en 411 Mo pour l'encodage et en 416 Mo pour le calcul des
+fragments, qui tourne dans un sous-processus, en 18 minutes. La recherche est exacte : 7 ms par requête sur les 72 296
 fragments.
 
 `index evaluer` donne une première mesure : sur les 22 questions du jeu v0

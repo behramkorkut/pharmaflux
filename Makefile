@@ -81,12 +81,12 @@ gold:
 	$(PHARMAFLUX) gold qualite --entrepot $(ENTREPOT_DEMO)
 	$(PHARMAFLUX) questions verifier --racine $(JEU) --entrepot $(ENTREPOT_DEMO)
 
-# Une construction complète s'il n'y a pas d'index lisible (aucun, ou un alias que l'état ne
-# décrit pas : une construction coupée), sinon une mise à jour ; puis la vérification, qui a le
-# dernier mot (code 1 au moindre écart).
+# Une construction complète s'il n'y a pas d'index lisible et complet (aucun, un alias que
+# l'état ne décrit pas après une construction coupée, ou un index réduit par --cis), sinon une
+# mise à jour ; puis la vérification, qui a le dernier mot (code 1 au moindre écart).
 index:
 	sh infra/demo/prerequis.sh index $(INDEX_MODELE)
-	@if $(PHARMAFLUX) index etat > /dev/null 2>&1; then \
+	@if $(PHARMAFLUX) index etat --complet > /dev/null 2>&1; then \
 		echo "make index : un index existe, mise à jour par incréments (index mettre-a-jour)"; \
 		$(PHARMAFLUX) index mettre-a-jour $(INDEX_OPTIONS); \
 	else \

@@ -154,7 +154,8 @@ jobs:
           uv run pharmaflux index modele verifier e5-small-int8
 
       # Ses tests (les jetons égaux à tokenizer.json, les vecteurs), puis un index réduit aux
-      # CIS du jeu de questions v0 et trois recherches réelles : le modèle se charge et trouve.
+      # CIS du jeu de questions v0, vérifié, et trois recherches réelles : le modèle se charge
+      # et trouve.
       - name: Le vrai modèle sur un sous-ensemble (tests « modele », index réduit, recherches)
         env:
           PHARMAFLUX_MODELE_EXIGE: "1"
@@ -165,6 +166,7 @@ jobs:
             --cis 62011103 --cis 63210923 --cis 63930084 --cis 65143010 --cis 65999556 \
             --cis 66890524 --cis 67026956 --cis 67851912 --cis 68081368 --cis 68486929 \
             --cis 68705771
+          uv run pharmaflux index verifier --entrepot data/demo/lakehouse
           uv run pharmaflux index chercher "LARIAM 250 mg est-il en rupture de stock ?" -k 3
           uv run pharmaflux index chercher "Quel est le taux de remboursement de LEVOCARNIL ?" -k 3
           uv run pharmaflux index chercher "MICROVAL est-il en tension d'approvisionnement ?" -k 3

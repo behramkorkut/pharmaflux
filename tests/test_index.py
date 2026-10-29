@@ -90,6 +90,7 @@ def test_construire_ecrit_tous_les_fragments_puis_l_alias_puis_l_etat(
             "dimension": 32,
             "fiches": 3,
             "fragments": 7,
+            "cis_reduits": None,
         }
     ]
     assert simule.collections[COLLECTION_ETAT]["dimension"] is None, "l'état n'a pas de vecteur"

@@ -201,15 +201,21 @@ def construire(
     fragments: Fragments,
     cache: Cache,
     journal: Any = None,
+    reduit: Sequence[str] = (),
 ) -> BilanConstruction:
     """Une collection neuve avec tous les fragments, puis l'alias basculé, puis l'état.
 
     Jusqu'à la bascule, l'index qu'on lit est l'ancien, entier. Une coupure laisse une
     collection hors de l'alias, effacée par la construction suivante au même nom ; reconstruire
-    au même instant écrit sous le nom « -bis », pour ne jamais effacer la collection lue.
+    au même instant écrit sous le nom « -bis », pour ne jamais effacer la collection lue. Après
+    la bascule, la collection de l'ancien alias **et** celle que l'ancien état décrivait sont
+    effacées : après une coupure entre la bascule et l'état, ce ne sont pas les mêmes
+    (relecture 1). ``reduit`` : les CIS d'un index réduit (la CI), que l'état garde.
     """
     debut = time.monotonic()
     ancienne = qdrant.alias().get(qdrant.alias_fragments)
+    etat_avant = qdrant.lire_etat()
+    decrite = None if etat_avant is None else etat_avant.get("collection")
     collection = nom_collection(qdrant.espace, encodeur, fragments.instant)
     if collection == ancienne:  # reconstruire au même instant : l'autre nom, l'index reste lisible
         collection += "-bis"
@@ -239,12 +245,13 @@ def construire(
             "modele": encodeur.nom,
             "empreinte_modele": encodeur.empreinte,
             "dimension": encodeur.dimension,
-            "fiches": fragments.fiches_total or fragments.fiches,
+            "fiches": fragments.fiches if reduit else fragments.fiches_total or fragments.fiches,
             "fragments": ecrits,
+            "cis_reduits": sorted(reduit) or None,
         }
     )
-    if ancienne is not None and ancienne != collection:
-        qdrant.supprimer_collection(ancienne)
+    for perimee in sorted({str(c) for c in (ancienne, decrite) if c and c != collection}):
+        qdrant.supprimer_collection(perimee)
     return BilanConstruction(
         collection, fragments.instant, fragments.fiches, ecrits, encodes, time.monotonic() - debut
     )
@@ -379,6 +386,11 @@ def mettre_a_jour(
     encodeur_de_l_index(etat, encodeur)
     if etat["format"] != FORMAT:
         raise IndexRefuse(f"l'index est au format {etat['format']}, ce code écrit le {FORMAT}")
+    if etat.get("cis_reduits"):
+        raise IndexRefuse(
+            f"l'index est réduit à {len(etat['cis_reduits'])} CIS (index construire --cis) : une"
+            " mise à jour l'élargirait ; relancer « pharmaflux index construire » en entier"
+        )
     if fragments.touches is None:
         raise IndexRefuse("une mise à jour demande les CIS touchés (index fragments --depuis)")
     if fragments.instant < etat["instant"]:
@@ -564,7 +576,11 @@ def _verifier_page(
             rapport.sans_cache.append(identifiant)
         elif not np.array_equal(vecteur, en_cache):
             rapport.vecteurs_differents.append(identifiant)
-        if reencodes is not None and not np.array_equal(vecteur, reencodes[rang]):
+        if (
+            reencodes is not None
+            and not np.array_equal(vecteur, reencodes[rang])
+            and identifiant not in rapport.vecteurs_differents[-1:]
+        ):
             rapport.vecteurs_differents.append(identifiant)
         if identifiant in echantillon:
             a_reencoder.append((point["payload"]["texte"], vecteur))
@@ -595,5 +611,11 @@ def formater_verification(rapport: Verification) -> list[str]:
     )
     if rapport.suspens:
         lignes.append(f"mise à jour en suspens vers {rapport.suspens} : relancer mettre-a-jour")
+    if rapport.sans_cache:
+        lignes.append(
+            "des vecteurs sont absents du cache des vecteurs (data/index/cache-vecteurs.sqlite"
+            " perdu ou effacé ?) : seul « pharmaflux index construire » le refait, en réencodant"
+            " tout"
+        )
     lignes.append("conforme" if rapport.conforme else "NON CONFORME")
     return lignes

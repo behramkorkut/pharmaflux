@@ -117,6 +117,8 @@ class Qdrant:
         self._appeler("PUT", f"/collections/{collection}/points?wait=true", corps)
 
     def supprimer(self, collection: str, filtre: dict[str, object]) -> None:
+        """Par filtre : seuls les tests d'intégration s'en servent (la mise à jour retire par
+        identifiants, ``supprimer_ids``)."""
         self._appeler(
             "POST", f"/collections/{collection}/points/delete?wait=true", {"filter": filtre}
         )

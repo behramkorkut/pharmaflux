@@ -228,6 +228,9 @@ def test_une_coupure_entre_l_alias_et_l_etat_fait_refuser_la_lecture(
     construire(index_avant, tmp_path / "travail", complets)  # la sortie : reconstruire
     with client(index_avant) as q:
         assert construction.etat_exige(q)["instant"] == APRES
+    assert set(index_avant.collections) == {COLLECTION_ETAT, index_avant.alias[ALIAS]}, (
+        "ni la collection de l'ancien alias, ni celle que l'ancien état décrivait (relecture 1)"
+    )
 
 
 def test_verifier_trouve_chaque_ecart(index_avant: QdrantSimule, tmp_path: Path) -> None:
@@ -247,7 +250,9 @@ def test_verifier_trouve_chaque_ecart(index_avant: QdrantSimule, tmp_path: Path)
         ["orphelin"],
         [ids[1]],
     )
-    assert ids[2] in rapport.vecteurs_differents
+    assert sorted(rapport.vecteurs_differents) == sorted([ids[1], ids[2]]), (
+        "chacun une fois : le vecteur retouché, et celui dont le texte ne correspond plus"
+    )
     lignes = construction.formater_verification(rapport)
     assert (
         lignes[-1] == "NON CONFORME" and f"manquants                        1 : {ids[0]}" in lignes
@@ -343,3 +348,37 @@ def test_l_echec_de_qdrant_est_un_refus_en_ligne_de_commande(
             ],
         )
         assert resultat.exit_code == 2, (commande, resultat.output)
+
+
+def test_un_index_reduit_se_declare_et_ne_se_met_pas_a_jour(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Relecture 1 : construire --cis garde ses CIS dans l'état ; la mise à jour refuse."""
+    simule, travail = QdrantSimule(), tmp_path / "travail"
+    reduites = [f for f in AVANT_FICHES if f["code_cis"] in ("60000001", "60000002")]
+    frags = ecrire(tmp_path, "reduit", reduites, AVANT, total=len(AVANT_FICHES))
+    cache = Cache(travail, EncodeurTest.empreinte)
+    with client(simule) as q:
+        construction.construire(q, EncodeurTest(), frags, cache, reduit=["60000002", "60000001"])
+    cache.close()
+    etat = next(iter(simule.points(COLLECTION_ETAT).values()))["payload"]
+    assert etat["cis_reduits"] == ["60000001", "60000002"] and etat["fiches"] == 2
+    with pytest.raises(IndexRefuse, match="réduit à 2 CIS"):
+        mettre_a_jour(simule, travail, ecrire(tmp_path, "maj", APRES_FICHES, APRES, TOUCHES))
+    assert verifier(simule, travail, frags).conforme, "comparé à la reconstruction de ses CIS"
+    monkeypatch.setattr(cli, "fabriquer_transport_qdrant", simule.transport)
+    simple = CliRunner().invoke(application, ["index", "etat"])
+    assert simple.exit_code == 0 and "réduit à         2 CIS" in simple.output
+    complet = CliRunner().invoke(application, ["index", "etat", "--complet"])
+    assert complet.exit_code == 2 and "reconstruire en entier" in complet.output
+
+
+def test_verifier_prend_le_verrou(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Relecture 1 : son sous-processus écrit les mêmes fichiers que construire."""
+    simule = QdrantSimule()
+    monkeypatch.setattr(cli, "fabriquer_transport_qdrant", simule.transport)
+    with construction.verrou(tmp_path):
+        resultat = CliRunner().invoke(
+            application, ["index", "verifier", "--modele", "test", "--travail", str(tmp_path)]
+        )
+    assert resultat.exit_code == 2 and "un autre processus écrit l'index" in resultat.output

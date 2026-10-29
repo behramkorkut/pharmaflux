@@ -110,3 +110,11 @@ Elle est égale à la ligne `Digest:` qu'affiche le `docker pull`.
 **Étape 3, transmettre** au codeur la version, la date de publication et
 l'empreinte (`sha256:…`). Il les écrit dans le compose au palier 2, puis
 `make up` démarre Qdrant avec `--pull never`, sur l'image déjà présente.
+
+## Le cache des vecteurs
+
+`data/index/cache-vecteurs.sqlite` garde les vecteurs déjà calculés ; `make
+rebatir` ne l'efface pas. S'il est perdu, `index verifier` déclare l'index
+NON CONFORME (« vecteurs absents du cache »), même juste : seul `index
+construire` le refait, en réencodant tout (18 minutes sur le jeu). L'effacer
+exprès sert à mesurer l'encodage (clôture de la mission 07).

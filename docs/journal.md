@@ -510,3 +510,70 @@ code 2 au lieu d'une trace (`c53d714`). Non-régression complète rejouée sur
 `demo verifier` et `verifier-bus` conformes ; mémoire de toutes les commandes
 silver sous 512 Mo (`comparer` 424 Mo, le plus lourd). 500 tests. Revue
 finale de l'IeC, puis publication par beko.
+
+## 2026-10-29 — Mission 06 : gold et qualité
+
+**Durée de `make silver` dans la CI** (reportée par `pr.md` de la mission
+05) : **37 s** sur la PR #6, **38 s** sur `main` après la fusion ; dans le
+même job `integration`, `make demo` dure 1 min 50 s.
+
+**Mission 06, §0 et palier 1** (29/10). Ordre : le gold (Lot 2, PRD v0.7
+§6.5), calculé à la demande depuis le silver à un instant, sans table
+stockée. Le §0 a mesuré, sur un silver du jeu construit hors dépôt, une
+seule valeur illisible dans tout l'état (`EU/1/17/1235/`, numéro
+d'autorisation européenne du CIS 61096104) et une fiche médicament de tout
+le jeu en 0,10 s et 318 Mo en PyArrow, contre 552 à 705 Mo en SQL DuckDB ;
+l'addendum 1 a tout retenu, avec une requête DuckDB de référence pour
+chaque vue (palier 2). Palier 1 : le typage (`pharmaflux.gold.typage`),
+qui part des anomalies du silver et non de la valeur seule (un `24.35`
+brut a l'air canonique, il reste vide en typé), avec `decimal128(18, 2)`,
+`date32`, `list<string>` ; les quatorze contrôles de qualité, quatre
+bloquants et dix mesurés, tous à leur chiffre du §0 sur le jeu, aucun
+bloquant ne tombe ; `gold etat`, `gold qualite`, `gold sql`. Un test l'a
+montré : `strptime` d'Arrow lit `2026-02-30` comme le 2 mars, d'où un
+aller-retour de la date avant de la tenir pour lisible.
+
+**Mission 06, palier 2** (29/10). Les trois vues métier, construites en
+PyArrow et en Python : la fiche médicament (21 445 fiches, dont 5 562
+partielles hors de `CIS_bdpm.txt`), la disponibilité courante (20 918 lignes :
+914 signalements en cours, dont 878 dépliés depuis une ligne sans CIP13,
+20 004 « aucun signalement »), les alternatives (groupe générique ×
+présentations × disponibilité). La priorité « déclaré, puis fin de
+publication, puis aucun signalement » est testée branche par branche sur un
+fichier de disponibilité synthétique, et chaque vue est égale, en
+multiensemble, à une requête DuckDB de référence écrite à part (fixtures à
+trois instants, et 28 CIS du jeu). `questions verifier --entrepot` :
+**les 25 questions concordent depuis le gold**, 24 par une vue, 1 par les
+colonnes typées. Deux garde-fous de plus : un instant où l'une des onze
+entités n'est pas encore observée est refusé (sinon « aucun signalement »
+serait affirmé avant d'avoir lu le fichier), et la sortie JSON se fait par
+lots (la fiche entière passait de 552 à 415 Mo).
+
+**Mission 06, palier 3** (29/10). `make gold` (`gold qualite`, puis
+`questions verifier --entrepot`) et `make fiche CIS=… A=…` ; l'étape « make
+gold » dans le job `integration`, après « make silver ». ADR 0010, avec ses
+limites (une brute illisible égale à la forme canonique précédente ne fait pas
+d'événement), la règle des instants et le jour UTC ; README (la fiche de
+63830632 à 23:17:11 et 23:17:12 le 24/10, la disponibilité de LARIAM couverte
+par une ligne sans CIP13), `CONTEXTE.md`. Le refus d'un instant non observé
+donne le premier instant où les onze entités le sont.
+
+**Mission 06, contrôle du palier 3 et relecture 1** (29/10). Contrôle du
+palier 3 : conforme, clôture atteinte ; la section « État » du README remise
+à jour (missions 00 à 06, tableau des lots). Relecture 1 CONFORME, 0
+bloquant, trois points corrigés : deux fermetures au même instant se
+départagent comme dans la référence DuckDB (un champ vide perd ; cas ajouté
+au fichier synthétique, deux tests tombaient avant) ; un CIS, un CIP13 ou un
+groupe inconnu fait refuser `gold disponibilite` et `gold alternatives` au
+lieu d'une réponse vide ; un prix absent s'écrit « — » sans unité. Les
+validités de chaque table ne sont plus lues qu'une fois par `gold qualite`.
+538 tests.
+
+**Mission 06, `pr.md`** (29/10). Relecture 1 CONFORME, pas de tour 2 ;
+remarque 1 tranchée par l'IeC (la fiche donne les signalements en cours, la
+fin de publication se lit dans `disponibilite_courante` ; question reportée au
+Lot 3). Non-régression complète rejouée sur `6cadc6f` : `profil` 0 bloquante,
+`questions verifier` 25/5/10, `evenements` identique à `53f261b` par
+`diff -r`, `demo verifier` conforme, `silver verifier` 22/22, les deux
+commandes de `make gold` sans bloquant et 25 concordantes, 538 tests. Revue
+finale de l'IeC, puis publication par beko.

@@ -14,6 +14,8 @@ fabriquer`` / ``demo verifier`` : le jeu de démo figé ``demo/archive`` ;
 observations, à la cadence accélérée. ``silver construire`` / ``etat`` /
 ``sql`` / ``comparer`` / ``verifier`` / ``consommer`` : le silver Iceberg
 (mission 05), dont les bibliothèques ne s'importent que dans ces commandes.
+``gold etat`` / ``qualite`` / ``sql`` : l'état typé du silver à un instant et
+ses contrôles de qualité (mission 06), sous la même règle d'import.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ import os
 import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
+from enum import StrEnum
 from importlib.metadata import version as version_du_paquet
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, TextIO
@@ -66,7 +69,10 @@ from pharmaflux.evenements import rejeu
 from pharmaflux.silver import ENTREPOT_PAR_DEFAUT, LOT_PAR_DEFAUT, Format, SilverRefuse
 
 if TYPE_CHECKING:  # le silver ne s'importe que dans ses commandes (K.1)
+    from pharmaflux.gold.typage import EntiteTypee as EntiteTypee_
+    from pharmaflux.gold.vues import Vues as Vues_
     from pharmaflux.silver.consommation import LecteurSilver
+    from pharmaflux.silver.entrepot import Entrepot as Entrepot_
 
 VARIABLE_RACINE = "PHARMAFLUX_DATA"
 QUESTIONS_PAR_DEFAUT = Path("evaluation/questions-reference-v0.toml")
@@ -803,11 +809,22 @@ def questions_verifier(
             show_default=True,
         ),
     ] = QUESTIONS_PAR_DEFAUT,
+    entrepot: Annotated[
+        Path | None,
+        typer.Option(
+            "--entrepot",
+            help="Recalcule aussi chaque attendu depuis le gold de cet entrepôt, à l'instant de"
+            " son archive, et exige la concordance (mission 06).",
+        ),
+    ] = None,
 ) -> None:
     """Rejoue chaque question : archive citée relue, sha256 vérifié, valeur recalculée.
 
     Code de sortie 1 au moindre écart, archive introuvable, sha256 différent
-    ou archive non conforme à son contrat.
+    ou archive non conforme à son contrat. Avec --entrepot, chaque attendu est
+    aussi recalculé depuis le gold (fiche, alternatives ou colonnes typées) et
+    comparé en multiensemble ; une discordance, ou une question non calculable
+    depuis le gold, donne le code 2.
     """
     contrats = charger_tous()
     try:
@@ -816,7 +833,20 @@ def questions_verifier(
         raise typer.BadParameter(str(exc), param_hint="--questions") from exc
     bilan = verifier_jeu(jeu, _racine(racine), contrats)
     typer.echo(formater_bilan(bilan))
-    raise typer.Exit(code=bilan.code_sortie)
+    if entrepot is None:
+        raise typer.Exit(code=bilan.code_sortie)
+    from pharmaflux.gold import questions as questions_gold
+    from pharmaflux.silver.entrepot import Entrepot, allocateur_systeme
+
+    allocateur_systeme()
+    try:
+        bilan_gold = questions_gold.verifier_gold(jeu, Entrepot.ouvrir(entrepot), contrats)
+    except SilverRefuse as exc:
+        typer.echo(f"calcul depuis le gold refusé : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for ligne in questions_gold.formater(bilan_gold):
+        typer.echo(ligne)
+    raise typer.Exit(code=bilan_gold.code_sortie or bilan.code_sortie)
 
 
 @application.command()
@@ -1187,3 +1217,353 @@ def silver_consommer(
         f"entrepôt : {rapport.entrepot} ; grappe : {rapport.grappe or 'inconnue'} ;"
         f" {rapport.messages} message(s) ; durée : {rapport.duree_s:.1f} s"
     )
+
+
+# --- gold (mission 06) -------------------------------------------------------------------------
+# Le gold est une fonction du silver et d'un instant (ADR 0010) : rien n'est stocké. Les
+# bibliothèques ne s'importent, comme pour le silver, que dans ces commandes.
+
+gold = typer.Typer(
+    name="gold",
+    help="Le gold (mission 06) : l'état typé du silver à un instant, ses contrôles de qualité,"
+    " du SQL en lecture seule sur les entités typées.",
+    no_args_is_help=True,
+)
+application.add_typer(gold)
+
+OptionInstantGold = Annotated[
+    str | None,
+    typer.Option(
+        "--a",
+        help="L'instant, comme pour silver etat (UTC à la seconde, avec un décalage, ou une date"
+        " seule). Défaut : la dernière observation du silver.",
+    ),
+]
+
+
+def _instant_gold(a: str | None, entrepot: Path) -> tuple[Entrepot_, datetime]:
+    """L'entrepôt ouvert et l'instant demandé, ou la dernière observation du silver."""
+    from pharmaflux.gold.typage import derniere_observation
+    from pharmaflux.silver import etat as etat_silver
+    from pharmaflux.silver.entrepot import Entrepot, allocateur_systeme
+    from pharmaflux.silver.schema import texte_instant
+
+    allocateur_systeme()
+    ouvert = Entrepot.ouvrir(entrepot)
+    if a is not None:
+        return ouvert, etat_silver.lire_instant(a)
+    derniere = derniere_observation(ouvert)
+    if derniere is None:
+        raise SilverRefuse(f"le silver de {entrepot} est vide : aucun instant par défaut")
+    typer.echo(f"instant : {texte_instant(derniere)} (dernière observation du silver)", err=True)
+    return ouvert, derniere
+
+
+def _vues_gold(a: str | None, entrepot: Path) -> tuple[dict[str, EntiteTypee_], Vues_]:
+    """Les onze entités typées et les trois vues métier, à l'instant demandé."""
+    from pharmaflux.gold.qualite import exiger_les_onze
+    from pharmaflux.gold.sql import etats_types
+    from pharmaflux.gold.vues import vues
+
+    ouvert, instant = _instant_gold(a, entrepot)
+    exiger_les_onze(ouvert, instant)
+    contrats = charger_tous()
+    etats = etats_types(ouvert, contrats, instant)
+    return etats, vues(ouvert, contrats, etats, instant)
+
+
+@gold.command("etat")
+def gold_etat(
+    entite: Annotated[
+        str, typer.Option("--entite", help="Identifiant (bdpm.presentations) ou nom de fichier.")
+    ],
+    a: OptionInstantGold = None,
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    ou: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--ou",
+            help="Filtre colonne=valeur, égalité sur la valeur du silver (forme canonique),"
+            " répétable.",
+        ),
+    ] = None,
+    format_: OptionFormat = Format.JSONL,
+    colonne: Annotated[
+        list[str] | None,
+        typer.Option("--colonne", help="Colonnes à écrire, répétable ; toutes par défaut."),
+    ] = None,
+) -> None:
+    """L'état typé d'une entité à un instant : chaque colonne au type de son contrat.
+
+    Une valeur illisible n'est jamais devinée : sa colonne typée est vide, la
+    valeur brute reste dans le silver, et ``colonnes_illisibles`` la nomme. Un
+    décimal sort en chaîne exacte (« 1.16 »), une date en AAAA-MM-JJ. Code 2 :
+    instant refusé, entité ou colonne inconnue, entrepôt absent.
+    """
+    from pharmaflux.gold.rendu import rendre
+    from pharmaflux.gold.typage import etat_type
+    from pharmaflux.silver import etat as etat_silver
+    from pharmaflux.silver.schema import texte_instant
+
+    contrats = charger_tous()
+    (identifiant,) = _selection_contrats([entite], None, contrats)
+    try:
+        ouvert, instant = _instant_gold(a, entrepot)
+        filtres = etat_silver.lire_filtres(ou or [])
+        typee = etat_type(ouvert, contrats[identifiant], instant, filtres)
+        lignes = list(rendre(etat_silver.ordonner(typee.table), format_, colonne))
+    except SilverRefuse as exc:
+        typer.echo(f"état refusé : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for ligne in lignes:
+        typer.echo(ligne)
+    typer.echo(
+        f"{identifiant} à {texte_instant(instant)} : {typee.table.num_rows} ligne(s) typée(s)",
+        err=True,
+    )
+
+
+@gold.command("qualite")
+def gold_qualite(
+    a: OptionInstantGold = None,
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    format_: Annotated[
+        Format, typer.Option("--format", help="tableau (défaut) ou jsonl (un contrôle par ligne).")
+    ] = Format.TABLEAU,
+) -> None:
+    """Les quatorze contrôles de qualité à un instant : quatre bloquants, dix mesurés.
+
+    Bloquant : un invariant de la chaîne (clés uniques, une version par
+    identité, valeurs canoniques typables, aucune entité vidée). Mesuré : un
+    fait de la source, toujours affiché, même à 0. Code 2 si un bloquant tombe,
+    ou sur un refus (instant, entrepôt, entité absente).
+    """
+    import json
+
+    from pharmaflux.gold import qualite
+
+    try:
+        ouvert, instant = _instant_gold(a, entrepot)
+        rapport = qualite.controler(ouvert, charger_tous(), instant)
+    except SilverRefuse as exc:
+        typer.echo(f"contrôles refusés : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if format_ is Format.JSONL:
+        for controle in rapport.controles:
+            typer.echo(json.dumps(qualite.en_dict(controle), ensure_ascii=False))
+        typer.echo(rapport.resume(), err=True)
+    else:
+        for ligne in qualite.formater(rapport):
+            typer.echo(ligne)
+    raise typer.Exit(code=rapport.code_sortie)
+
+
+@gold.command("sql")
+def gold_sql(
+    requete: Annotated[
+        str,
+        typer.Argument(
+            help="Une requête SELECT ; chaque entité typée porte son nom court (presentations)."
+        ),
+    ],
+    a: OptionInstantGold = None,
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    format_: OptionFormat = Format.TABLEAU,
+) -> None:
+    """Du SQL (DuckDB) sur le gold à un instant, en lecture seule et verrouillé.
+
+    Les onze entités typées sous leur nom court, et les trois vues métier :
+    fiche_medicament, disponibilite_courante, alternatives. La barrière est
+    celle de silver sql : DuckDB ne touche aucun fichier, seul un SELECT passe.
+    Code 2 pour toute autre requête, ou une requête en erreur.
+    """
+    from pharmaflux.gold import sql as sql_gold
+    from pharmaflux.gold.rendu import rendre
+    from pharmaflux.silver import sql as sql_silver
+
+    try:
+        etats, vues_ = _vues_gold(a, entrepot)
+        con = sql_gold.connexion(etats, vues_)
+        resultat = sql_silver.executer(con, requete)
+        lignes = list(rendre(resultat, format_))
+    except SilverRefuse as exc:
+        typer.echo(f"requête refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for ligne in lignes:
+        typer.echo(ligne)
+    typer.echo(f"{resultat.num_rows} ligne(s)", err=True)
+
+
+class FormatFiche(StrEnum):
+    JSONL = "jsonl"
+    TEXTE = "texte"
+
+
+@gold.command("fiche")
+def gold_fiche(
+    cis: Annotated[str | None, typer.Option("--cis", help="Le CIS de la spécialité.")] = None,
+    tout: Annotated[
+        bool, typer.Option("--tout", help="Toutes les fiches (jsonl), une par ligne.")
+    ] = False,
+    a: OptionInstantGold = None,
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    format_: Annotated[
+        FormatFiche, typer.Option("--format", help="jsonl (défaut) ou texte (un CIS).")
+    ] = FormatFiche.JSONL,
+) -> None:
+    """La fiche médicament d'un CIS à un instant (ou toutes, --tout).
+
+    Une ligne par CIS connu à l'instant, même absent du référentiel des
+    spécialités (fiche partielle, dans_referentiel faux). Le texte est lisible
+    par un humain ; il n'engage pas le format des fragments du Lot 3. Code 2 :
+    ni --cis ni --tout, CIS inconnu à l'instant, ou refus (instant, entrepôt).
+    """
+    from pharmaflux.gold.rendu import fiche_en_texte, rendre
+
+    if (cis is None) == (not tout) or (tout and format_ is FormatFiche.TEXTE):
+        typer.echo("fiche refusée : --cis X, ou --tout (en jsonl seulement)", err=True)
+        raise typer.Exit(code=2)
+    try:
+        _, vues_ = _vues_gold(a, entrepot)
+    except SilverRefuse as exc:
+        typer.echo(f"fiche refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    fiches = vues_.fiche
+    if cis is not None:
+        import pyarrow as pa
+        import pyarrow.compute as pc
+
+        fiches = fiches.filter(pc.equal(fiches["code_cis"], pa.scalar(cis)))
+        if not fiches.num_rows:
+            typer.echo(
+                f"fiche refusée : aucun fichier ne cite le CIS {cis} à cet instant", err=True
+            )
+            raise typer.Exit(code=2)
+    if format_ is FormatFiche.TEXTE:
+        typer.echo(fiche_en_texte(fiches.to_pylist()[0]))
+    else:
+        for ligne in rendre(fiches, Format.JSONL):
+            typer.echo(ligne)
+    typer.echo(f"{fiches.num_rows} fiche(s)", err=True)
+
+
+OptionColonneGold = Annotated[
+    list[str] | None,
+    typer.Option("--colonne", help="Colonnes à écrire, répétable ; toutes par défaut."),
+]
+
+
+@gold.command("disponibilite")
+def gold_disponibilite(
+    cis: Annotated[str | None, typer.Option("--cis", help="Les présentations d'un CIS.")] = None,
+    cip13: Annotated[str | None, typer.Option("--cip13", help="Une présentation.")] = None,
+    a: OptionInstantGold = None,
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    format_: OptionFormat = Format.TABLEAU,
+    colonne: OptionColonneGold = None,
+) -> None:
+    """La disponibilité courante par présentation, à un instant.
+
+    Priorité : un signalement en cours (declare, direct ou par la spécialité :
+    colonne portee), sinon la fin de publication de la fiche par l'ANSM
+    (fin_de_publication, ce n'est pas une remise à disposition), sinon
+    aucun_signalement (ce qui ne veut pas dire « disponible »). Code 2 sur un
+    refus.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    from pharmaflux.gold.rendu import rendre
+
+    try:
+        _, vues_ = _vues_gold(a, entrepot)
+        _exiger_connus(vues_, cis=cis, cip13=cip13)
+        table = vues_.disponibilite
+        if cis is not None:
+            table = table.filter(pc.equal(table["code_cis"], pa.scalar(cis)))
+        if cip13 is not None:
+            table = table.filter(pc.equal(table["code_cip13"], pa.scalar(cip13)))
+        lignes = list(rendre(table, format_, colonne))
+    except SilverRefuse as exc:
+        typer.echo(f"disponibilité refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for ligne in lignes:
+        typer.echo(ligne)
+    typer.echo(f"{table.num_rows} ligne(s)", err=True)
+
+
+def _exiger_connus(
+    vues_: Vues_, *, cis: str | None = None, cip13: str | None = None, groupe: str | None = None
+) -> None:
+    """Refuse un code que le gold ne connaît pas à l'instant (relecture 1, point 2).
+
+    Une coquille ne doit pas donner une réponse vide qui se lirait comme un fait
+    (« aucune alternative »), comme gold fiche le refuse déjà pour un CIS.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    for code, colonne, table, quoi in (
+        (cis, "code_cis", vues_.fiche, "aucun fichier ne cite le CIS"),
+        (cip13, "code_cip13", vues_.disponibilite, "aucun fichier ne cite le CIP13"),
+        (groupe, "identifiant_groupe", vues_.alternatives, "aucun groupe générique"),
+    ):
+        if code is not None and not pc.any(pc.equal(table[colonne], pa.scalar(code))).as_py():
+            raise SilverRefuse(f"{quoi} {code} à cet instant")
+
+
+@gold.command("alternatives")
+def gold_alternatives(
+    cip13: Annotated[
+        str | None, typer.Option("--cip13", help="Les groupes de cette présentation.")
+    ] = None,
+    cis: Annotated[str | None, typer.Option("--cis", help="Les groupes de ce CIS.")] = None,
+    groupe: Annotated[str | None, typer.Option("--groupe", help="Un groupe générique.")] = None,
+    a: OptionInstantGold = None,
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    format_: OptionFormat = Format.TABLEAU,
+    colonne: OptionColonneGold = None,
+) -> None:
+    """Les présentations du même groupe générique, avec leur disponibilité, à un instant.
+
+    Avec --cip13 ou --cis, la spécialité demandée est exclue : restent les
+    autres membres de ses groupes. Rangées par numero_tri, l'ordre de la BDPM ;
+    rien n'est classé ni recommandé. Code 2 : aucun ou plusieurs critères, ou
+    refus.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    from pharmaflux.gold.rendu import rendre
+
+    if sum(x is not None for x in (cip13, cis, groupe)) != 1:
+        typer.echo("alternatives refusées : un et un seul de --cip13, --cis, --groupe", err=True)
+        raise typer.Exit(code=2)
+    try:
+        _, vues_ = _vues_gold(a, entrepot)
+        _exiger_connus(vues_, cis=cis, cip13=cip13, groupe=groupe)
+        table = vues_.alternatives
+        if groupe is not None:
+            table = table.filter(pc.equal(table["identifiant_groupe"], pa.scalar(groupe)))
+        else:
+            if cip13 is not None:
+                presentations = vues_.disponibilite.filter(
+                    pc.equal(vues_.disponibilite["code_cip13"], pa.scalar(cip13))
+                )
+                cis = next(iter(presentations["code_cis"].to_pylist()), None)
+            groupes = table.filter(pc.equal(table["code_cis"], pa.scalar(cis, pa.string())))
+            table = table.filter(
+                pc.and_(
+                    pc.is_in(table["identifiant_groupe"], value_set=groupes["identifiant_groupe"]),
+                    pc.not_equal(table["code_cis"], pa.scalar(cis, pa.string())),
+                )
+            )
+        lignes = list(rendre(table, format_, colonne))
+    except SilverRefuse as exc:
+        typer.echo(f"alternatives refusées : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for ligne in lignes:
+        typer.echo(ligne)
+    if not table.num_rows and groupe is None:
+        typer.echo("la spécialité n'a pas d'autre membre dans un groupe générique", err=True)
+    typer.echo(f"{table.num_rows} ligne(s)", err=True)

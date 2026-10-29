@@ -1,5 +1,7 @@
 # Pharmaflux : la démo en deux commandes, « make up » puis « make demo » (mission 04, ADR 0008),
-# puis « make silver » pour le silver Iceberg et sa vérification contre l'archive (mission 05, ADR 0009).
+# puis « make silver » pour le silver Iceberg et sa vérification contre l'archive (mission 05, ADR 0009),
+# puis « make gold » pour les contrôles de qualité et les questions recalculées depuis le gold
+# (mission 06, ADR 0010).
 #
 # GNU Make 3.81 (celui des outils de ligne de commande du Mac) suffit : recettes en tabulations,
 # .PHONY, « ?= », rien de 3.82 ni de 4.x. Les agents Claude Code ne lancent que « make -n <cible> » ;
@@ -18,8 +20,14 @@ ENTREPOT_DEMO = $(SORTIE_DEMO)/lakehouse
 ENTITE ?= bdpm.presentations
 A ?= 2026-10-26T14:00:00Z
 ETAT_OPTIONS ?=
+# make fiche CIS=65999556 [A=2026-10-24T20:00:00Z] [FICHE_OPTIONS="--format jsonl"] ; sans A sur la
+# ligne de commande (le défaut de A sert à make etat), la dernière observation du silver.
+CIS ?= 65999556
+FICHE_A = $(if $(filter command line,$(origin A)),--a $(A),)
+FICHE_OPTIONS ?= --format texte
 
-.PHONY: help prerequis up demo verifier suivre console down rebatir verifications silver etat
+.PHONY: help prerequis up demo verifier suivre console down rebatir verifications silver etat \
+	gold fiche
 
 help:
 	@echo "make up             vérifie les prérequis (images déjà présentes) et démarre le bus"
@@ -30,6 +38,10 @@ help:
 	@echo "                    puis silver verifier contre l'archive (18 retenues, 4 écartées)"
 	@echo "make etat           l'état à une date : ENTITE=bdpm.presentations A=2026-10-26T14:00:00Z"
 	@echo "                    ETAT_OPTIONS=\"--ou code_cip13=… --format tableau\""
+	@echo "make gold           après make silver : les contrôles de qualité du gold (code 2 si un bloquant"
+	@echo "                    tombe), puis les 25 questions recalculées depuis le gold, qui doivent concorder"
+	@echo "make fiche          la fiche médicament en texte : CIS=65999556 A=2026-10-24T20:00:00Z"
+	@echo "                    (sans A : la dernière observation du silver)"
 	@echo "make suivre         les événements publiés au fil de l'eau (à lancer avant make demo)"
 	@echo "make console        la console Redpanda sur http://127.0.0.1:18080"
 	@echo "make down           arrête le bus, garde les données"
@@ -56,6 +68,13 @@ silver:
 
 etat:
 	$(PHARMAFLUX) silver etat --entrepot $(ENTREPOT_DEMO) --entite $(ENTITE) --a $(A) $(ETAT_OPTIONS)
+
+gold:
+	$(PHARMAFLUX) gold qualite --entrepot $(ENTREPOT_DEMO)
+	$(PHARMAFLUX) questions verifier --racine $(JEU) --entrepot $(ENTREPOT_DEMO)
+
+fiche:
+	$(PHARMAFLUX) gold fiche --entrepot $(ENTREPOT_DEMO) --cis $(CIS) $(FICHE_A) $(FICHE_OPTIONS)
 
 suivre:
 	$(PHARMAFLUX) suivre

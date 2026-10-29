@@ -224,7 +224,7 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 | Quoi | Où |
 |---|---|
 | Spécifications (PRD) | `01_Specifications/` |
-| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `suivi.py`, `schemas/` ; `demo/` : `jeu.py`, `rejeu_accelere.py` ; `silver/` : `entrepot.py`, `schema.py`, `expressions.py`, `application.py`, `construction.py`, `consommation.py`, `etat.py`, `sql.py`, `comparaison.py`, `verification.py` |
+| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `suivi.py`, `schemas/` ; `demo/` : `jeu.py`, `rejeu_accelere.py` ; `silver/` : `entrepot.py`, `schema.py`, `expressions.py`, `application.py`, `construction.py`, `consommation.py`, `etat.py`, `sql.py`, `comparaison.py`, `verification.py` ; `gold/` : `typage.py`, `qualite.py`, `vues.py`, `questions.py`, `rendu.py`, `sql.py` |
 | Tests et fixtures | `tests/`, `tests/fixtures/` |
 | Démo : jeu figé, Makefile, prérequis | `demo/` (archive et `README.md`), `Makefile`, `infra/demo/prerequis.sh` |
 | Planification de la collecte (systemd, rapatriement) | `infra/planification/` |
@@ -282,3 +282,41 @@ la demande. Aucun appel réseau vers les sources.
 - **Mission close** quand `make rebatir`, `make demo` puis `make silver`
   finissent sur une vérification conforme des 18 archives retenues.
 
+## Le gold : état typé, vues métier, contrôles (mission 06)
+
+- **Calculé à la demande** (`gold/`, ADR 0010) : une fonction du silver et
+  d'un instant, rien de stocké, ni bus ni événements ni bronze. Instants de
+  `silver etat`, défaut la dernière observation ; le **jour** d'un instant
+  est sa date UTC. Les vues et `gold qualite` refusent un instant où l'une des
+  onze entités n'est pas encore observée (le message donne le premier instant
+  où elles le sont toutes).
+- **Typage par les anomalies** (`gold/typage.py`) : vide ou illisible → nul,
+  et `colonnes_illisibles` le nomme ; sinon règle stricte sur la forme
+  canonique (`decimal128(18, d)`, `date32` avec aller-retour, `int64`, `bool`,
+  `list<T>`, `string`). Colonnes de version gardées : `identite`, `rang`,
+  `date_source`, `debut_validite`, `archive_ouverture`, `version_contrat`,
+  `anomalies` ; jamais `fin_validite` (ce qu'on a appris après l'instant).
+- **Vues** (`gold/vues.py`, PyArrow et Python, pas de SQL) : fiche
+  médicament (une ligne par CIS connu, `dans_referentiel`, sections en
+  `list<struct>`, tous les avis, `provenance`) ; disponibilité courante
+  (priorité `declare` > `fin_de_publication` > `aucun_signalement`, `portee`,
+  `occurrences`, `debut_a_venir`) ; alternatives (groupe × présentation ×
+  disponibilité, par `numero_tri`). Chaque vue a une requête DuckDB de
+  référence dans `tests/references_gold.py`.
+- **Contrôles** (`gold/qualite.py`) : 1 à 4 bloquants (invariants de la
+  chaîne, code 2), 5 à 14 mesurés (faits de la source, toujours affichés).
+- **Questions** (`gold/questions.py`) : `questions verifier --entrepot`,
+  instant de l'archive citée, attendus normalisés puis typés, multiensemble ;
+  code 2 sur une discordance ou hors de la fenêtre du silver.
+- **`make gold`** après `make silver` (qualité, puis questions), `make fiche
+  CIS=… A=…` ; la CI lance `make gold` dans le job `integration`. Mesures
+  (29/10/2026) : `gold qualite` 312 Mo, `gold fiche --tout` 415 Mo,
+  `questions verifier --entrepot` 452 Mo ; seuil 512 Mo.
+- **Limite connue** : une brute illisible égale à la forme canonique de la
+  valeur précédente (`24.34` pour `24,34`) ne fait pas d'événement, donc pas
+  d'anomalie au silver ni au gold (ADR 0010, « Limites »).
+- **Mission close** quand `make rebatir`, `make demo`, `make silver` puis
+  `make gold` finissent sans bloquant et avec les 25 questions concordantes.
+- **Tests** : `conftest.py` importe `pharmaflux.silver` en premier
+  (allocateur système d'Arrow) ; `demo_silver` est construit une fois par
+  session et reste en lecture seule.

@@ -124,7 +124,8 @@ def uri_entrepot(absolu: Path) -> str:
     if any(c in chemin for c in CARACTERES_REFUSES) or not chemin.isprintable():
         raise SilverRefuse(
             f"chemin d'entrepôt refusé : {chemin!r} ; PyIceberg lirait un '#' ou un '?' comme"
-            " la fin de l'URI, choisis un dossier sans ces caractères"
+            " la fin de l'URI, et un caractère non imprimable n'y a pas sa place : choisis un"
+            " dossier sans ces caractères"
         )
     return f"file://{chemin}"
 

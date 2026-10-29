@@ -285,6 +285,8 @@ def test_lire_instant_utc_a_la_seconde() -> None:
         ("20261026T140000Z", "illisible"),  # la forme compacte
         ("2026-10-26T14:00:00+0200", "illisible"),  # décalage sans deux-points
         ("2026-13-26T14:00:00Z", "illisible"),  # bien formé, mois impossible
+        ("2026-02-30", "illisible"),  # relecture 2 : date seule bien formée, jour impossible
+        ("2026-13-45", "illisible"),
         ("hier", "illisible"),
     ):
         with pytest.raises(SilverRefuse, match=motif):

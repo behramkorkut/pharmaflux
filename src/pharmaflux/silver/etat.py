@@ -41,13 +41,13 @@ FORMES_ACCEPTEES = "AAAA-MM-JJ, AAAA-MM-JJThh:mm:ssZ ou AAAA-MM-JJThh:mm:ss±hh:
 
 def lire_instant(texte: str) -> datetime:
     """L'instant demandé, en UTC ; ``SilverRefuse`` hors des trois formes acceptées."""
-    if _DATE_SEULE.match(texte):
-        valeur = datetime.fromisoformat(texte).replace(tzinfo=UTC)
-    elif _INSTANT.match(texte):
-        try:
+    if _DATE_SEULE.match(texte) or _INSTANT.match(texte):
+        try:  # bien formé, mais un 30 février ou un treizième mois reste impossible
             valeur = datetime.fromisoformat(texte)
         except ValueError as exc:
             raise SilverRefuse(f"instant illisible : {texte!r} ({FORMES_ACCEPTEES})") from exc
+        if valeur.tzinfo is None:  # la date seule : minuit UTC
+            valeur = valeur.replace(tzinfo=UTC)
     elif _SANS_FUSEAU.match(texte):
         raise SilverRefuse(
             f"instant sans fuseau : {texte!r} ; écris-le en UTC (…Z) ou avec un décalage (+02:00)"

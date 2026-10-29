@@ -122,9 +122,10 @@ jamais sauté : la voie est de rebâtir le bus depuis les fichiers.
 poussée à PyIceberg ; instants en UTC à la seconde, sous trois formes
 seulement (`AAAA-MM-JJThh:mm:ssZ`, avec un décalage `±hh:mm`, ou une date
 seule qui vaut minuit UTC) : refus d'un instant sans fuseau, d'une fraction
-même nulle, d'une heure sans les secondes, de la forme compacte ; avant la première observation, aucune version ;
-après la dernière, les versions ouvertes ; code 0 et un message dans les deux
-cas. Le temps de la connaissance est **l'horodatage de l'archive**, à la
+même nulle, d'une heure sans les secondes, de la forme compacte, d'une date
+impossible ; avant la première observation, aucune version ; après la
+dernière, les versions ouvertes ; code 0 et un message dans les deux cas. Le
+temps de la connaissance est **l'horodatage de l'archive**, à la
 seconde, pas celui du passage de collecte (l'archive du 27/10 est à
 00:17:12, le passage à 00:17:08). **SQL** (`silver sql`) : DuckDB ne reçoit
 que des jeux de données Arrow (jamais un chemin), naît sans accès externe,

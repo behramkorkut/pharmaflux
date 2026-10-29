@@ -1,8 +1,9 @@
 # Mission 05 — le silver : tables Iceberg SCD2 depuis le bus, « état à une date », vérification contre l'archive, `make silver`
 
-Branche `mission-05-silver-et-etat-a-une-date`, depuis `b5b9420` (le `main`
-du départ, qui porte l'addendum 1 ; `main` n'a pas bougé depuis), §0 en
-`7103e8b`, cette description en dernier. Ordre de mission :
+Branche `mission-05-silver-et-etat-a-une-date`, depuis `cfc1fea` (le `main`
+du départ ; `main` porte en plus l'addendum 1, `b5b9420`, sans conflit : la
+branche ne touche pas à `docs/missions/`), §0 en `7103e8b`, cette
+description en dernier. Ordre de mission :
 `docs/missions/mission-05-silver-et-etat-a-une-date.md` (addendum 1,
 `b5b9420`). Trois paliers acceptés par l'IeC ; trois contrôles de palier
 commis tels quels dans `docs/relectures/mission-05/`. Relecture 1 : **NON
@@ -97,7 +98,8 @@ démo, mesures sur `c53d714`) : `construire` 272 Mo (11,7 s), `verifier`
 310 Mo (11,4 s), `comparer` 424 Mo (le plus lourd : deux tables en mémoire
 et l'`EXCEPT ALL`), `etat` 219 Mo, `sql` 143 Mo, `consommer` sans rien de
 nouveau 123 Mo ; `consommer` du bus entier 357 Mo au palier 2. Toutes sous
-512 Mo. PyArrow pèse : l'import seul laisse 150 Mo ; l'allocateur système
+512 Mo. PyArrow pèse : les imports seuls font 102 Mo, ce qui laisse 150 Mo
+sous les 256 ; l'allocateur système
 d'Arrow a fait gagner 100 à 250 Mo par rapport à jemalloc (§0 J). Pour tenir
 un jour sous 256 Mo sur le VPS : des lots plus petits et une vérification en
 processus séparé, hors mission.

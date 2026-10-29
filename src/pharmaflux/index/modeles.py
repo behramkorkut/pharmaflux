@@ -154,18 +154,41 @@ def choisir_revision(commits: Sequence[dict[str, object]], aujourd_hui: date) ->
     return revision, quand
 
 
-def relever(epinglage: Epinglage, client: httpx.Client, racine: Path, aujourd_hui: date) -> Releve:
+def relever(
+    epinglage: Epinglage,
+    client: httpx.Client,
+    racine: Path,
+    aujourd_hui: date,
+    revision: str | None = None,
+) -> Releve:
     """Choisit la révision, télécharge chaque fichier à sa place et en relève le sha256.
 
+    ``revision`` impose une révision (qui doit avoir deux semaines) au lieu de la dernière.
+    Quand c'est celle du TOML, un fichier déjà en place dont l'empreinte est celle du TOML
+    est repris sans téléchargement : seuls les fichiers ajoutés au TOML sont téléchargés.
     Les fichiers relevés sont ceux que l'épinglage désignera : une fois le TOML recopié,
     ``installer`` les trouve en place et ne télécharge rien de plus.
     """
-    reponse = client.get(f"{HUB}/api/models/{epinglage.depot}/commits/main")
-    reponse.raise_for_status()
-    revision, quand = choisir_revision(reponse.json(), aujourd_hui)
+    if revision is not None and revision == epinglage.revision and epinglage.date_revision:
+        quand = epinglage.date_revision
+    else:
+        reponse = client.get(f"{HUB}/api/models/{epinglage.depot}/commits/main")
+        reponse.raise_for_status()
+        commits = reponse.json()
+        if revision is not None:
+            commits = [c for c in commits if c["id"] == revision]
+            if not commits:
+                raise EpinglageInvalide(f"{epinglage.depot} : révision {revision} introuvable")
+        revision, quand = choisir_revision(commits, aujourd_hui)
+    connus = (
+        {f.chemin: f.sha256 for f in epinglage.fichiers} if revision == epinglage.revision else {}
+    )
     releves = []
     for f in epinglage.fichiers:
         cible = racine / epinglage.nom / revision / f.chemin
+        if connus.get(f.chemin) and cible.exists() and _sha256(cible) == connus[f.chemin]:
+            releves.append(Fichier(f.chemin, connus[f.chemin]))
+            continue
         partiel = cible.with_name(cible.name + ".partiel")
         releves.append(Fichier(f.chemin, _telecharger(client, epinglage, revision, f, partiel)))
         partiel.replace(cible)

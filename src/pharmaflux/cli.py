@@ -20,6 +20,7 @@ ses contrôles de qualité (mission 06), sous la même règle d'import.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -89,6 +90,10 @@ fabriquer_transport_registre: Callable[[], httpx.BaseTransport | None] = (  # no
     lambda: None
 )
 fabriquer_lecteur_silver: Callable[[str], LecteurSilver | None] = lambda _courtier: None  # noqa: E731
+# Les tests simulent Qdrant de la même façon (mission 07).
+fabriquer_transport_qdrant: Callable[[], httpx.BaseTransport | None] = (  # noqa: E731
+    lambda: None
+)
 
 application = typer.Typer(
     name="pharmaflux",
@@ -1608,9 +1613,9 @@ def index_fragments(
 
     Un fragment par ligne, dans l'ordre des CIS, puis des sections (identite,
     presentations, avis, disponibilite, informations), puis des parties.
-    L'instant n'est pas dans les fragments : il est dit sur la sortie d'erreur,
-    et l'index le tiendra. Code 2 : CIS inconnu à l'instant, ou refus
-    (instant, entrepôt).
+    L'instant n'est pas dans les fragments : il est dit sur la sortie d'erreur
+    et, avec --sortie, dans <sortie>.bilan.json ; l'index le tient. Code 2 :
+    CIS inconnu à l'instant, ou refus (instant, entrepôt).
     """
     import pyarrow as pa
     import pyarrow.compute as pc
@@ -1647,11 +1652,247 @@ def index_fragments(
             flux.close()
     if provisoire is not None and sortie is not None:
         provisoire.replace(sortie)
+        # Le bilan à côté, pour le processus de l'index, qui n'ouvre pas le gold (ADR 0011).
+        sortie.with_name(sortie.name + ".bilan.json").write_text(
+            json.dumps(
+                {
+                    "instant": texte_instant(instant) if instant else None,
+                    "fiches": fiches.num_rows,
+                    "fragments": nombre,
+                    "format": FORMAT,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
     typer.echo(
         f"{nombre} fragment(s) de {fiches.num_rows} fiche(s), format {FORMAT}, état au"
         f" {texte_instant(instant) if instant else '?'}",
         err=True,
     )
+
+
+TRAVAIL_INDEX = Path("data/index")  # cache des vecteurs, verrou, fragments : hors de data/demo
+MODELE_PAR_DEFAUT = "e5-small-int8"  # retenu au palier 2 (ADR 0011)
+OptionQdrant = Annotated[
+    str | None,
+    typer.Option(
+        "--qdrant", help="URL de Qdrant ; défaut : PHARMAFLUX_QDRANT, sinon 127.0.0.1:16333."
+    ),
+]
+OptionModele = Annotated[
+    str,
+    typer.Option(
+        "--modele", help="Le modèle d'embeddings (index/modeles/<nom>.toml), ou « test »."
+    ),
+]
+OptionTravail = Annotated[
+    Path,
+    typer.Option(
+        "--travail", help="Dossier de travail de l'index (cache des vecteurs, verrou), hors git."
+    ),
+]
+
+
+def _qdrant(url: str | None) -> str:
+    from pharmaflux.index.qdrant import QDRANT_PAR_DEFAUT, VARIABLE_QDRANT
+
+    return url or os.environ.get(VARIABLE_QDRANT) or QDRANT_PAR_DEFAUT
+
+
+@index.command("construire")
+def index_construire(
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    qdrant: OptionQdrant = None,
+    modele_: OptionModele = MODELE_PAR_DEFAUT,
+    travail: OptionTravail = TRAVAIL_INDEX,
+) -> None:
+    """Construit l'index en entier, à la dernière observation du silver.
+
+    Les fragments se calculent dans un sous-processus (le gold) ; ce processus-ci
+    les encode (un texte déjà encodé par ce modèle est repris du cache) et les
+    écrit dans une collection neuve de Qdrant, puis bascule l'alias
+    pharmaflux-fragments et écrit l'état de l'index. Code 2 : refus (verrou,
+    modèle, silver), Qdrant injoignable.
+    """
+    from pharmaflux.index import construction, encodeur
+    from pharmaflux.index.qdrant import Qdrant, QdrantIndisponible
+
+    try:
+        with construction.verrou(travail):
+            encodeur_ = encodeur.charger(modele_)
+            fragments = construction.calculer_fragments(entrepot, travail)
+            cache = construction.Cache(travail, encodeur_.empreinte)
+            try:
+                with Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as client:
+                    bilan = construction.construire(
+                        client,
+                        encodeur_,
+                        fragments,
+                        cache,
+                        lambda m: typer.echo(f"{m} ; résident max {_resident_max()} Mo", err=True),
+                    )
+            finally:
+                cache.close()
+    except (
+        construction.IndexRefuse,
+        encodeur.ModeleIndisponible,
+        QdrantIndisponible,
+    ) as exc:
+        typer.echo(f"construction refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(
+        f"index construit : {bilan.fragments} fragments de {bilan.fiches} fiches,"
+        f" {bilan.encodes} encodé(s), {bilan.fragments - bilan.encodes} repris du cache,"
+        f" {bilan.duree_s:.0f} s ; état au {bilan.instant} ; collection {bilan.collection}"
+    )
+    typer.echo(_memoire_des_deux_processus(), err=True)
+
+
+def _resident_max(qui: int | None = None) -> int:
+    """Le résident maximal, en Mo, de ce processus ou de ses sous-processus (addendum 1 J)."""
+    import resource
+
+    octets = 1 if sys.platform == "darwin" else 1024  # ru_maxrss : octets sur macOS, Ko sous Linux
+    qui = resource.RUSAGE_SELF if qui is None else qui
+    return resource.getrusage(qui).ru_maxrss * octets // 1_000_000
+
+
+def _memoire_des_deux_processus() -> str:
+    import resource
+
+    return (
+        f"résident maximal : encodage {_resident_max()} Mo, fragments (sous-processus)"
+        f" {_resident_max(resource.RUSAGE_CHILDREN)} Mo"
+    )
+
+
+class FormatRecherche(StrEnum):
+    TEXTE = "texte"
+    JSONL = "jsonl"
+
+
+@index.command("chercher")
+def index_chercher(
+    question: Annotated[str, typer.Argument(help="La question, en français.")],
+    k: Annotated[int, typer.Option("-k", min=1, max=50, help="Combien de fragments.")] = 5,
+    cis: Annotated[str | None, typer.Option("--cis", help="Seulement ce CIS.")] = None,
+    section: Annotated[
+        str | None, typer.Option("--section", help="Seulement cette section.")
+    ] = None,
+    format_: Annotated[
+        FormatRecherche, typer.Option("--format", help="texte (défaut) ou jsonl.")
+    ] = FormatRecherche.TEXTE,
+    qdrant: OptionQdrant = None,
+    modele_: OptionModele = MODELE_PAR_DEFAUT,
+) -> None:
+    """Les k fragments les plus proches d'une question, avec leur score, leur source et leur date.
+
+    Ce n'est pas l'assistant : ni seuil, ni réponse rédigée. Chaque résultat
+    dit l'instant de l'index (l'état dont il vient). Code 2 : pas d'index,
+    modèle différent de celui de l'index, Qdrant injoignable.
+    """
+    from pharmaflux.index import construction, encodeur
+    from pharmaflux.index.fragments import SECTIONS
+    from pharmaflux.index.qdrant import Qdrant, QdrantIndisponible
+
+    if section is not None and section not in SECTIONS:
+        typer.echo(f"recherche refusée : section parmi {', '.join(SECTIONS)}", err=True)
+        raise typer.Exit(code=2)
+    conditions = [
+        {"key": c, "match": {"value": v}} for c, v in (("code_cis", cis), ("section", section)) if v
+    ]
+    try:
+        encodeur_ = encodeur.charger(modele_)
+        with Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as client:
+            etat, resultats = construction.chercher(
+                client, encodeur_, question, k, {"must": conditions} if conditions else None
+            )
+    except (construction.IndexRefuse, encodeur.ModeleIndisponible, QdrantIndisponible) as exc:
+        typer.echo(f"recherche refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for r in resultats:
+        if format_ is FormatRecherche.JSONL:
+            ligne = {"rang": r.rang, "score": round(r.score, 4), "instant_index": etat["instant"]}
+            typer.echo(json.dumps(ligne | r.charge, ensure_ascii=False, separators=(",", ":")))
+            continue
+        c = r.charge
+        partie = f", partie {c['partie']}/{c['parties']}" if c["parties"] > 1 else ""
+        typer.echo(f"{r.rang}. score {r.score:.3f} — CIS {c['code_cis']}, {c['section']}{partie}")
+        typer.echo(f"   sources : {construction.citer(c)}")
+        typer.echo(f"   état de l'index au {etat['instant']}")
+        for ligne_ in c["texte"].splitlines():
+            typer.echo(f"   | {ligne_}")
+    typer.echo(
+        f"{len(resultats)} fragment(s) ; index au {etat['instant']}, modèle {etat['modele']}",
+        err=True,
+    )
+
+
+@index.command("etat")
+def index_etat(qdrant: OptionQdrant = None) -> None:
+    """L'état de l'index : instant, mise à jour en suspens, format, modèle, fragments par section.
+
+    Code 2 : pas d'index, ou Qdrant injoignable.
+    """
+    from pharmaflux.index import construction
+    from pharmaflux.index.fragments import SECTIONS
+    from pharmaflux.index.qdrant import Qdrant, QdrantIndisponible, filtre_egal
+
+    try:
+        with Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as client:
+            etat = construction.etat_exige(client)
+            alias = client.alias_fragments
+            total = client.compter(alias)
+            par_section = {s: client.compter(alias, filtre_egal("section", s)) for s in SECTIONS}
+    except (construction.IndexRefuse, QdrantIndisponible) as exc:
+        typer.echo(f"état refusé : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"instant           {etat['instant']} (dernière observation du silver appliquée)")
+    suspens = f"en suspens, vers {etat['vise']}" if etat["vise"] else "aucune en suspens"
+    typer.echo(f"mise à jour       {suspens}")
+    typer.echo(f"format            {etat['format']}")
+    typer.echo(f"modèle            {etat['empreinte_modele']} ({etat['dimension']} dimensions)")
+    typer.echo(f"collection        {etat['collection']} (alias {alias})")
+    typer.echo(f"fiches            {etat['fiches']}")
+    typer.echo(f"fragments         {total}")
+    for s, n in par_section.items():
+        typer.echo(f"  {s:15} {n}")
+
+
+@index.command("evaluer")
+def index_evaluer(
+    questions_: Annotated[
+        Path, typer.Option("--questions", help="Le jeu de questions (TOML).")
+    ] = QUESTIONS_PAR_DEFAUT,
+    qdrant: OptionQdrant = None,
+    modele_: OptionModele = MODELE_PAR_DEFAUT,
+) -> None:
+    """Une première mesure de la recherche sur le jeu v0, pour la mission 08 (sans seuil).
+
+    Rappel à 1, 5 et 10 sur les questions qui nomment un médicament (bon CIS,
+    puis bon CIS et bonne section), rang réciproque moyen, et score du premier
+    résultat des questions hors périmètre ou médicales. Code 0 quelle que soit
+    la qualité ; code 2 : pas d'index, modèle, Qdrant, jeu illisible.
+    """
+    from pharmaflux.index import construction, encodeur, evaluation
+    from pharmaflux.index.qdrant import Qdrant, QdrantIndisponible
+
+    try:
+        jeu_ = jeu_questions.charger(questions_, charger_tous())
+        encodeur_ = encodeur.charger(modele_)
+        with Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as client:
+            mesure = evaluation.evaluer(client, encodeur_, jeu_)
+    except (
+        construction.IndexRefuse,
+        encodeur.ModeleIndisponible,
+        QdrantIndisponible,
+        jeu_questions.JeuInvalide,
+    ) as exc:
+        typer.echo(f"évaluation refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for ligne in evaluation.formater(mesure):
+        typer.echo(ligne)
 
 
 modele = typer.Typer(
@@ -1665,13 +1906,24 @@ ArgumentModele = Annotated[str, typer.Argument(help="Le nom du modèle (index/mo
 
 
 @modele.command("relever")
-def modele_relever(nom: ArgumentModele) -> None:
-    """Choisit la dernière révision qui a deux semaines et relève l'empreinte de chaque fichier.
+def modele_relever(
+    nom: ArgumentModele,
+    revision: Annotated[
+        str | None,
+        typer.Option(
+            "--revision",
+            help="Imposer cette révision (deux semaines au moins) ; défaut : la"
+            " dernière qui les a.",
+        ),
+    ] = None,
+) -> None:
+    """Choisit la révision (la dernière de deux semaines, ou --revision), relève les empreintes.
 
     Télécharge les fichiers sous $PHARMAFLUX_MODELES (défaut ~/pharmaflux-modeles),
-    dans <nom>/<révision>/, puis affiche le TOML à recopier dans
+    dans <nom>/<révision>/ ; à la révision du TOML, un fichier déjà en place et
+    juste est repris sans téléchargement. Affiche le TOML à recopier dans
     index/modeles/<nom>.toml. Code 1 : réseau ou dépôt en erreur ; 2 : modèle
-    inconnu, ou aucune révision assez ancienne.
+    inconnu, révision introuvable ou trop récente.
     """
     from pharmaflux.index import modeles
 
@@ -1679,7 +1931,7 @@ def modele_relever(nom: ArgumentModele) -> None:
         epinglage = modeles.lire(nom)
         with modeles.client_hub() as client:
             releve = modeles.relever(
-                epinglage, client, modeles.racine_modeles(), modeles.aujourd_hui()
+                epinglage, client, modeles.racine_modeles(), modeles.aujourd_hui(), revision
             )
     except modeles.EpinglageInvalide as exc:
         typer.echo(f"relevé refusé : {exc}", err=True)

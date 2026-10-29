@@ -68,12 +68,17 @@ class Hub:
         return httpx.Response(404)
 
 
-def test_les_deux_candidats_se_lisent_et_ne_sont_pas_encore_epingles() -> None:
-    assert modeles.noms() == ["e5-small-int8", "potion-multilingual-128m"]
-    for nom in modeles.noms():
-        lu = modeles.lire(nom)
-        assert lu.nom == nom and lu.licence == "MIT" and lu.fichiers
-        assert not lu.epingle, "beko relève la révision et les empreintes au contrôle du palier 1"
+def test_le_modele_retenu_est_epingle() -> None:
+    """Palier 2 : e5-small-int8 retenu, potion écarté (ADR 0011) ; chaque fichier a son sha256."""
+    assert modeles.noms() == ["e5-small-int8"]
+    lu = modeles.lire("e5-small-int8")
+    assert lu.epingle and lu.revision == "761b726dd34fb83930e26aab4e9ac3899aa1fa78"
+    assert [f.chemin for f in lu.fichiers] == [
+        "onnx/model_quantized.onnx",
+        "tokenizer.json",
+        "config.json",
+        "sentencepiece.bpe.model",
+    ]
     with pytest.raises(EpinglageInvalide, match="modèle inconnu"):
         modeles.lire("inconnu")
 
@@ -159,6 +164,28 @@ def test_modele_verifier_en_ligne_de_commande(
     monkeypatch.setenv(modeles.VARIABLE_MODELES, str(tmp_path))
     resultat = CliRunner().invoke(application, ["index", "modele", "verifier", "e5-small-int8"])
     assert resultat.exit_code == 1
-    assert "e5-small-int8 : pas encore épinglé" in resultat.output
+    assert "e5-small-int8/onnx/model_quantized.onnx : absent de" in resultat.output
     inconnu = CliRunner().invoke(application, ["index", "modele", "verifier", "inconnu"])
     assert inconnu.exit_code == 2 and "modèle inconnu" in inconnu.output
+
+
+def test_relever_a_la_revision_du_toml_ne_telecharge_que_les_fichiers_ajoutes(
+    tmp_path: Path,
+) -> None:
+    """Palier 2 : un fichier ajouté au TOML, la révision imposée, les autres repris tels quels."""
+    hub = Hub(CONTENUS | {"sentencepiece.bpe.model": b"jetons"})
+    with hub.client() as client:
+        modeles.installer(epinglage(), client, tmp_path)
+    avant = len(hub.requetes)
+    plus_un = epinglage(fichiers=(*epinglage().fichiers, Fichier("sentencepiece.bpe.model", None)))
+    with hub.client() as client:
+        releve = modeles.relever(plus_un, client, tmp_path, date(2026, 10, 29), REVISION)
+    assert hub.requetes[avant:] == [f"/org/essai/resolve/{REVISION}/sentencepiece.bpe.model"]
+    assert releve.revision == REVISION and releve.date_revision == date(2026, 10, 1)
+    assert [f.sha256 for f in releve.fichiers] == [
+        sha(b"poids du modele"),
+        sha(b'{"version": "1.0"}'),
+        sha(b"jetons"),
+    ]
+    with hub.client() as client, pytest.raises(EpinglageInvalide, match="introuvable"):
+        modeles.relever(plus_un, client, tmp_path, date(2026, 10, 29), "d" * 40)

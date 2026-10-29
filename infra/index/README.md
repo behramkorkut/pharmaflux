@@ -7,6 +7,9 @@ publiée depuis moins de quatorze jours n'entre pas.
 
 ## 1. Les fichiers des deux modèles candidats
 
+_Fait le 29/10/2026 : les deux modèles relevés et installés ; leurs TOML
+sont recopiés dans le dépôt._
+
 Deux candidats, mesurés au début du palier 2 avant d'en retenir un
 (addendum 1 C1) :
 
@@ -59,6 +62,10 @@ fichier absent ou altéré. C'est aussi ce que fera la CI, avec un cache.
 
 ## 2. L'image Qdrant, épinglée par empreinte
 
+_Fait le 29/10/2026 : `qdrant/qdrant:v1.19.2`, publiée le 05/10/2026 (la
+v1.20.0 n'avait que 7 jours), empreinte
+`sha256:b7b0444c4c351c970b98e90a6f89c2ee4287c65b44e52b4cb503fa5b2aa927ad`._
+
 Le service `qdrant` entre dans `docker-compose.yml` au palier 2, avec
 `image: qdrant/qdrant:vX.Y.Z@sha256:<empreinte>`. L'empreinte est celle de
 l'**index multi-architecture**, valable sur le Mac (arm64) comme sur la CI
@@ -89,6 +96,16 @@ docker buildx imagetools inspect qdrant/qdrant:vX.Y.Z
 La ligne `Digest:` de la seconde commande est l'empreinte de l'index
 multi-architecture. Elle doit lister `linux/amd64` et `linux/arm64` sous
 `Manifests:`.
+
+Seconde voie, sans le greffon `buildx` (absent de certains Docker, dont
+celui du colima) : après le `docker pull` par étiquette, l'empreinte
+enregistrée pour cette étiquette est celle de l'index multi-architecture.
+
+```bash
+docker image inspect --format '{{index .RepoDigests 0}}' qdrant/qdrant:vX.Y.Z
+```
+
+Elle est égale à la ligne `Digest:` qu'affiche le `docker pull`.
 
 **Étape 3, transmettre** au codeur la version, la date de publication et
 l'empreinte (`sha256:…`). Il les écrit dans le compose au palier 2, puis

@@ -338,19 +338,19 @@ def fragments_du_jeu(demo_silver: tuple[Path, Path]) -> list[Fragment]:
 
 
 def test_les_fragments_du_jeu(fragments_du_jeu: list[Fragment]) -> None:
-    """Mesurés au palier 1 : 21 445 fiches, 72 075 fragments, aucun au-delà de la borne."""
+    """Palier 2, borne de 1 200 : 21 445 fiches, 72 296 fragments, aucun au-delà de la borne."""
     par_section_: dict[str, int] = {}
     for f in fragments_du_jeu:
         par_section_[f.section] = par_section_.get(f.section, 0) + 1
     assert par_section_ == {
-        "identite": 21496,
-        "presentations": 14693,
-        "avis": 9222,
+        "identite": 21584,
+        "presentations": 14735,
+        "avis": 9237,
         "disponibilite": 21445,
-        "informations": 5219,
+        "informations": 5295,
     }
     assert len({f.code_cis for f in fragments_du_jeu}) == 21445
-    assert len({f.identifiant for f in fragments_du_jeu}) == len(fragments_du_jeu) == 72075
+    assert len({f.identifiant for f in fragments_du_jeu}) == len(fragments_du_jeu) == 72296
     assert max(len(f.texte) for f in fragments_du_jeu) <= fr.BORNE_CARACTERES
     premieres = {(f.code_cis, f.section) for f in fragments_du_jeu if f.partie == 1}
     assert all(

@@ -238,8 +238,9 @@ def a_nettoyer(bus: BusKafka) -> Iterator[Nettoyage]:
     """Le nettoyage en fin de session, et non à la fin de chaque test (mission 07, A1).
 
     Le registre de Redpanda coupait parfois un ``POST …/versions`` pendant qu'il effaçait les
-    topics du test précédent (PR #7, puis 1 passage sur 15 sur le Mac) : plus aucun test
-    n'écrit dans le registre pendant un effacement. Les préfixes sont uniques par test.
+    topics du test précédent (run de ``main`` sur ``98505d3``, puis 1 passage sur 15 sur le
+    Mac) : plus aucun test n'écrit dans le registre pendant un effacement. Les préfixes sont
+    uniques par test.
     """
     nettoyage = Nettoyage()
     yield nettoyage

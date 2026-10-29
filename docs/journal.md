@@ -609,3 +609,18 @@ dépose tout le journal du courtier en artefact en cas d'échec. Les fragments :
 `pharmaflux index fragments`, 72 075 fragments pour 21 445 fiches, 4,6 s et
 418 Mo, identiques d'un calcul à l'autre. Les procédures de téléchargement du
 modèle (deux candidats) et de l'image Qdrant sont écrites, pas lancées.
+
+**Mission 07, palier 2** (29/10). Le modèle se choisit sur mesure. potion
+encode le jeu en 6 s mais tient 1 099 Mo et trouve 5 questions sur 22 dans les
+cinq premiers ; e5-small-int8 en trouve 17, et il est retenu. Sa mémoire
+passait 2 Go : le vocabulaire Unigram chargé par `tokenizers` (384 Mo), puis
+la mémoire qu'ONNX Runtime garde pour chaque forme de lot vue. Le tokenizer
+SentencePiece publié avec le modèle (`sentencepiece.bpe.model`, épinglé)
+donne les mêmes jetons sur 72 295 fragments sur 72 296, et quatre formes de
+lot fixes suffisent : la construction complète du jeu tient en 415 Mo (le
+gold, dans son sous-processus, 416 Mo) et 18 min. La borne de découpe passe à
+1 200 caractères (477 jetons au plus) : 72 296 fragments. Qdrant v1.19.2 entre
+dans le compose ; `index construire`, `chercher` (exacte : l'approchée ne
+rendait que 82 % des dix premiers), `etat`, `evaluer`. Les trois actions de
+la CI sont épinglées par empreinte. Les scores denses sont serrés (0,905
+contre 0,873 hors périmètre) : une donnée pour l'abstention de la mission 08.

@@ -9,8 +9,11 @@ dependencies = [
     "confluent-kafka>=2.16.0",
     "duckdb>=1.5.6",
     "httpx>=0.28",
+    "numpy>=2.5.4",
+    "onnxruntime>=1.31.0",
     "pyarrow>=26.0.0",
     "pyiceberg[sql-sqlite]>=0.12.0",
+    "sentencepiece>=0.2.2",
     "typer>=0.15",
 ]
 
@@ -26,6 +29,7 @@ dev = [
     "mypy>=1.16",
     "pyarrow-stubs>=20.0.0.20260819",
     "pytest>=8.3",
+    "tokenizers>=0.23.3",  # la référence des jetons d'e5 (tokenizer.json), pour un test seulement
     "ruff>=0.12",
 ]
 
@@ -43,6 +47,16 @@ constraint-dependencies = [
     "python-dateutil<3",           # 3.0.0 du 21/10 (transitif de pyiceberg) ; 2.9.0 de 2024
     "tzdata<2026.6",               # 2026.6 du 28/10 (transitif de pyiceberg, Windows seulement :
                                    # absent de uv.lock ici) ; 2026.5 du 03/10
+    # Mission 07, palier 2 : l'encodage (onnxruntime, sentencepiece, numpy ; tokenizers en dev),
+    # verrouillé le 29/10.
+    # Chaque plafond garde la dernière version publiée avant le 15/10 (`uv lock
+    # --exclude-newer 2026-10-15`), sans toucher aux paquets déjà verrouillés.
+    "onnxruntime<=1.31.0",
+    "huggingface-hub<=2.2.0",      # transitif de tokenizers (dev), qui ne l'appelle pas ici
+    "hf-xet<=1.7.0",               # transitif de huggingface-hub
+    "httpx2<=2.13.1",              # transitif de huggingface-hub
+    "httpcore2<=2.13.1",           # transitif de httpx2
+    "filelock<=4.2.0",             # transitif de huggingface-hub
 ]
 
 [tool.ruff]
@@ -74,9 +88,15 @@ strict = true
 warn_unreachable = true
 pretty = true
 
+[[tool.mypy.overrides]]
+# onnxruntime ne publie pas d'annotations : ses appels restent dans index/encodeur.py.
+module = ["onnxruntime"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers -rs"
 markers = [
     "integration: a besoin du Redpanda local (docker compose -p pharmaflux up -d) ; sauté sinon, et dit",
+    "modele: a besoin des fichiers épinglés du modèle (PHARMAFLUX_MODELES) ; sauté sinon, et dit",
 ]

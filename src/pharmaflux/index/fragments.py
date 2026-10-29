@@ -43,7 +43,7 @@ from typing import Any
 FORMAT = (
     1  # change dès que, pour les mêmes fiches, un texte, un identifiant ou une métadonnée change
 )
-BORNE_CARACTERES = 1500  # longueur d'un fragment avant découpe ; se recale au palier 2 (tokenizer)
+BORNE_CARACTERES = 1200  # recalée au palier 2 : au pire 2,48 caractères par jeton e5, 512 au plus
 ESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://github.com/behramkorkut/pharmaflux/fragments")
 
 SECTIONS = ("identite", "presentations", "avis", "disponibilite", "informations")

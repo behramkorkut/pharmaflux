@@ -22,10 +22,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Installer uv (avec cache)
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           enable-cache: true
 
@@ -69,10 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Installer uv (avec cache)
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           enable-cache: true
 
@@ -130,8 +130,8 @@ jobs:
       - name: Gold du jeu, contrôles de qualité et questions (make gold)
         run: make gold
 
-      # Tout le journal (--tail=100 n'avait gardé que 4 s à la PR #7), la santé de la grappe et
-      # la mémoire du conteneur, en artefact plutôt que dans le journal du job.
+      # Tout le journal (--tail=100 n'avait gardé que 4 s au run de main sur 98505d3), la santé
+      # de la grappe et la mémoire du conteneur, en artefact plutôt que dans le journal du job.
       - name: Diagnostic du courtier en cas d'échec
         if: failure()
         run: |
@@ -143,7 +143,7 @@ jobs:
 
       - name: Déposer le diagnostic
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: diagnostic-courtier
           path: diagnostic/

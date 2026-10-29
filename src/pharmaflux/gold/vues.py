@@ -555,7 +555,9 @@ def _lignes_distinctes(table: pa.Table) -> list[Ligne]:
 
 def _ordre(ligne: Ligne) -> tuple[str, ...]:
     """Départage deux fermetures au même instant, de façon stable."""
-    return tuple(str(ligne[c]) for c in CHAMPS_SIGNALEMENT)
+    # Un champ vide vaut « » : la ligne renseignée l'emporte, comme le DESC NULLS LAST de la
+    # référence DuckDB ; « None » serait passé devant toute date (relecture 1, point 1).
+    return tuple("" if ligne[c] is None else str(ligne[c]) for c in CHAMPS_SIGNALEMENT)
 
 
 def _ligne_dispo(

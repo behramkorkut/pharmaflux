@@ -1477,6 +1477,7 @@ def gold_disponibilite(
 
     try:
         _, vues_ = _vues_gold(a, entrepot)
+        _exiger_connus(vues_, cis=cis, cip13=cip13)
         table = vues_.disponibilite
         if cis is not None:
             table = table.filter(pc.equal(table["code_cis"], pa.scalar(cis)))
@@ -1489,6 +1490,26 @@ def gold_disponibilite(
     for ligne in lignes:
         typer.echo(ligne)
     typer.echo(f"{table.num_rows} ligne(s)", err=True)
+
+
+def _exiger_connus(
+    vues_: Vues_, *, cis: str | None = None, cip13: str | None = None, groupe: str | None = None
+) -> None:
+    """Refuse un code que le gold ne connaît pas à l'instant (relecture 1, point 2).
+
+    Une coquille ne doit pas donner une réponse vide qui se lirait comme un fait
+    (« aucune alternative »), comme gold fiche le refuse déjà pour un CIS.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    for code, colonne, table, quoi in (
+        (cis, "code_cis", vues_.fiche, "aucun fichier ne cite le CIS"),
+        (cip13, "code_cip13", vues_.disponibilite, "aucun fichier ne cite le CIP13"),
+        (groupe, "identifiant_groupe", vues_.alternatives, "aucun groupe générique"),
+    ):
+        if code is not None and not pc.any(pc.equal(table[colonne], pa.scalar(code))).as_py():
+            raise SilverRefuse(f"{quoi} {code} à cet instant")
 
 
 @gold.command("alternatives")
@@ -1520,6 +1541,7 @@ def gold_alternatives(
         raise typer.Exit(code=2)
     try:
         _, vues_ = _vues_gold(a, entrepot)
+        _exiger_connus(vues_, cis=cis, cip13=cip13, groupe=groupe)
         table = vues_.alternatives
         if groupe is not None:
             table = table.filter(pc.equal(table["identifiant_groupe"], pa.scalar(groupe)))
@@ -1542,4 +1564,6 @@ def gold_alternatives(
         raise typer.Exit(code=2) from exc
     for ligne in lignes:
         typer.echo(ligne)
+    if not table.num_rows and groupe is None:
+        typer.echo("la spécialité n'a pas d'autre membre dans un groupe générique", err=True)
     typer.echo(f"{table.num_rows} ligne(s)", err=True)

@@ -13,10 +13,14 @@ de la priorité (addendum 1, exigence 2) sur des CIS des extraits :
   fermeture), la seconde passe en ``fin_de_publication`` ;
 - C : jamais signalée → ``aucun_signalement`` ;
 - D : la même ligne deux fois → ``occurrences = 2`` ;
+- E (deux présentations) : deux lignes sans CIP13, de même statut, l'une avec
+  une date de remise à disposition et l'autre sans, retirées ensemble à 15:17
+  → la fin de publication garde la ligne renseignée, comme la référence
+  (relecture 1, point 1) ;
 - un CIS sans présentation, arrêt annoncé pour 2027 → ``presentation_connue``
   faux, ``debut_a_venir`` vrai.
 
-La perte de deux lignes sur six met l'archive de 15:17 en attente ; celle de
+La perte de quatre lignes sur huit met l'archive de 15:17 en attente ; celle de
 16:17, identique, la confirme (garde-fou de volume, ADR 0006). Chaque vue est
 comparée à sa requête DuckDB de référence (``references_gold``) à trois
 instants. Aucun réseau, aucun conteneur.
@@ -24,7 +28,7 @@ instants. Aucun réseau, aucun conteneur.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pyarrow as pa
@@ -43,13 +47,14 @@ from pharmaflux.silver import construction
 from pharmaflux.silver import etat as etat_silver
 from pharmaflux.silver.entrepot import Entrepot
 from tests import references_gold as ref
-from tests.conftest import FIXTURES, entrees_bdpm_txt
+from tests.conftest import FIXTURES, entrees_bdpm_txt, texte_nu
 from tests.test_gold import T0, T1, _archiver
 
 T2 = T1 + timedelta(hours=1)
 ENTRE = T0 + timedelta(minutes=13)  # après 14:17, avant la fermeture de 15:17
 DISPO = "bdpm.disponibilite"
 CIS_A, CIS_B, CIS_C, CIS_D = "60019350", "60019927", "60018896", "60018088"
+CIS_E = "60008845"  # deux présentations
 CIS_SANS_PRESENTATION = "69999999"
 LIEN = "https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments/essai-synthetique-"
 
@@ -81,6 +86,9 @@ def _dispo_synthetique(*, avec_retirees: bool) -> bytes:
         lignes.append(_ligne(CIS_B, "", "2", "01/08/2026", "15/10/2026", "", "b"))
     lignes.append(_ligne(CIS_SANS_PRESENTATION, "", "3", "01/07/2027", "01/10/2026", "", "annonce"))
     lignes += [_ligne(CIS_D, "", "4", "02/10/2026", "02/10/2026", "02/10/2026", "d")] * 2
+    if avec_retirees:
+        lignes.append(_ligne(CIS_E, "", "4", "02/10/2026", "03/10/2026", "02/10/2026", "e"))
+        lignes.append(_ligne(CIS_E, "", "4", "02/10/2026", "03/10/2026", "", "e"))
     contrat = charger_identifiant(DISPO)
     return ("\r\n".join(lignes) + "\r\n").encode(contrat.format.encodage)
 
@@ -155,6 +163,17 @@ def test_une_ligne_en_cours_l_emporte_sur_une_fermeture(vues_fixtures: Path) -> 
         (premiere, "declare", "2"),  # une ligne par signalement en cours
         (seconde, "declare", "2"),
     ]
+
+
+def test_deux_fermetures_au_meme_instant_se_departagent_comme_la_reference(
+    vues_fixtures: Path,
+) -> None:
+    """Un champ vide ne gagne pas le départage : la ligne renseignée l'emporte (relecture 1)."""
+    vues, _ = _vues(vues_fixtures, T2)
+    e = vues.disponibilite.filter(pc.equal(vues.disponibilite["code_cis"], pa.scalar(CIS_E)))
+    assert e.num_rows == len(_presentations(CIS_E)) == 2
+    assert set(e["etat_signalement"].to_pylist()) == {"fin_de_publication"}
+    assert set(e["date_remise_a_disposition"].to_pylist()) == {date(2026, 10, 2)}
 
 
 def test_sans_signalement_ni_fermeture_aucun_signalement(vues_fixtures: Path) -> None:
@@ -237,7 +256,7 @@ def test_gold_disponibilite_alternatives_et_sql(vues_fixtures: Path) -> None:
     )
     assert sql.exit_code == 0, sql.output
     comptes = dict(ligne.split(",") for ligne in sql.stdout.splitlines()[1:])
-    assert comptes["fin_de_publication"] == "7"  # six présentations de A, la seconde de B
+    assert comptes["fin_de_publication"] == "9"  # six de A, la seconde de B, les deux de E
 
 
 def test_le_texte_de_la_fiche_ne_devine_rien(vues_fixtures: Path) -> None:
@@ -250,3 +269,30 @@ def test_le_texte_de_la_fiche_ne_devine_rien(vues_fixtures: Path) -> None:
         fiche_en_texte(sans)
     )
     assert etat_silver.lire_instant("2026-10-24T14:30:00Z") == ENTRE
+
+
+def test_un_code_inconnu_est_refuse_pas_repondu_vide(vues_fixtures: Path) -> None:
+    """Relecture 1, point 2 : une coquille ne donne pas « 0 ligne » comme si c'était un fait."""
+    base = ["--entrepot", str(vues_fixtures), "--a", "2026-10-24T16:17:00Z"]
+    for commande, motif in (
+        (["disponibilite", "--cip13", "0000000000000"], "aucun fichier ne cite le CIP13"),
+        (["disponibilite", "--cis", "00000000"], "aucun fichier ne cite le CIS"),
+        (["alternatives", "--cip13", "0000000000000"], "aucun fichier ne cite le CIP13"),
+        (["alternatives", "--cis", "00000000"], "aucun fichier ne cite le CIS"),
+        (["alternatives", "--groupe", "999999"], "aucun groupe générique"),
+    ):
+        resultat = CliRunner().invoke(application, ["gold", *commande, *base])
+        assert resultat.exit_code == 2, commande
+        assert motif in texte_nu(resultat.output), commande
+    # Un CIS connu sans groupe générique : une réponse vide, dite, code 0.
+    connu = CliRunner().invoke(application, ["gold", "alternatives", "--cis", CIS_A, *base])
+    assert connu.exit_code == 0, connu.output
+    assert "pas d'autre membre dans un groupe générique" in connu.output
+
+
+def test_un_prix_absent_s_ecrit_sans_unite(vues_fixtures: Path) -> None:
+    vues, _ = _vues(vues_fixtures, T0)
+    textes = [fiche_en_texte(f) for f in vues.fiche.to_pylist() if f["presentations"]]
+    assert any("prix public —" in t for t in textes)
+    assert any(" €" in t for t in textes)
+    assert not any("— €" in t for t in textes)

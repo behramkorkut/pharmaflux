@@ -94,7 +94,9 @@ class RapportQualite:
         )
 
 
-def exiger_les_onze(entrepot: Entrepot, instant: datetime) -> None:
+def exiger_les_onze(
+    entrepot: Entrepot, instant: datetime, observations: Mapping[str, Observations] | None = None
+) -> None:
     """Refuse un entrepôt sans les onze entités, ou un instant où l'une n'est pas encore observée.
 
     Avant la première observation du fichier de disponibilité, la vue dirait
@@ -102,14 +104,8 @@ def exiger_les_onze(entrepot: Entrepot, instant: datetime) -> None:
     compteraient comme absents des spécialités des CIS que l'on n'a pas encore
     lus : ce serait affirmer ce que l'on ne sait pas.
     """
-    manquantes = [e for e in ENTITES_GOLD if entrepot.table(e) is None]
-    if manquantes:
-        raise SilverRefuse(f"le gold croise les onze entités ; absentes : {', '.join(manquantes)}")
-    premieres: dict[str, datetime | None] = {}
-    for entite in ENTITES_GOLD:
-        table = entrepot.table(entite)
-        assert table is not None
-        premieres[entite] = _premiere(table)
+    observations = observations or observations_des_entites(entrepot)
+    premieres = {entite: observations[entite].premiere for entite in ENTITES_GOLD}
     pas_encore = [e for e, p in premieres.items() if p is None or p > instant]
     if pas_encore:
         connues = [p for p in premieres.values() if p is not None]
@@ -127,18 +123,19 @@ def controler(
     entrepot: Entrepot, contrats: Mapping[str, Contrat], instant: datetime
 ) -> RapportQualite:
     """Les quatorze contrôles à ``instant`` ; refusés sans les onze entités observées."""
-    exiger_les_onze(entrepot, instant)
+    observations = observations_des_entites(entrepot)  # une lecture par table (relecture 1)
+    exiger_les_onze(entrepot, instant, observations)
     etats = etats_types(entrepot, contrats, instant)
     rapport = RapportQualite(instant)
-    rapport.controles += _invariants(entrepot, etats, instant)
+    rapport.controles += _invariants(observations, etats, instant)
     rapport.controles += _referentiel(etats)
     rapport.controles += _anomalies(etats)
-    rapport.controles.append(_volumes(entrepot, etats, instant))
+    rapport.controles.append(_volumes(entrepot, observations, etats, instant))
     return rapport
 
 
 def _invariants(
-    entrepot: Entrepot, etats: Mapping[str, EntiteTypee], instant: datetime
+    observations: Mapping[str, Observations], etats: Mapping[str, EntiteTypee], instant: datetime
 ) -> list[Controle]:
     cles = {e: t.doublons_cle for e, t in etats.items() if t.doublons_cle is not None}
     identites = {e: t.doublons_identite for e, t in etats.items()}
@@ -147,13 +144,9 @@ def _invariants(
     }
     vides: dict[str, int] = {}
     for entite, etat in etats.items():
-        table = entrepot.table(entite)
-        assert table is not None
-        if etat.table.num_rows == 0 and _premiere(table) is not None:
-            premiere = _premiere(table)
-            assert premiere is not None
-            if premiere <= instant:
-                vides[entite] = 1
+        premiere = observations[entite].premiere
+        if etat.table.num_rows == 0 and premiere is not None and premiere <= instant:
+            vides[entite] = 1
     return [
         Controle(
             1,
@@ -327,16 +320,20 @@ def _anomalies(etats: Mapping[str, EntiteTypee]) -> list[Controle]:
     ]
 
 
-def _volumes(entrepot: Entrepot, etats: Mapping[str, EntiteTypee], instant: datetime) -> Controle:
+def _volumes(
+    entrepot: Entrepot,
+    observations: Mapping[str, Observations],
+    etats: Mapping[str, EntiteTypee],
+    instant: datetime,
+) -> Controle:
     """Le volume à l'instant, et l'écart à l'état juste avant le dernier changement."""
     detail: dict[str, object] = {}
     for entite, etat in etats.items():
         table = entrepot.table(entite)
         assert table is not None
         lignes = etat.table.num_rows
-        changement = _dernier_changement(table, instant)
-        premiere = _premiere(table)
-        if changement is None or changement == premiere:
+        changement = observations[entite].dernier_changement(instant)
+        if changement is None or changement == observations[entite].premiere:
             detail[entite] = {"lignes": lignes, "depuis": "état initial"}
             continue
         avant = _compter(table, changement - timedelta(seconds=1))
@@ -358,21 +355,39 @@ def _volumes(entrepot: Entrepot, etats: Mapping[str, EntiteTypee], instant: date
     )
 
 
-def _instants(table: Table) -> tuple[list[datetime], list[datetime]]:
+@dataclass(frozen=True, slots=True)
+class Observations:
+    """Les instants distincts où une entité a changé : débuts et fins de ses versions."""
+
+    debuts: tuple[datetime, ...]
+    fins: tuple[datetime, ...]
+
+    @property
+    def premiere(self) -> datetime | None:
+        return min(self.debuts, default=None)
+
+    def dernier_changement(self, instant: datetime) -> datetime | None:
+        return max((t for t in (*self.debuts, *self.fins) if t <= instant), default=None)
+
+
+def observations_des_entites(entrepot: Entrepot) -> dict[str, Observations]:
+    """Les colonnes de validité de chaque table, lues une seule fois ; refusé sans les onze."""
+    manquantes = [e for e in ENTITES_GOLD if entrepot.table(e) is None]
+    if manquantes:
+        raise SilverRefuse(f"le gold croise les onze entités ; absentes : {', '.join(manquantes)}")
+    observations = {}
+    for entite in ENTITES_GOLD:
+        table = entrepot.table(entite)
+        assert table is not None
+        observations[entite] = _observations(table)
+    return observations
+
+
+def _observations(table: Table) -> Observations:
     arrow = table.scan(selected_fields=("debut_validite", "fin_validite")).to_arrow()
     debuts = [t for t in pc.unique(arrow["debut_validite"]).to_pylist() if t is not None]
     fins = [t for t in pc.unique(arrow["fin_validite"]).to_pylist() if t is not None]
-    return debuts, fins
-
-
-def _premiere(table: Table) -> datetime | None:
-    debuts, _ = _instants(table)
-    return min(debuts, default=None)
-
-
-def _dernier_changement(table: Table, instant: datetime) -> datetime | None:
-    debuts, fins = _instants(table)
-    return max((t for t in (*debuts, *fins) if t <= instant), default=None)
+    return Observations(tuple(debuts), tuple(fins))
 
 
 def _compter(table: Table, instant: datetime) -> int:

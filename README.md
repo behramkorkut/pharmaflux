@@ -189,7 +189,7 @@ CIS 63830632 — FOSINOPRIL HYDROCHLOROTHIAZIDE EG 20 mg/12,5 mg, comprimé séc
 État au 2026-10-24T23:17:11Z
 Spécialité : comprimé sécable ; voie(s) orale ; Autorisation abrogée depuis le 2008-10-08 (Procédure nationale) ; Non commercialisée ; titulaire(s) EG LABO - LABORATOIRES EUROGENERICS
 Présentations (1) :
-  - 3400938844948 : plaquette(s) aluminium de 30 comprimé(s) ; Déclaration d'arrêt de commercialisation ; taux — ; prix public — €
+  - 3400938844948 : plaquette(s) aluminium de 30 comprimé(s) ; Déclaration d'arrêt de commercialisation ; taux — ; prix public —
 …
 Disponibilité (signalements en cours) : aucun signalement dans le fichier de disponibilité (ce n'est pas « disponible »)
 Sources (4) :

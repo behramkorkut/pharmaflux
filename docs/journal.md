@@ -557,3 +557,14 @@ d'événement), la règle des instants et le jour UTC ; README (la fiche de
 63830632 à 23:17:11 et 23:17:12 le 24/10, la disponibilité de LARIAM couverte
 par une ligne sans CIP13), `CONTEXTE.md`. Le refus d'un instant non observé
 donne le premier instant où les onze entités le sont.
+
+**Mission 06, contrôle du palier 3 et relecture 1** (29/10). Contrôle du
+palier 3 : conforme, clôture atteinte ; la section « État » du README remise
+à jour (missions 00 à 06, tableau des lots). Relecture 1 CONFORME, 0
+bloquant, trois points corrigés : deux fermetures au même instant se
+départagent comme dans la référence DuckDB (un champ vide perd ; cas ajouté
+au fichier synthétique, deux tests tombaient avant) ; un CIS, un CIP13 ou un
+groupe inconnu fait refuser `gold disponibilite` et `gold alternatives` au
+lieu d'une réponse vide ; un prix absent s'écrit « — » sans unité. Les
+validités de chaque table ne sont plus lues qu'une fois par `gold qualite`.
+538 tests.

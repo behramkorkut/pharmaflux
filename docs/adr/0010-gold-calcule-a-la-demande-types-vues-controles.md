@@ -74,11 +74,17 @@ tient en 415 Mo au lieu de 552-705.
   colonnes plates de la spécialité et du MITM, sections en `list<struct>`
   triées de façon stable (présentations, composition, groupes génériques,
   conditions, avis SMR et ASMR, signalements, informations en cours au jour
-  UTC, bornes incluses, fin vide = en cours) ; **tous** les avis SMR et ASMR,
+  UTC, bornes incluses, fin vide = en cours ; une information dont la date de
+  début est illisible n'est pas tenue pour en cours, puisqu'on ne devine pas
+  son début : elle sort de la fiche, et `colonnes_illisibles` le dit) ; **tous** les avis SMR et ASMR,
   du plus récent au plus ancien, avec leurs liens (les fichiers n'ont pas
   d'identifiant d'indication : « le plus récent par indication » obligerait
   à deviner l'indication dans le libellé) ; `occurrences` pour les lignes
-  répétées ; `provenance` par fichier (date de la source, connu depuis).
+  répétées ; `provenance` par fichier (date de la source, connu depuis). La
+  section `disponibilite` de la fiche ne dit que **l'en-cours** (les lignes du
+  fichier à l'instant) ; la fin de publication, qui lit l'histoire récente, se
+  lit dans la vue de disponibilité. Le Lot 3, qui indexera la fiche, tranchera
+  s'il faut l'y ajouter.
 - **La disponibilité courante** : une ligne par présentation et par ligne de
   signalement, selon une **priorité écrite** : une ligne en cours la vise,
   directement ou par sa spécialité (ligne sans CIP13, `portee = specialite`)
@@ -86,7 +92,8 @@ tient en 415 Mo au lieu de 552-705.
   tard à l'instant → `fin_de_publication`, avec la fermeture la plus récente et
   son dernier statut (ADR 0003 : l'ANSM ne publie plus la fiche, ce n'est pas
   une remise à disposition ; seules les versions fermées au plus à l'instant
-  sont lues) ; sinon → `aucun_signalement`, qui ne veut pas dire
+  sont lues ; deux fermetures au même instant se départagent par leurs champs,
+  un champ vide perdant contre un champ renseigné, comme dans la référence) ; sinon → `aucun_signalement`, qui ne veut pas dire
   « disponible ». S'y ajoutent `occurrences`, `presentation_connue` (une
   ligne qui ne vise aucune présentation connue garde sa ligne),
   `debut_a_venir` (`date_debut > jour`, sans autre interprétation).
@@ -146,8 +153,12 @@ limites).
   monte à 524 Mo pour tout le processus (rejeu, silver, gold, référence) : le
   seuil vaut pour les commandes, pas pour la suite de tests.
 - Coût : chaque commande recalcule les vues (environ 1 s) ; aucune dépendance
-  nouvelle ; 35 tests de plus (500 → 535).
-- À surveiller : la mémoire quand la copie du Mac s'allongera (le gold
+  nouvelle ; 38 tests de plus (500 → 538). Une commande qui reçoit un CIS, un
+  CIP13 ou un groupe inconnu à l'instant refuse (code 2) plutôt que de répondre
+  vide, ce qui se lirait comme un fait.
+- À surveiller : la mémoire quand la copie du Mac s'allongera (la relecture 1
+  a mesuré `questions verifier --entrepot` à 470 Mo : une quarantaine de
+  mégaoctets de marge sur la commande la plus lourde) (le gold
   charge l'état des onze entités, pas l'histoire ; seule la fin de
   publication lit les versions fermées de la disponibilité) ; un statut de
   disponibilité inconnu (`valeur_inconnue`) qui viderait la colonne : le

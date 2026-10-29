@@ -61,6 +61,11 @@ def _date(valeur: object) -> str:
     return "?" if valeur is None else str(en_json(valeur))
 
 
+def _prix(valeur: object) -> str:
+    """« 29.19 € », ou « — » sans unité quand la source ne donne pas de prix (relecture 1)."""
+    return "—" if valeur is None else f"{en_json(valeur)} €"
+
+
 def _liste(valeurs: Sequence[Any] | None) -> str:
     return ", ".join(str(v) for v in valeurs or ()) or "—"
 
@@ -94,7 +99,7 @@ def fiche_en_texte(fiche: Mapping[str, Any]) -> str:
         lambda p: (
             f"{p['code_cip13']} : {p['libelle_presentation']} ; {p['etat_commercialisation']} ;"
             f" taux {_liste(p['taux_remboursement'])} ; prix public"
-            f" {en_json(p['prix_public']) or '—'} €"
+            f" {_prix(p['prix_public'])}"
         ),
     )
     lignes += _section(

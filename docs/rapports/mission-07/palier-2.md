@@ -144,8 +144,23 @@ résident maximal constant à 415 Mo) :
 converti depuis `tokenizer.json` (sinon le même code), avait atteint
 **624 Mo**. Je ne l'ai pas reproduit : la seule différence est le fichier du
 tokenizer, qui pèse quelques Mo dans les deux cas. La marge mesurée est de
-97 Mo. Je propose de remesurer à la clôture, à la construction lancée par
-beko.
+97 Mo.
+
+La piste de l'IeC, un import de `tokenizers` dans le processus
+d'encodage, est **écartée**, d'après les dates des fichiers et le code de
+cette version :
+- le fichier converti existait depuis 16:17 (créé lors de la mesure du
+  rappel, dans un autre processus), et la construction a démarré à 16:44:04 ;
+  la conversion n'a donc pas tourné pendant la construction ;
+- cette version n'importait `tokenizers` que dans l'encodeur de potion,
+  jamais appelé ;
+- la conversion elle-même ne tournait que dans un sous-processus.
+
+La question reste ouverte. **Chaque construction est désormais une
+mesure** : `index construire` affiche le résident maximal de ses deux
+processus (encodage, et fragments en sous-processus), et un test vérifie
+que la ligne est là. `index mettre-a-jour` fera de même au palier 3. Le
+`make index` de beko à la clôture donnera un second point.
 
 Mémoire des conteneurs, relevée par beko au repos, après la construction de
 mesure (`docker stats --no-stream`) :
@@ -258,9 +273,7 @@ $ uv run pharmaflux index chercher "Quelles informations de sécurité sur les a
 
 ## Questions pour l'IeC
 
-1. Les 624 Mo non reproduits : la remesure à la clôture, sur la construction
-   de beko, te suffit-elle ?
-2. La tolérance de `verifier` sur les vecteurs du vrai modèle (écart 2) :
+1. La tolérance de `verifier` sur les vecteurs du vrai modèle (écart 2) :
    cosinus ≥ 0,99 contre un réencodage, ou égalité contre le cache ?
 
 ## Propositions d'évolution

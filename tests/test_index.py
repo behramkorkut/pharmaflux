@@ -9,6 +9,7 @@ Qdrant est dans ``test_index_integration.py`` ; le vrai modèle, dans
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -222,6 +223,14 @@ def test_construire_chercher_et_etat_en_ligne_de_commande(
         in resultat.output
     )
     assert "état au 2026-10-27T00:17:12Z" in resultat.output
+    memoire = re.search(
+        r"résident maximal : encodage (\d+) Mo, fragments \(sous-processus\) (\d+) Mo",
+        resultat.output,
+    )
+    assert memoire, "chaque construction est une mesure (addendum 1 J, palier 2)"
+    # Ici, « encodage » mesure le processus de pytest, qui a aussi construit le silver du jeu :
+    # pas de seuil dans ce test, seulement la présence des deux mesures.
+    assert int(memoire[1]) > 0 and int(memoire[2]) > 0
     etat = CliRunner().invoke(application, ["index", "etat"])
     assert etat.exit_code == 0, etat.output
     assert "fragments         72296" in etat.output and "  disponibilite   21445" in etat.output

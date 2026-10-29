@@ -642,3 +642,14 @@ sur tout le jeu, vrai modèle sur un sous-ensemble), ADR 0011, README.
 épinglée par SHA, garde `~/pharmaflux-modeles` d'un run à l'autre, avec pour
 clé l'empreinte du TOML d'e5 ; `index modele installer` ne télécharge que ce
 qui manque, toujours vérifié par sha256, puis `verifier` revoit tout.
+
+**Mission 07, clôture sur le Mac** (29/10, beko). Cache des vecteurs vidé,
+puis `make rebatir`, `make demo` (22 archives, 18 publiées, `verifier-bus`
+conforme), `make silver` (22/22), `make gold` (aucun bloquant, 25
+concordent), puis deux `make index`. Le premier construit : 72 296 fragments
+de 21 445 fiches, tous encodés, en 1 078 s ; résident maximal 411 Mo pour
+l'encodage et 416 Mo pour les fragments ; `verifier` conforme (cosinus
+minimal 0,9954), 418 et 416 Mo. Le second met à jour : rien à faire, 418 et
+419 Mo ; `verifier` conforme, 418 et 418 Mo. Second point de mémoire sous
+512 Mo : les 624 Mo de la première construction du palier 2 ne se sont pas
+reproduits.

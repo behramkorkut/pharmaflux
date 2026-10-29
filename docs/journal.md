@@ -568,3 +568,12 @@ groupe inconnu fait refuser `gold disponibilite` et `gold alternatives` au
 lieu d'une réponse vide ; un prix absent s'écrit « — » sans unité. Les
 validités de chaque table ne sont plus lues qu'une fois par `gold qualite`.
 538 tests.
+
+**Mission 06, `pr.md`** (29/10). Relecture 1 CONFORME, pas de tour 2 ;
+remarque 1 tranchée par l'IeC (la fiche donne les signalements en cours, la
+fin de publication se lit dans `disponibilite_courante` ; question reportée au
+Lot 3). Non-régression complète rejouée sur `6cadc6f` : `profil` 0 bloquante,
+`questions verifier` 25/5/10, `evenements` identique à `53f261b` par
+`diff -r`, `demo verifier` conforme, `silver verifier` 22/22, les deux
+commandes de `make gold` sans bloquant et 25 concordantes, 538 tests. Revue
+finale de l'IeC, puis publication par beko.

@@ -2,8 +2,8 @@
 
 **Projet :** Pharmaflux — projet portfolio
 **Client :** client fictif — **direction santé d'une mutuelle** de taille moyenne (personas §3). Aucune donnée client : uniquement des données publiques réelles.
-**Version :** 0.7 _(après la mission 05 : silver Iceberg historisé, « état à une date », `make silver` ; gold et qualité précisés pour la mission 06)_
-**Date :** 29 octobre 2026 _(v0.1 : 23 octobre 2026 ; v0.2 à v0.4 : 26 octobre 2026 ; v0.5 : 27 octobre 2026 ; v0.6 : 28 octobre 2026)_
+**Version :** 0.8 _(après la mission 06 : le Lot 2 est fait ; Lot 3 découpé, fragments et index précisés pour la mission 07)_
+**Date :** 29 octobre 2026 _(v0.1 : 23 octobre 2026 ; v0.2 à v0.4 : 26 octobre 2026 ; v0.5 : 27 octobre 2026 ; v0.6 : 28 octobre 2026 ; v0.7 : 29 octobre 2026)_
 **Auteur :** Behram Korkut
 
 **Sources de données (publiques, réelles) :**
@@ -33,6 +33,7 @@
 | 5 | PRD v0.5 : avancement du Lot 1 (§4) ; bus précisé : topics, clé, valeur, compatibilité des schémas, rétention, file des messages en échec, vérification (§6.4) ; publication sans perte ni doublon d'identifiant, reprise (§7.1) ; jeu de démo figé dans le dépôt, rejeu accéléré dans l'ordre des observations, `make up` (§7.3) ; risque mémoire levé, rythme réel mesuré (§9) | Mission 03 (27/10/2026) : PR #4, ADR 0007, contrôles des paliers 1 à 3, relecture 1, contrôle final ; ordre de la mission 04 |
 | 6 | PRD v0.6 : Lot 1 fait sur le Mac, seul le VPS reste (§4) ; Lot 2 découpé en deux missions (§4) ; silver précisé : tables Iceberg par entité, historisation sur la date d'observation, « état à une date », vérification contre l'archive, consommateur du bus idempotent (§6.5) ; silver reconstruit identique depuis le bus ou depuis les fichiers d'événements (§7.1) ; mémoire de la démo mesurée (§9) | Mission 04 (27/10/2026) : PR #5, ADR 0008, contrôles des paliers 1 à 3, relecture 1, contrôle final, premier passage de la CI ; ordre de la mission 05 |
 | 7 | PRD v0.7 : Lot 2, mission 05 faite (§4) ; gold précisé : colonnes typées par entité, vues métier, valeur illisible jamais devinée, gold calculé depuis le silver à un instant donné, contrôles de qualité (§6.5) ; jeu de questions recalculé depuis le gold (annexe B) ; mémoire du silver mesurée, le silver tourne sur le Mac en v1, seuil d'alerte de 512 Mo (§9) | Mission 05 (28-29/10/2026) : PR #6, ADR 0009, contrôles des paliers 1 à 3, relectures 1 et 2, contrôle final ; ordre de la mission 06 |
+| 8 | PRD v0.8 : **Lot 2 fait** (§4) ; Lot 3 découpé en trois missions (§4) ; limite de la détection : une valeur brute illisible égale à la forme canonique de la précédente ne produit aucun événement (§6.3, §9) ; fragments et index précisés : texte déterministe depuis le gold, état courant seulement, mise à jour incrémentale, index égal à sa reconstruction complète (§6.7) ; mémoire du gold mesurée (§9) ; point 5 du §10.2 confié à la mission 07 | Mission 06 (29/10/2026) : PR #7, ADR 0010, contrôles des paliers 1 à 3, relecture 1, contrôle final ; ordre de la mission 07 |
 
 ---
 
@@ -165,7 +166,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - Requête « état au JJ/MM/AAAA HH:MM » et vérification contre le fichier archivé du même jour.
 - Contrôles de qualité automatiques (unicité des clés, référentiel CIS ↔ CIP13 cohérent, volumes attendus).
 - _Découpage (28/10/2026) : le Lot 2 commence sur le Mac, sans attendre le VPS. La **mission 05** construit le silver (un consommateur du bus, une table historisée par entité), la requête « état à une date » et sa vérification contre l'archive. La **mission 06** construira le gold (fiche médicament, disponibilité courante) et les contrôles de qualité._
-- _Avancement : la mission 05 (fusionnée le 29/10/2026) a livré le silver. Une table Iceberg par entité est alimentée par un consommateur du bus idempotent, qui garde sa position dans le commit Iceberg. Le silver se construit à l'identique depuis les fichiers d'événements. `pharmaflux silver etat` répond « état à une date », et `silver verifier` est conforme sur les 22 archives du jeu de démo (18 retenues, 4 écartées). `make silver` enchaîne les deux après `make demo`, et la CI le lance (38 s) (ADR 0009). Reste la mission 06 : le gold et les contrôles de qualité._
+- _Avancement : la mission 05 (fusionnée le 29/10/2026) a livré le silver. Une table Iceberg par entité est alimentée par un consommateur du bus idempotent, qui garde sa position dans le commit Iceberg. Le silver se construit à l'identique depuis les fichiers d'événements. `pharmaflux silver etat` répond « état à une date », et `silver verifier` est conforme sur les 22 archives du jeu de démo (18 retenues, 4 écartées). `make silver` enchaîne les deux après `make demo`, et la CI le lance (38 s) (ADR 0009). La mission 06 (fusionnée le 29/10/2026) a livré le gold, calculé à la demande depuis le silver à un instant, sans table stockée : colonnes typées par entité (une valeur illisible n'est jamais devinée), fiche médicament (21 445 CIS sur le jeu, dont 5 562 fiches partielles), disponibilité courante, alternatives, quatorze contrôles de qualité (quatre bloquants). Les 25 questions du jeu v0 qui attendent une réponse concordent depuis le gold et depuis le bronze. `make gold` les lance après `make silver`, et la CI aussi (17 s) (ADR 0010). **Le Lot 2 est fait sur le Mac.**_
 
 ### Lot 3 — Assistant gouverné en temps réel
 
@@ -173,6 +174,12 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - Retrieval hybride (repris de `governed-omop-rag`), réponses sourcées et datées, porte d'abstention, refus du conseil médical.
 - API (FastAPI) et interface (Streamlit).
 - Évaluation automatique sur le jeu de référence à chaque PR ; test de fraîcheur de bout en bout.
+- _Découpage (29/10/2026), sur le Mac comme le Lot 2 :_
+  - _**mission 07** : les fragments de la fiche médicament, l'index vectoriel et sa mise à jour incrémentale depuis le bus, sans LLM (§6.7). Elle commence par fiabiliser l'intégration continue ;_
+  - _**mission 08** : le corpus des avis HAS (ADR 0004), le retrieval hybride, les réponses sourcées et datées, l'abstention, le refus médical, le jeu de questions v1 ;_
+  - _**mission 09** : l'API, l'interface, l'évaluation dans la CI et le test de fraîcheur de bout en bout._
+
+  _Le découpage des missions 08 et 09 se revoit à la fin de la mission 07._
 
 ### Lot 4 — Volet assurance : dépense et exposition
 
@@ -235,6 +242,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 ### 6.3 Détection des changements et événements
 
 - Comparaison du snapshot normalisé avec le **dernier snapshot retenu**, sur les valeurs normalisées, par clé métier (CIS, CIP13, couple CIS + substance…). Une graphie, une espace ou un format de date ne produisent aucun événement : le bilan les mesure.
+- **Limite connue** (mission 06, ADR 0010) : la comparaison porte sur les valeurs, pas sur leurs anomalies. Si la source écrit brute une valeur que le type ne sait pas lire, et que cette brute est égale à la forme canonique de la valeur précédente (`24.34` après `24,34`, par exemple), aucun événement n'est produit. Le silver garde alors la version sans anomalie, et le gold type une valeur que la source a cessé d'écrire lisiblement. Comparer aussi les règles d'anomalie d'une ligne demandera une mission sur la détection, peut-être avec une nouvelle version du schéma d'événement.
 - Trois types d'événements par entité : `creee`, `modifiee` (avec les champs modifiés), `supprimee`.
 - Chaque événement (schéma v1, ADR 0006) porte : identifiant déterministe, entité, version du contrat, clé, état avant, état après, champs modifiés, anomalies de la ligne, date de la source, date d'observation, chemins et empreintes des deux archives comparées, version du schéma. Toutes les valeurs sont des chaînes. L'identifiant est un sha256 de l'entité, des **chemins relatifs** des deux archives, du type et de l'identité de la ligne. Il est donc le même à chaque rejeu, et différent pour deux comparaisons de même contenu (un aller-retour A → B → A → B).
 - **Premier snapshot** d'un fichier : une `creee` par entité, marquée état initial. Appliquer tous les événements au vide redonne le dernier snapshot retenu.
@@ -282,6 +290,12 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - Document = fiche médicament générée depuis le gold (texte déterministe, sans LLM) + extraits des avis HAS.
 - Chaque fragment porte : CIS, source, date de la source, version.
 - Changement de la source → remplacement des fragments du médicament ; suppression → retrait des fragments. **Aucun fragment orphelin** (contrôle automatique).
+- _Précisé pour la mission 07 :_
+  - **Le texte d'un fragment est une fonction de la fiche** : les mêmes fiches donnent les mêmes fragments, à l'octet, et leur identifiant est déterministe. Chaque fragment dit sa source (le fichier), la date de la source, depuis quand la valeur est observée, et l'instant de l'état dont il vient. La prudence du gold passe dans le texte : « aucun signalement » n'y devient jamais « disponible » (ADR 0003).
+  - **L'index porte l'état courant**, pas l'histoire : « que savait-on le JJ/MM ? » reste une question pour le gold. L'instant de l'index est celui de la dernière observation qu'il a appliquée, et il le dit.
+  - **Mise à jour incrémentale** : seuls les médicaments touchés par les changements depuis l'instant de l'index sont recalculés, depuis le gold, et leurs fragments remplacés ou retirés. L'index n'est jamais en avance sur le silver qu'il lit. Il est idempotent et reprend après une coupure, comme le consommateur du silver. La mission 07 tranche d'où viennent les changements : les événements du bus (§5, étape 5), ou les versions du silver ouvertes ou fermées depuis l'instant de l'index.
+  - **Vérification** : l'index mis à jour pas à pas est égal à l'index reconstruit en entier à partir du gold au même instant. Aucun fragment orphelin, aucun manquant, aucun texte différent.
+  - **Embeddings calculés localement**, par un modèle épinglé, sans API payante. Un fragment dont le texte ne change pas n'est pas recalculé (§7.5).
 
 ### 6.8 Assistant gouverné
 
@@ -367,7 +381,9 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 |---|---|---|---|
 | **Format d'un fichier source modifié sans préavis** | Élevé | Moyenne | Contrats de schéma ; collecte qui s'arrête proprement et alerte ; incident documenté |
 | **Fichier servi vide ou tronqué par la source**, sans erreur HTTP (observé le 26/10/2026) | Élevé | Faible | Archivé tel quel ; garde-fou de volume avant toute comparaison (§6.3) ; jamais d'événement `supprimee` en masse |
-| **Mémoire de pointe au-dessus du plafond du VPS** : 474 Mo au rejeu complet, contre 256 Mo pour l'unité systemd (mission 02) | Élevé | **Levé pour la chaîne** par la mission 03 : 118 à 149 Mo en flux ; `verifier-bus` monte à 190-230 Mo, sans cible. Mission 04 : `demo rejouer` (rejeu et publication du jeu de démo) 145 Mo résidents ; `evenements` de 0,7 à 35,8 Mo par entité sous `tracemalloc` | Plafond de l'unité gardé, au service de la pré-production voisine ; mesure à refaire sur le VPS, avec le bus, avant d'y lancer autre chose que la collecte. Le silver (mission 05) apporte PyArrow, PyIceberg et DuckDB. Leurs imports pèsent déjà 102 Mo résidents. Les commandes du silver mesurent de 123 à 424 Mo sur le jeu de démo : `consommer` 357, `construire` 272, `verifier` 310, `comparer` 424. **En v1, le silver et le gold tournent sur le Mac**, là où est le bus, avec un seuil d'alerte de 512 Mo par commande ; le VPS ne fait que collecter |
+| **Mémoire de pointe au-dessus du plafond du VPS** : 474 Mo au rejeu complet, contre 256 Mo pour l'unité systemd (mission 02) | Élevé | **Levé pour la chaîne** par la mission 03 : 118 à 149 Mo en flux ; `verifier-bus` monte à 190-230 Mo, sans cible. Mission 04 : `demo rejouer` (rejeu et publication du jeu de démo) 145 Mo résidents ; `evenements` de 0,7 à 35,8 Mo par entité sous `tracemalloc` | Plafond de l'unité gardé, au service de la pré-production voisine ; mesure à refaire sur le VPS, avec le bus, avant d'y lancer autre chose que la collecte. Le silver (mission 05) apporte PyArrow, PyIceberg et DuckDB. Leurs imports pèsent déjà 102 Mo résidents. Les commandes du silver mesurent de 123 à 424 Mo sur le jeu de démo : `consommer` 357, `construire` 272, `verifier` 310, `comparer` 424. **En v1, le silver et le gold tournent sur le Mac**, là où est le bus, avec un seuil d'alerte de 512 Mo par commande ; le VPS ne fait que collecter. Le gold (mission 06) monte de 312 à 470 Mo selon la commande ; la plus lourde, `questions verifier --entrepot`, laisse une quarantaine de mégaoctets de marge. L'index du Lot 3 ajoute un modèle d'embeddings : sa mémoire se mesure avant tout choix |
+| **Changement de lisibilité invisible à la détection** : une brute illisible égale à la forme canonique de la valeur précédente ne produit aucun événement (§6.3) | Moyen | Faible (aucun cas observé) | Limite écrite dans l'ADR 0010 ; mission sur la détection, qui compare aussi les anomalies d'une ligne |
+| **Intégration continue intermittente** : le registre de schémas a coupé ses connexions pendant les tests d'intégration de la PR #7 ; la relance est passée | Faible | Moyenne | Diagnostic et correction au premier palier de la mission 07 ; une relance n'est pas une correction |
 | **Rythme réel de mise à jour faible** (peu d'événements à montrer) : en 45 heures (24-26/10/2026), en dehors de l'état initial, un seul fichier a changé, deux fois, plus un fichier servi vide | Élevé | **Avérée** | Archivage dès le Lot 0 ; mode rejeu accéléré (mission 04 : 67 h 35 min observées rejouées en 4 min 03 s) ; la démo montre ce rythme et l'incident tels quels ; mesure honnête publiée ; l'historique s'allonge chaque heure |
 | **Sens d'une disparition de ligne ambigu** (remise à disposition ? arrêt ?) | Moyen | Élevée | ADR 0003 « proposé » (fin de publication, pas remise), revu au plus tard le 07/12/2026 sur les disparitions observées ; libellés prudents dans l'assistant |
 | Granularités incompatibles (dépense annuelle, disponibilité quotidienne) | Moyen | Certaine | Indicateur « dépense exposée » défini et documenté avec ses limites |
@@ -399,7 +415,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 | 2 | Intervalle de collecte, requêtes conditionnelles | **Tranché** : toutes les heures à `:17` ; pas de requête conditionnelle, le serveur ne les permet pas (§6.1). **ADR 0001** |
 | 3 | Colonnes et valeurs de `CIS_CIP_Dispo_Spec.txt` et `CIS_MITM.txt`, sens d'une ligne qui disparaît | Colonnes et statuts **profilés** (`docs/donnees/`) ; MITM est un drapeau par CIS. Sens d'une disparition : **ADR 0003, proposé**, revue au plus tard le 07/12/2026 |
 | 4 | Lieu de l'archivage | **Tranché** : VPS-1, §10.1 point 6. **ADR 0001** |
-| 5 | Qdrant ou pgvector | **Reporté au Lot 3**, qui l'utilise |
+| 5 | Qdrant ou pgvector | **Reporté au Lot 3**, qui l'utilise ; tranché par la mission 07 (§0), avec un ADR |
 | 6 | Stockage des traces : ClickHouse ou DuckDB | **Reporté au Lot 5**, qui l'utilise |
 | 7 | Corpus HAS : pages web ou PDF, volume, licence | **Tranché** : pages d'avis HTML d'abord, PDF en second, par étapes depuis 2024 ; réutilisation libre avec source et date. **ADR 0004** ; mesure du besoin en PDF au Lot 3 |
 | 8 | Démo publique hébergée ou locale | **Reporté au Lot 6** |

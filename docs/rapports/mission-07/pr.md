@@ -208,7 +208,5 @@ puis l'étape du modèle (téléchargement à froid, puis cache).
     vecteur creux à côté de `dense`) et des règles devront s'y ajouter ;
   - les questions les plus manquées ont leur réponse dans `identite`
     (commercialisation, statut).
-- **Le PRD v0.8** dit « PR #7 » pour le run en échec : c'était le run de
-  `main` sur `98505d3`.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

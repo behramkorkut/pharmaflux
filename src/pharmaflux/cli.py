@@ -582,17 +582,24 @@ def schemas_enregistrer(registre: OptionRegistre = None) -> None:
     Idempotent : un schéma déjà connu garde son identifiant. Code 1 si le
     registre est injoignable, ou si le schéma courant d'un sujet est
     incompatible avec ses versions enregistrées (contrôlé avant de
-    l'enregistrer, ADR 0007).
+    l'enregistrer, ADR 0007). Un appel coupé sans réponse est réessayé deux fois ;
+    le total des réessais est affiché s'il n'est pas nul.
     """
     try:
         with Registre(_registre(registre), fabriquer_transport_registre()) as registre_:
             resultats = enregistrer_tout(registre_, sorted(charger_tous()))
+            reessais = registre_.reessais
     except (RegistreIndisponible, SchemaIncompatible) as exc:
         typer.echo(f"registre : {exc}", err=True)
         raise typer.Exit(code=1) from exc
     for resultat in resultats:
         etat_ = "nouveau" if resultat.nouveau else "déjà connu"
         typer.echo(f"{resultat.sujet:44} id {resultat.identifiant} ({etat_})")
+    if reessais:
+        typer.echo(
+            f"registre : {reessais} réessai(s) après une coupure sans réponse (lignes ci-dessus)",
+            err=True,
+        )
 
 
 demo = typer.Typer(
@@ -1567,3 +1574,159 @@ def gold_alternatives(
     if not table.num_rows and groupe is None:
         typer.echo("la spécialité n'a pas d'autre membre dans un groupe générique", err=True)
     typer.echo(f"{table.num_rows} ligne(s)", err=True)
+
+
+# --- index (mission 07) ------------------------------------------------------------------------
+# Les fragments de la fiche médicament, depuis le gold à un instant (ADR 0011). Le calcul des
+# fragments vit dans le processus du gold (PyArrow, DuckDB) ; l'encodage, au palier 2, dans un
+# autre, pour que chacun tienne sous 512 Mo (addendum 1 J).
+
+index = typer.Typer(
+    name="index",
+    help="L'index de l'assistant (mission 07) : les fragments de la fiche médicament, depuis le"
+    " gold.",
+    no_args_is_help=True,
+)
+application.add_typer(index)
+
+
+@index.command("fragments")
+def index_fragments(
+    cis: Annotated[
+        list[str] | None, typer.Option("--cis", help="Seulement ce CIS ; répétable.")
+    ] = None,
+    a: OptionInstantGold = None,
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    sortie: Annotated[
+        Path | None,
+        typer.Option(
+            "--sortie", help="Fichier JSON Lines, écrit entier puis renommé ; défaut : la sortie."
+        ),
+    ] = None,
+) -> None:
+    """Les fragments de chaque fiche à un instant, en JSON Lines, sans index ni modèle.
+
+    Un fragment par ligne, dans l'ordre des CIS, puis des sections (identite,
+    presentations, avis, disponibilite, informations), puis des parties.
+    L'instant n'est pas dans les fragments : il est dit sur la sortie d'erreur,
+    et l'index le tiendra. Code 2 : CIS inconnu à l'instant, ou refus
+    (instant, entrepôt).
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    from pharmaflux.index.fragments import FORMAT, fragments_des_fiches
+    from pharmaflux.silver.schema import texte_instant
+
+    try:
+        _, vues_ = _vues_gold(a, entrepot)
+    except SilverRefuse as exc:
+        typer.echo(f"fragments refusés : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    fiches = vues_.fiche
+    if cis:
+        fiches = fiches.filter(pc.is_in(fiches["code_cis"], value_set=pa.array(cis, pa.string())))
+        inconnus = sorted(set(cis) - set(fiches["code_cis"].to_pylist()))
+        if inconnus:
+            typer.echo(
+                f"fragments refusés : aucun fichier ne cite le(s) CIS {', '.join(inconnus)}"
+                " à cet instant",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+    instant = fiches["instant"][0].as_py() if fiches.num_rows else None
+    nombre = 0
+    provisoire = None if sortie is None else sortie.with_name(sortie.name + ".partiel")
+    flux = sys.stdout if provisoire is None else provisoire.open("w", encoding="utf-8")
+    try:
+        for fragment in fragments_des_fiches(fiches):
+            flux.write(fragment.en_jsonl() + "\n")
+            nombre += 1
+    finally:
+        if flux is not sys.stdout:
+            flux.close()
+    if provisoire is not None and sortie is not None:
+        provisoire.replace(sortie)
+    typer.echo(
+        f"{nombre} fragment(s) de {fiches.num_rows} fiche(s), format {FORMAT}, état au"
+        f" {texte_instant(instant) if instant else '?'}",
+        err=True,
+    )
+
+
+modele = typer.Typer(
+    name="modele",
+    help="Les fichiers des modèles d'embeddings : relever l'épinglage, installer, vérifier"
+    " (relever et installer téléchargent : beko seulement).",
+    no_args_is_help=True,
+)
+index.add_typer(modele)
+ArgumentModele = Annotated[str, typer.Argument(help="Le nom du modèle (index/modeles/<nom>.toml).")]
+
+
+@modele.command("relever")
+def modele_relever(nom: ArgumentModele) -> None:
+    """Choisit la dernière révision qui a deux semaines et relève l'empreinte de chaque fichier.
+
+    Télécharge les fichiers sous $PHARMAFLUX_MODELES (défaut ~/pharmaflux-modeles),
+    dans <nom>/<révision>/, puis affiche le TOML à recopier dans
+    index/modeles/<nom>.toml. Code 1 : réseau ou dépôt en erreur ; 2 : modèle
+    inconnu, ou aucune révision assez ancienne.
+    """
+    from pharmaflux.index import modeles
+
+    try:
+        epinglage = modeles.lire(nom)
+        with modeles.client_hub() as client:
+            releve = modeles.relever(
+                epinglage, client, modeles.racine_modeles(), modeles.aujourd_hui()
+            )
+    except modeles.EpinglageInvalide as exc:
+        typer.echo(f"relevé refusé : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except httpx.HTTPError as exc:
+        typer.echo(f"relevé interrompu : {exc!r}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(releve.en_toml(epinglage))
+
+
+@modele.command("installer")
+def modele_installer(nom: ArgumentModele) -> None:
+    """Télécharge les fichiers épinglés, vérifie leur sha256, puis seulement les met en place.
+
+    Un fichier déjà en place et juste n'est pas retéléchargé. Code 1 : réseau ou
+    dépôt en erreur ; 2 : modèle inconnu ou pas encore épinglé, ou empreinte
+    différente (rien n'est mis en place).
+    """
+    from pharmaflux.index import modeles
+
+    try:
+        epinglage = modeles.lire(nom)
+        with modeles.client_hub() as client:
+            lignes = modeles.installer(epinglage, client, modeles.racine_modeles())
+    except modeles.EpinglageInvalide as exc:
+        typer.echo(f"installation refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except httpx.HTTPError as exc:
+        typer.echo(f"installation interrompue : {exc!r}", err=True)
+        raise typer.Exit(code=1) from exc
+    for ligne in lignes:
+        typer.echo(ligne)
+
+
+@modele.command("verifier")
+def modele_verifier(nom: ArgumentModele) -> None:
+    """Sans réseau : chaque fichier épinglé est-il en place, avec son sha256 ? Code 1 sinon."""
+    from pharmaflux.index import modeles
+
+    try:
+        epinglage = modeles.lire(nom)
+    except modeles.EpinglageInvalide as exc:
+        typer.echo(f"vérification refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    ecarts = modeles.verifier(epinglage, modeles.racine_modeles())
+    for ecart in ecarts:
+        typer.echo(ecart, err=True)
+    if ecarts:
+        raise typer.Exit(code=1)
+    typer.echo(f"{nom} : {len(epinglage.fichiers)} fichier(s) en place, sha256 vérifiés")

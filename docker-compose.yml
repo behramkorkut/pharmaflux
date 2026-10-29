@@ -52,8 +52,14 @@ services:
       - source: amorcage-redpanda
         target: /etc/redpanda/.bootstrap.yaml
     mem_limit: 1g
+    # Sain quand Kafka répond **et** le registre de schémas liste ses sujets (mission 07) :
+    # `up --wait` rend un registre prêt, pas seulement un courtier.
     healthcheck:
-      test: ["CMD-SHELL", "rpk cluster info -X brokers=localhost:9092 > /dev/null 2>&1"]
+      test:
+        - CMD-SHELL
+        - >-
+          rpk cluster info -X brokers=localhost:9092 > /dev/null 2>&1
+          && rpk registry subject list -X registry.hosts=localhost:8081 > /dev/null 2>&1
       interval: 5s
       timeout: 5s
       retries: 24

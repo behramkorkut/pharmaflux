@@ -10,6 +10,7 @@ from __future__ import annotations
 import calendar
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -409,12 +410,95 @@ def test_un_schema_courant_incompatible_est_refuse_avant_d_etre_enregistre(
     assert "incompatible" in resultat.output
 
 
+# --- registre : le réessai d'un appel coupé sans réponse (mission 07, addendum 1 A2) ----------
+
+
+class Coupures:
+    """Un transport qui coupe les ``n`` premiers appels avec ``erreur``, puis répond ``reponse``."""
+
+    def __init__(self, n: int, erreur: type[httpx.TransportError], reponse: httpx.Response):
+        self.n, self.erreur, self.reponse = n, erreur, reponse
+        self.appels: list[str] = []
+
+    def transport(self) -> httpx.MockTransport:
+        return httpx.MockTransport(self._repondre)
+
+    def _repondre(self, requete: httpx.Request) -> httpx.Response:
+        self.appels.append(f"{requete.method} {requete.url.path}")
+        if len(self.appels) <= self.n:
+            raise self.erreur("coupé", request=requete)
+        return self.reponse
+
+
+def test_un_appel_coupe_sans_reponse_est_reessaye_et_compte(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    coupures = Coupures(1, httpx.RemoteProtocolError, httpx.Response(200, json={"id": 7}))
+    attentes: list[float] = []
+    with Registre("http://registre.test", coupures.transport(), dormir=attentes.append) as r:
+        assert r.identifiant("x") == 7
+        assert r.reessais == 1
+    assert coupures.appels == ["GET /subjects/x/versions/latest"] * 2
+    assert attentes == [0.2]
+    assert len(registre.REESSAIS) == 1, "le processus compte ses réessais"
+    ligne = capsys.readouterr().err
+    assert "registre : GET /subjects/x/versions/latest coupé sans réponse" in ligne
+    assert "(RemoteProtocolError), essai 2/3 dans 0.2 s" in ligne
+    assert re.search(r"\(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\)", ligne), "horodatée"
+
+
+def test_trois_coupures_rendent_le_registre_indisponible() -> None:
+    coupures = Coupures(3, httpx.ConnectError, httpx.Response(200, json={"id": 7}))
+    attentes: list[float] = []
+    with (
+        Registre("http://registre.test", coupures.transport(), dormir=attentes.append) as r,
+        pytest.raises(registre.RegistreIndisponible, match=r"\(3 essais\)"),
+    ):
+        r.enregistrer("x", {"type": "object"})
+    assert len(coupures.appels) == 3, "trois essais, pas un de plus"
+    assert attentes == [0.2, 0.8]
+
+
+@pytest.mark.parametrize(
+    ("transport", "motif"),
+    [
+        (httpx.MockTransport(lambda _: httpx.Response(500, json={"message": "panne"})), "HTTP 500"),
+        (Coupures(1, httpx.ReadTimeout, httpx.Response(200, json={})).transport(), "ReadTimeout"),
+    ],
+    ids=["reponse-5xx", "delai-depasse"],
+)
+def test_une_reponse_ou_un_delai_depasse_n_est_jamais_reessaye(
+    transport: httpx.MockTransport, motif: str
+) -> None:
+    attentes: list[float] = []
+    with (
+        Registre("http://registre.test", transport, dormir=attentes.append) as r,
+        pytest.raises(registre.RegistreIndisponible, match=motif),
+    ):
+        r.identifiant("x")
+    assert attentes == [] and r.reessais == 0 and registre.REESSAIS == []
+
+
+def test_supprimer_tente_la_suppression_definitive_meme_apres_un_404() -> None:
+    appels: list[str] = []
+
+    def deja_efface_en_douceur(requete: httpx.Request) -> httpx.Response:
+        appels.append(f"{requete.method} {requete.url.path}?{requete.url.query.decode()}")
+        if requete.url.params.get("permanent") == "true":
+            return httpx.Response(200, json=[1])
+        return httpx.Response(404, json={"error_code": 40404, "message": "soft deleted"})
+
+    with Registre("http://registre.test", httpx.MockTransport(deja_efface_en_douceur)) as r:
+        r.supprimer("x")
+    assert appels == ["DELETE /subjects/x?", "DELETE /subjects/x?permanent=true"]
+
+
 def test_registre_injoignable_ou_en_erreur() -> None:
     def panne(_: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("refusé")
 
     with (
-        Registre("http://registre.test", httpx.MockTransport(panne)) as r,
+        Registre("http://registre.test", httpx.MockTransport(panne), dormir=lambda _: None) as r,
         pytest.raises(registre.RegistreIndisponible, match="refusé"),
     ):
         r.identifiant("x")

@@ -15,13 +15,27 @@ Le registre n'encode rien : la valeur du message est la ligne JSONL nue, et
 l'identifiant du schéma voyage dans l'en-tête ``schema_id``. Un outil qui
 attend le format Confluent (cinq octets devant la valeur) ne décode pas par
 le registre : c'est le prix de garder l'événement à l'octet près.
+
+Un appel coupé **sans réponse** (connexion refusée, fermée avant la réponse)
+est réessayé deux fois, après 0,2 puis 0,8 s (mission 07, addendum 1 A2) :
+le registre de Redpanda coupe parfois un ``POST …/versions`` pendant qu'il
+efface des topics. Tous les appels du client sont sûrs à rejouer (lectures,
+``PUT`` de la règle, enregistrement du même schéma, suppressions). Une
+réponse, même 5xx, n'est jamais réessayée, ni un délai dépassé : c'est un
+fait du registre, pas une coupure. Chaque réessai écrit une ligne horodatée
+sur la sortie d'erreur et s'ajoute à ``REESSAIS``, que les tests
+d'intégration exigent vide.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import sys
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 
@@ -36,6 +50,12 @@ TYPE_CONTENU = "application/vnd.schemaregistry.v1+json"
 SCHEMA_EVENEMENT = "evenement.v1.schema.json"
 SCHEMA_ECHEC = "echec.v1.schema.json"
 DELAI_S = 10.0
+ATTENTES_S = (0.2, 0.8)  # avant le 2ᵉ et le 3ᵉ essai ; trois essais en tout
+SANS_REPONSE = (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError, httpx.WriteError)
+
+# Les lignes des réessais qui ont servi dans ce processus (``schemas enregistrer`` en donne le
+# total, la session des tests d'intégration échoue s'il en reste).
+REESSAIS: list[str] = []
 
 
 class RegistreIndisponible(Exception):  # noqa: N818 (nom français voulu)
@@ -99,10 +119,18 @@ class Enregistrement:
 
 
 class Registre:
-    """Un client du registre ; ``transport`` permet aux tests de le simuler."""
+    """Un client du registre ; ``transport`` et ``dormir`` permettent aux tests de le simuler."""
 
-    def __init__(self, url: str, transport: httpx.BaseTransport | None = None) -> None:
+    def __init__(
+        self,
+        url: str,
+        transport: httpx.BaseTransport | None = None,
+        *,
+        dormir: Callable[[float], None] = time.sleep,
+    ) -> None:
         self.url = url.rstrip("/")
+        self.reessais = 0  # ceux de ce client ; REESSAIS garde ceux du processus
+        self._dormir = dormir
         self._client = httpx.Client(
             base_url=self.url,
             transport=transport,
@@ -149,9 +177,14 @@ class Registre:
         return bool(reponse.get("is_compatible"))
 
     def supprimer(self, sujet_: str) -> None:
-        """Pour les tests d'intégration : efface un sujet à suffixe unique, définitivement."""
-        if self._appeler("DELETE", f"/subjects/{sujet_}", absent_ok=True) is not None:
-            self._appeler("DELETE", f"/subjects/{sujet_}?permanent=true", absent_ok=True)
+        """Pour les tests d'intégration : efface un sujet à suffixe unique, définitivement.
+
+        La suppression définitive est tentée même quand la douce répond 404 : un sujet déjà
+        effacé en douceur (une coupure, un nettoyage interrompu) répond 404 à la douce, et
+        resterait sinon pour toujours dans le registre.
+        """
+        self._appeler("DELETE", f"/subjects/{sujet_}", absent_ok=True)
+        self._appeler("DELETE", f"/subjects/{sujet_}?permanent=true", absent_ok=True)
 
     def _identifiant_de(self, sujet_: str, schema: dict[str, object]) -> int | None:
         """L'identifiant si ce schéma exact est déjà enregistré sous le sujet, sinon None."""
@@ -161,10 +194,7 @@ class Registre:
     def _appeler(
         self, methode: str, chemin: str, corps: object | None = None, *, absent_ok: bool = False
     ) -> dict[str, object] | None:
-        try:
-            reponse = self._client.request(methode, chemin, json=corps)
-        except httpx.HTTPError as exc:
-            raise RegistreIndisponible(f"{self.url}{chemin} : {exc!r}") from exc
+        reponse = self._envoyer(methode, chemin, corps)
         if absent_ok and reponse.status_code == 404:
             return None
         if reponse.status_code >= 400:
@@ -176,6 +206,35 @@ class Registre:
         except ValueError as exc:
             raise RegistreIndisponible(f"{methode} {self.url}{chemin} : réponse non JSON") from exc
         return brut if isinstance(brut, dict) else {"valeur": brut}
+
+    def _envoyer(self, methode: str, chemin: str, corps: object | None) -> httpx.Response:
+        """La réponse du registre, après au plus deux réessais d'un appel coupé sans réponse."""
+        for essai in range(len(ATTENTES_S) + 1):
+            try:
+                return self._client.request(methode, chemin, json=corps)
+            except SANS_REPONSE as exc:
+                if essai == len(ATTENTES_S):
+                    raise RegistreIndisponible(
+                        f"{self.url}{chemin} : {exc!r} ({essai + 1} essais)"
+                    ) from exc
+                attente = ATTENTES_S[essai]
+                ligne = (
+                    f"registre : {methode} {chemin} coupé sans réponse ({type(exc).__name__}),"
+                    f" essai {essai + 2}/{len(ATTENTES_S) + 1} dans {attente} s"
+                    f" ({_horodatage()})"
+                )
+                print(ligne, file=sys.stderr, flush=True)
+                REESSAIS.append(ligne)
+                self.reessais += 1
+                self._dormir(attente)
+            except httpx.HTTPError as exc:
+                raise RegistreIndisponible(f"{self.url}{chemin} : {exc!r}") from exc
+        raise AssertionError("inatteignable")  # la boucle rend ou lève
+
+
+def _horodatage() -> str:
+    """L'instant en UTC à la milliseconde, pour recouper avec le journal du courtier."""
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _corps(schema: dict[str, object]) -> dict[str, str]:

@@ -577,3 +577,35 @@ Lot 3). Non-régression complète rejouée sur `6cadc6f` : `profil` 0 bloquante,
 `diff -r`, `demo verifier` conforme, `silver verifier` 22/22, les deux
 commandes de `make gold` sans bloquant et 25 concordantes, 538 tests. Revue
 finale de l'IeC, puis publication par beko.
+
+**Mission 06, la CI après la fusion** (29/10). Sur `main`, après la fusion de
+la PR #7 : `make gold` 17 s dans le job `integration`, `make silver` 40 s dans
+le même job (la durée que `pr.md` de la mission 06 laissait à compléter). Le
+premier run de `main` sur le commit de fusion `98505d3` (run `40881334581`,
+tentative 1) est tombé sur trois tests d'intégration : le registre de schémas
+a coupé la connexion sur `POST /subjects/…/versions`, sans réponse, dans la
+fixture `registre` ; la relance est passée. Ce run est celui de `main`, pas de
+la PR #7, dont la CI était passée : l'ordre de la mission 07 et le PRD v0.8
+disaient « PR #7 ».
+
+**Mission 07, §0** (29/10). La coupure se reproduit sur le Mac : 1 passage sur
+15 de la suite d'intégration, toujours un `POST …/versions`, 15 à 20 ms après
+l'effacement des topics du test précédent, sans aucune ligne au journal du
+courtier. Le déclencheur n'existe que dans les tests ; la cause interne au
+registre reste une hypothèse. Le gold du jeu donne 21 445 fiches ; au grain
+proposé, environ 72 000 fragments ; l'encodage complet est la grande
+inconnue. Addendum 1 : tous les avis retenus, dont l'instant tenu par l'index
+et non par chaque fragment, et les bascules du jour dans l'incrément.
+
+**Mission 07, palier 1** (29/10). Le client du registre réessaie deux fois un
+appel coupé sans réponse (0,2 puis 0,8 s), jamais une réponse ni un délai
+dépassé, avec une ligne horodatée à la milliseconde ; `schemas enregistrer`
+en donne le total. `supprimer` tente la suppression définitive même après un
+404. Les sujets et topics de test sont effacés une fois, en fin de session, et
+un réessai pendant les tests d'intégration fait échouer la session, sauf dans
+le test de reproduction (30 cycles : 1 réessai au premier passage sur le Mac).
+Le healthcheck attend le registre ; la CI passe ses loggers en `debug` et
+dépose tout le journal du courtier en artefact en cas d'échec. Les fragments :
+`pharmaflux index fragments`, 72 075 fragments pour 21 445 fiches, 4,6 s et
+418 Mo, identiques d'un calcul à l'autre. Les procédures de téléchargement du
+modèle (deux candidats) et de l'image Qdrant sont écrites, pas lancées.

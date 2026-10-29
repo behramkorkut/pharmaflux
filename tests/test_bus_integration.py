@@ -7,7 +7,7 @@ Marqués ``integration`` : sautés, et dit, quand aucun courtier ne répond sur
 lancé les tests. Les fixtures (``bus``, ``prefixe``, ``registre``,
 ``lecteur``) sont dans ``conftest.py``, partagées avec la mission 04. Les
 topics et les sujets du registre portent un suffixe unique par test et sont
-supprimés à la fin. Seules les fixtures sont lues,
+supprimés en fin de session (mission 07). Seules les fixtures sont lues,
 jamais ``~/pharmaflux-data``, pour que la CI ait le même jeu que le Mac.
 """
 
@@ -22,20 +22,25 @@ from confluent_kafka import Consumer, TopicPartition
 
 from pharmaflux.bus import enveloppe as env
 from pharmaflux.bus import publication, verification
+from pharmaflux.bus import registre as registre_module
 from pharmaflux.bus.client import (
     CONFIG_ECHECS,
     CONFIG_EVENEMENTS,
     BusKafka,
     LecteurKafka,
     Livraison,
+    definition_echecs,
+    definition_evenements,
 )
 from pharmaflux.bus.registre import (
     Registre,
+    enregistrer_tout,
+    sujets_du_projet,
 )
 from pharmaflux.bus.registre import sujet as sujet_de
 from pharmaflux.evenements import schema
 from pharmaflux.evenements.comparaison import appliquer, etat_du_snapshot
-from tests.conftest import COURTIER
+from tests.conftest import COURTIER, REGISTRE, Nettoyage
 from tests.test_bus import DISPO, PRESENTATIONS, _snap, _sortie
 from tests.test_bus_verification import BusCoupe, _lignes
 
@@ -218,3 +223,43 @@ def test_un_produce_vers_un_topic_non_prepare_echoue_sans_le_creer(prefixe: str)
     assert bus.attendre(30) == 0, "le message est tranché, pas en attente"
     assert [x.erreur for x in livraisons] == ["Broker: Unknown topic or partition (3)"]
     assert topic not in bus.verifier_courtier(), "le courtier n'a créé aucun topic"
+
+
+CYCLES_REPRODUCTION = 30
+
+
+def test_reproduction_enregistrer_pendant_l_effacement_des_topics(
+    bus: BusKafka, a_nettoyer: Nettoyage, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Mission 07, A : ce que faisaient les tests jusqu'ici, trente fois de suite.
+
+    Créer des topics, enregistrer leurs schémas, effacer les topics, et enregistrer aussitôt
+    ceux du cycle suivant : le registre coupait parfois cet enregistrement (PR #7). Le test
+    passe grâce au réessai, et **affiche** combien ont servi, sans en exiger : c'est une mesure
+    de la fréquence, pas une assertion. Il retire ses réessais du décompte de la session, que
+    les autres tests exigent nul.
+    """
+    deja = len(registre_module.REESSAIS)
+    avant = None
+    with Registre(REGISTRE) as registre_:
+        for _ in range(CYCLES_REPRODUCTION):
+            prefixe = f"pharmaflux.test-{uuid.uuid4().hex[:8]}"
+            entites = [PRESENTATIONS, DISPO]
+            topics = [env.nom_topic(e, prefixe) for e in entites]
+            bus.preparer_topics(
+                [*(definition_evenements(t) for t in topics),
+                 definition_echecs(env.topic_echecs(prefixe))]
+            )  # fmt: skip
+            a_nettoyer.sujets += [s for s, _ in sujets_du_projet(entites, prefixe)]
+            if avant is not None:
+                bus.supprimer_topics(avant)  # puis on enregistre aussitôt : la fenêtre fautive
+            enregistrer_tout(registre_, entites, prefixe)
+            avant = [*topics, env.topic_echecs(prefixe)]
+        reessais = registre_.reessais
+    assert avant is not None
+    bus.supprimer_topics(avant)
+    del registre_module.REESSAIS[deja:]
+    with capsys.disabled():
+        print(
+            f"\nreproduction : {reessais} réessai(s) du registre sur {CYCLES_REPRODUCTION} cycles"
+        )

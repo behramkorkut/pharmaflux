@@ -29,6 +29,7 @@ import httpx
 import pytest
 
 from pharmaflux.bus import enveloppe as env
+from pharmaflux.bus import registre as registre_module
 from pharmaflux.bus.client import (
     COURTIER_PAR_DEFAUT,
     VARIABLE_COURTIER,
@@ -224,21 +225,72 @@ def prefixe() -> str:
     return f"pharmaflux.test-{uuid.uuid4().hex[:8]}"
 
 
+@dataclass
+class Nettoyage:
+    """Les sujets et les topics créés par les tests, effacés une seule fois en fin de session."""
+
+    sujets: list[str] = field(default_factory=list)
+    topics: list[str] = field(default_factory=list)
+
+
+@pytest.fixture(scope="session")
+def a_nettoyer(bus: BusKafka) -> Iterator[Nettoyage]:
+    """Le nettoyage en fin de session, et non à la fin de chaque test (mission 07, A1).
+
+    Le registre de Redpanda coupait parfois un ``POST …/versions`` pendant qu'il effaçait les
+    topics du test précédent (PR #7, puis 1 passage sur 15 sur le Mac) : plus aucun test
+    n'écrit dans le registre pendant un effacement. Les préfixes sont uniques par test.
+    """
+    nettoyage = Nettoyage()
+    yield nettoyage
+    with Registre(REGISTRE) as registre_:
+        for sujet_ in nettoyage.sujets:
+            registre_.supprimer(sujet_)
+    if nettoyage.topics:
+        bus.supprimer_topics(nettoyage.topics)
+
+
 @pytest.fixture
-def registre(bus: BusKafka, prefixe: str) -> Iterator[Registre]:
-    """Les schémas enregistrés sous les sujets du test ; sujets et topics effacés à la fin."""
-    registre_ = Registre(REGISTRE)
-    sujets = [s for s, _ in sujets_du_projet(ENTITES_INTEGRATION, prefixe)]
-    enregistrer_tout(registre_, ENTITES_INTEGRATION, prefixe)
-    yield registre_
-    for sujet_ in sujets:
-        registre_.supprimer(sujet_)
-    registre_.close()
-    topics = [
+def registre(a_nettoyer: Nettoyage, prefixe: str) -> Iterator[Registre]:
+    """Les schémas enregistrés sous les sujets du test ; effacés, avec les topics, en fin
+    de session."""
+    a_nettoyer.sujets += [s for s, _ in sujets_du_projet(ENTITES_INTEGRATION, prefixe)]
+    a_nettoyer.topics += [
         *(env.nom_topic(entite, prefixe) for entite in ENTITES_INTEGRATION),
         env.topic_echecs(prefixe),
     ]
-    bus.supprimer_topics(topics)
+    with Registre(REGISTRE) as registre_:
+        enregistrer_tout(registre_, ENTITES_INTEGRATION, prefixe)
+        yield registre_
+
+
+@pytest.fixture(autouse=True)
+def reessais_isoles(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hors intégration, les réessais du registre (simulés) ne comptent pas pour la session."""
+    if request.node.get_closest_marker("integration") is None:
+        monkeypatch.setattr(registre_module, "REESSAIS", [])
+
+
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    """Un réessai du registre pendant les tests d'intégration fait échouer la session (A2).
+
+    Le réessai protège la chaîne réelle ; dans les tests, il cacherait une nouvelle cause de
+    coupure. Seul le test de reproduction, dont c'est l'objet, retire les siens du décompte.
+    """
+    if not registre_module.REESSAIS:
+        return
+    rapport = session.config.pluginmanager.get_plugin("terminalreporter")
+    lignes = [
+        f"un réessai a servi pendant les tests d'intégration ({len(registre_module.REESSAIS)}) :"
+        " voir les lignes « registre : … » horodatées, à recouper avec le journal du courtier",
+        *registre_module.REESSAIS,
+    ]
+    if rapport is not None:
+        rapport.ensure_newline()
+        rapport.section("réessais du registre", red=True)
+        for ligne in lignes:
+            rapport.write_line(ligne)
+    session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 @pytest.fixture

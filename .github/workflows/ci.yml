@@ -96,8 +96,19 @@ jobs:
       - name: Schémas (historique puis courant, sur un registre neuf)
         run: uv run pharmaflux schemas enregistrer
 
+      # Mission 07 (A) : le registre coupait parfois un POST …/versions sans réponse ni ligne
+      # au journal. Ses loggers passent en debug jusqu'à l'arrêt du courtier, par l'API
+      # d'administration (le compose du Mac ne change pas), pour que la prochaine coupure soit
+      # écrite. Le client réessaie (deux fois, horodaté) ; un réessai pendant les tests fait
+      # échouer la session, sauf dans le test de reproduction, qui en affiche le nombre.
+      - name: Journal du registre en debug (diagnostic d'une coupure)
+        run: >-
+          docker compose -p pharmaflux exec -T redpanda
+          rpk cluster loggers set schemaregistry pandaproxy pandaproxy/requests kafka/client httpd
+          --node-id 0 --level debug --expiry-seconds 0 -X admin.hosts=localhost:9644
+
       - name: Tests d'intégration (ici, un saut est un échec, la variable l'exige)
-        run: uv run pytest -q -m integration
+        run: uv run pytest -q -rE -m integration
         env:
           PHARMAFLUX_INTEGRATION_EXIGEE: "1"
 
@@ -119,9 +130,24 @@ jobs:
       - name: Gold du jeu, contrôles de qualité et questions (make gold)
         run: make gold
 
-      - name: Journal du courtier en cas d'échec
+      # Tout le journal (--tail=100 n'avait gardé que 4 s à la PR #7), la santé de la grappe et
+      # la mémoire du conteneur, en artefact plutôt que dans le journal du job.
+      - name: Diagnostic du courtier en cas d'échec
         if: failure()
-        run: docker compose -p pharmaflux logs --tail=100 redpanda
+        run: |
+          mkdir -p diagnostic
+          docker compose -p pharmaflux logs --timestamps redpanda > diagnostic/courtier.log 2>&1 || true
+          docker compose -p pharmaflux exec -T redpanda rpk cluster health > diagnostic/sante.txt 2>&1 || true
+          docker stats --no-stream pharmaflux-redpanda > diagnostic/stats.txt 2>&1 || true
+          tail -n 40 diagnostic/courtier.log
+
+      - name: Déposer le diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-courtier
+          path: diagnostic/
+          retention-days: 14
 
       - name: Arrêter Redpanda
         if: always()

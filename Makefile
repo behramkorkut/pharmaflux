@@ -41,7 +41,7 @@ help:
 	@echo "make gold           après make silver : les contrôles de qualité du gold (code 2 si un bloquant"
 	@echo "                    tombe), puis les 25 questions recalculées depuis le gold, qui doivent concorder"
 	@echo "make fiche          la fiche médicament en texte : CIS=65999556 A=2026-10-24T20:00:00Z"
-	@echo "                    (sans A_FICHE : la dernière observation du silver)"
+	@echo "                    (sans A : la dernière observation du silver)"
 	@echo "make suivre         les événements publiés au fil de l'eau (à lancer avant make demo)"
 	@echo "make console        la console Redpanda sur http://127.0.0.1:18080"
 	@echo "make down           arrête le bus, garde les données"

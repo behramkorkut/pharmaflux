@@ -17,26 +17,39 @@ et le point d'entrée technique dans [`docs/CONTEXTE.md`](docs/CONTEXTE.md).
 
 ## État
 
-**Mission 00 fusionnée** : socle du dépôt et archivage horaire des fichiers
-BDPM, en production sur un VPS depuis le 24/10/2026. L'archive brute est
-la seule brique qui ne se rattrape pas : elle a démarré avant tout le reste.
+**Mission 00 fusionnée** (PR #1) : socle du dépôt et archivage horaire des
+fichiers BDPM, sur un VPS depuis le 24/10/2026. L'archive brute est la seule
+brique qui ne se rattrape pas : elle a démarré avant tout le reste.
 
-**Mission 01 fusionnée** : contrats de schéma des onze fichiers BDPM,
-profil des archives (`docs/donnees/`), décisions d'architecture
+**Mission 01 fusionnée** (PR #2) : contrats de schéma des onze fichiers BDPM,
+profil des archives (`docs/donnees/`), premières décisions d'architecture
 (`docs/adr/`) et jeu de questions de référence (`evaluation/`).
 
-**Mission 02 en cours** : du bronze aux événements. Chaque archive est
-normalisée selon son contrat (ADR 0005), comparée à la dernière retenue, et
-chaque changement devient un événement JSON rejouable à l'identique
-(`creee`, `modifiee`, `supprimee`, ADR 0006), avec un garde-fou qui écarte
-une réponse vide ou tronquée au lieu d'en faire des milliers de
-suppressions.
+**Mission 02 fusionnée** (PR #3) : du bronze aux événements. Chaque archive
+est normalisée selon son contrat, comparée à la dernière retenue, et chaque
+changement devient un événement rejouable à l'identique, avec un garde-fou qui
+écarte une réponse vide ou tronquée (ADR 0005, 0006).
+
+**Mission 03 fusionnée** (PR #4) : le bus d'événements Redpanda, un topic par
+entité, registre de schémas, publication sans perte ni doublon (ADR 0007).
+
+**Mission 04 fusionnée** (PR #5) : le jeu de démo figé dans le dépôt et son
+rejeu accéléré ; `make up` puis `make demo` (ADR 0008).
+
+**Mission 05 fusionnée** (PR #6) : le silver, une table Iceberg historisée par
+entité, « état à une date » vérifié contre l'archive ; `make silver`
+(ADR 0009).
+
+**Mission 06 en cours** : le gold, calculé à la demande depuis le silver :
+colonnes typées, fiche médicament, disponibilité courante, alternatives,
+contrôles de qualité, et le jeu de questions recalculé depuis le gold ;
+`make gold` (ADR 0010).
 
 | Lot | Contenu | État |
 |---|---|---|
-| 0 | archivage des sources, profilage, décisions d'architecture | en cours |
-| 1 | collecte, détection des changements, flux d'événements (Redpanda) | à venir |
-| 2 | lakehouse Iceberg + DuckDB, historique, voyage dans le temps | à venir |
+| 0 | archivage des sources, profilage, décisions d'architecture | fait |
+| 1 | collecte, détection des changements, flux d'événements (Redpanda) | fait sur le Mac ; le VPS reste |
+| 2 | lakehouse Iceberg + DuckDB, historique, voyage dans le temps | fait à la fusion de la mission 06 |
 | 3 | assistant gouverné (sources citées, abstention) | à venir |
 | 4 | volet assurance : dépense exposée aux ruptures (Open Medic) | à venir |
 | 5 | observabilité, objectifs de service, incidents provoqués | à venir |

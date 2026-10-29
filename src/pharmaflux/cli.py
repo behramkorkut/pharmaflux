@@ -14,6 +14,8 @@ fabriquer`` / ``demo verifier`` : le jeu de démo figé ``demo/archive`` ;
 observations, à la cadence accélérée. ``silver construire`` / ``etat`` /
 ``sql`` / ``comparer`` / ``verifier`` / ``consommer`` : le silver Iceberg
 (mission 05), dont les bibliothèques ne s'importent que dans ces commandes.
+``gold etat`` / ``qualite`` / ``sql`` : l'état typé du silver à un instant et
+ses contrôles de qualité (mission 06), sous la même règle d'import.
 """
 
 from __future__ import annotations
@@ -67,6 +69,7 @@ from pharmaflux.silver import ENTREPOT_PAR_DEFAUT, LOT_PAR_DEFAUT, Format, Silve
 
 if TYPE_CHECKING:  # le silver ne s'importe que dans ses commandes (K.1)
     from pharmaflux.silver.consommation import LecteurSilver
+    from pharmaflux.silver.entrepot import Entrepot as Entrepot_
 
 VARIABLE_RACINE = "PHARMAFLUX_DATA"
 QUESTIONS_PAR_DEFAUT = Path("evaluation/questions-reference-v0.toml")
@@ -1187,3 +1190,163 @@ def silver_consommer(
         f"entrepôt : {rapport.entrepot} ; grappe : {rapport.grappe or 'inconnue'} ;"
         f" {rapport.messages} message(s) ; durée : {rapport.duree_s:.1f} s"
     )
+
+
+# --- gold (mission 06) -------------------------------------------------------------------------
+# Le gold est une fonction du silver et d'un instant (ADR 0010) : rien n'est stocké. Les
+# bibliothèques ne s'importent, comme pour le silver, que dans ces commandes.
+
+gold = typer.Typer(
+    name="gold",
+    help="Le gold (mission 06) : l'état typé du silver à un instant, ses contrôles de qualité,"
+    " du SQL en lecture seule sur les entités typées.",
+    no_args_is_help=True,
+)
+application.add_typer(gold)
+
+OptionInstantGold = Annotated[
+    str | None,
+    typer.Option(
+        "--a",
+        help="L'instant, comme pour silver etat (UTC à la seconde, avec un décalage, ou une date"
+        " seule). Défaut : la dernière observation du silver.",
+    ),
+]
+
+
+def _instant_gold(a: str | None, entrepot: Path) -> tuple[Entrepot_, datetime]:
+    """L'entrepôt ouvert et l'instant demandé, ou la dernière observation du silver."""
+    from pharmaflux.gold.typage import derniere_observation
+    from pharmaflux.silver import etat as etat_silver
+    from pharmaflux.silver.entrepot import Entrepot, allocateur_systeme
+    from pharmaflux.silver.schema import texte_instant
+
+    allocateur_systeme()
+    ouvert = Entrepot.ouvrir(entrepot)
+    if a is not None:
+        return ouvert, etat_silver.lire_instant(a)
+    derniere = derniere_observation(ouvert)
+    if derniere is None:
+        raise SilverRefuse(f"le silver de {entrepot} est vide : aucun instant par défaut")
+    typer.echo(f"instant : {texte_instant(derniere)} (dernière observation du silver)", err=True)
+    return ouvert, derniere
+
+
+@gold.command("etat")
+def gold_etat(
+    entite: Annotated[
+        str, typer.Option("--entite", help="Identifiant (bdpm.presentations) ou nom de fichier.")
+    ],
+    a: OptionInstantGold = None,
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    ou: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--ou",
+            help="Filtre colonne=valeur, égalité sur la valeur du silver (forme canonique),"
+            " répétable.",
+        ),
+    ] = None,
+    format_: OptionFormat = Format.JSONL,
+    colonne: Annotated[
+        list[str] | None,
+        typer.Option("--colonne", help="Colonnes à écrire, répétable ; toutes par défaut."),
+    ] = None,
+) -> None:
+    """L'état typé d'une entité à un instant : chaque colonne au type de son contrat.
+
+    Une valeur illisible n'est jamais devinée : sa colonne typée est vide, la
+    valeur brute reste dans le silver, et ``colonnes_illisibles`` la nomme. Un
+    décimal sort en chaîne exacte (« 1.16 »), une date en AAAA-MM-JJ. Code 2 :
+    instant refusé, entité ou colonne inconnue, entrepôt absent.
+    """
+    from pharmaflux.gold.typage import etat_type
+    from pharmaflux.silver import etat as etat_silver
+    from pharmaflux.silver.schema import texte_instant
+
+    contrats = charger_tous()
+    (identifiant,) = _selection_contrats([entite], None, contrats)
+    try:
+        ouvert, instant = _instant_gold(a, entrepot)
+        filtres = etat_silver.lire_filtres(ou or [])
+        typee = etat_type(ouvert, contrats[identifiant], instant, filtres)
+        lignes = list(etat_silver.rendre(etat_silver.ordonner(typee.table), format_, colonne))
+    except SilverRefuse as exc:
+        typer.echo(f"état refusé : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for ligne in lignes:
+        typer.echo(ligne)
+    typer.echo(
+        f"{identifiant} à {texte_instant(instant)} : {typee.table.num_rows} ligne(s) typée(s)",
+        err=True,
+    )
+
+
+@gold.command("qualite")
+def gold_qualite(
+    a: OptionInstantGold = None,
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    format_: Annotated[
+        Format, typer.Option("--format", help="tableau (défaut) ou jsonl (un contrôle par ligne).")
+    ] = Format.TABLEAU,
+) -> None:
+    """Les quatorze contrôles de qualité à un instant : quatre bloquants, dix mesurés.
+
+    Bloquant : un invariant de la chaîne (clés uniques, une version par
+    identité, valeurs canoniques typables, aucune entité vidée). Mesuré : un
+    fait de la source, toujours affiché, même à 0. Code 2 si un bloquant tombe,
+    ou sur un refus (instant, entrepôt, entité absente).
+    """
+    import json
+
+    from pharmaflux.gold import qualite
+
+    try:
+        ouvert, instant = _instant_gold(a, entrepot)
+        rapport = qualite.controler(ouvert, charger_tous(), instant)
+    except SilverRefuse as exc:
+        typer.echo(f"contrôles refusés : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if format_ is Format.JSONL:
+        for controle in rapport.controles:
+            typer.echo(json.dumps(qualite.en_dict(controle), ensure_ascii=False))
+        typer.echo(rapport.resume(), err=True)
+    else:
+        for ligne in qualite.formater(rapport):
+            typer.echo(ligne)
+    raise typer.Exit(code=rapport.code_sortie)
+
+
+@gold.command("sql")
+def gold_sql(
+    requete: Annotated[
+        str,
+        typer.Argument(
+            help="Une requête SELECT ; chaque entité typée porte son nom court (presentations)."
+        ),
+    ],
+    a: OptionInstantGold = None,
+    entrepot: OptionEntrepot = ENTREPOT_PAR_DEFAUT,
+    format_: OptionFormat = Format.TABLEAU,
+) -> None:
+    """Du SQL (DuckDB) sur les entités typées à un instant, en lecture seule et verrouillé.
+
+    La barrière est celle de silver sql : DuckDB ne touche aucun fichier, seul
+    un SELECT passe. Les tables sont l'état typé à l'instant, pas l'histoire.
+    Code 2 pour toute autre requête, ou une requête en erreur.
+    """
+    from pharmaflux.gold import sql as sql_gold
+    from pharmaflux.silver import etat as etat_silver
+    from pharmaflux.silver import sql as sql_silver
+
+    try:
+        ouvert, instant = _instant_gold(a, entrepot)
+        con = sql_gold.connexion(sql_gold.etats_types(ouvert, charger_tous(), instant))
+        resultat = sql_silver.executer(con, requete)
+        lignes = list(etat_silver.rendre(resultat, format_))
+    except SilverRefuse as exc:
+        typer.echo(f"requête refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for ligne in lignes:
+        typer.echo(ligne)
+    typer.echo(f"{resultat.num_rows} ligne(s)", err=True)

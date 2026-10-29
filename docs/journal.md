@@ -510,3 +510,25 @@ code 2 au lieu d'une trace (`c53d714`). Non-régression complète rejouée sur
 `demo verifier` et `verifier-bus` conformes ; mémoire de toutes les commandes
 silver sous 512 Mo (`comparer` 424 Mo, le plus lourd). 500 tests. Revue
 finale de l'IeC, puis publication par beko.
+
+## 2026-10-29 — Mission 06 : gold et qualité
+
+**Durée de `make silver` dans la CI** (reportée par `pr.md` de la mission
+05) : **37 s** sur la PR #6, **38 s** sur `main` après la fusion ; dans le
+même job `integration`, `make demo` dure 1 min 50 s.
+
+**Mission 06, §0 et palier 1** (29/10). Ordre : le gold (Lot 2, PRD v0.7
+§6.5), calculé à la demande depuis le silver à un instant, sans table
+stockée. Le §0 a mesuré, sur un silver du jeu construit hors dépôt, une
+seule valeur illisible dans tout l'état (`EU/1/17/1235/`, numéro
+d'autorisation européenne du CIS 61096104) et une fiche médicament de tout
+le jeu en 0,10 s et 318 Mo en PyArrow, contre 552 à 705 Mo en SQL DuckDB ;
+l'addendum 1 a tout retenu, avec une requête DuckDB de référence pour
+chaque vue (palier 2). Palier 1 : le typage (`pharmaflux.gold.typage`),
+qui part des anomalies du silver et non de la valeur seule (un `24.35`
+brut a l'air canonique, il reste vide en typé), avec `decimal128(18, 2)`,
+`date32`, `list<string>` ; les quatorze contrôles de qualité, quatre
+bloquants et dix mesurés, tous à leur chiffre du §0 sur le jeu, aucun
+bloquant ne tombe ; `gold etat`, `gold qualite`, `gold sql`. Un test l'a
+montré : `strptime` d'Arrow lit `2026-02-30` comme le 2 mars, d'où un
+aller-retour de la date avant de la tenir pour lisible.

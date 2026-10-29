@@ -3,8 +3,9 @@
 Les événements sont calculés dans un dossier jetable (``pharmaflux evenements
 --racine demo/archive``), le silver construit, vérifié contre les 18 archives
 retenues (et les 4 écartées), interrogé aux instants du README, et comparé à
-une seconde construction. Une trentaine de secondes ; une seule fois par
-session de tests. Aucun réseau, aucun conteneur.
+une seconde construction. Une trentaine de secondes ; le silver du jeu est
+construit une seule fois par session (``demo_silver``, ``conftest``), et le gold
+(mission 06) le relit. Aucun réseau, aucun conteneur.
 """
 
 from __future__ import annotations
@@ -12,29 +13,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from pharmaflux.cli import application
 from pharmaflux.contrats.chargeur import charger_tous
 from pharmaflux.demo.jeu import JEU_PAR_DEFAUT
-from pharmaflux.evenements import rejeu
 from pharmaflux.silver import comparaison, construction, verification
 from pharmaflux.silver import etat as etat_silver
 from pharmaflux.silver.entrepot import Entrepot
 
 ARCHIVE_VIDE_ECARTEE = "2026-10-26T14:17:39Z"  # CIS_InfoImportantes.txt servi vide, écarté
 PREMIERE_SUPPRESSION = "2026-10-24T23:17:12Z"  # 2 présentations disparaissent
-
-
-@pytest.fixture(scope="module")
-def demo_silver(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
-    sortie = tmp_path_factory.mktemp("demo") / "evenements"
-    rapport = rejeu.executer(JEU_PAR_DEFAUT, sortie, charger_tous(), list(charger_tous()))
-    assert rapport.code_sortie == 0
-    dossier = tmp_path_factory.mktemp("demo") / "lakehouse"
-    construction.construire(sortie, dossier, charger_tous(), list(charger_tous()))
-    return sortie, dossier
 
 
 def test_le_silver_du_jeu_est_conforme_aux_18_archives_retenues(

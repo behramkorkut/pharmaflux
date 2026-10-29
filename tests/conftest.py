@@ -39,6 +39,9 @@ from pharmaflux.bus.registre import (
 from pharmaflux.collecte.catalogue import CATALOGUE, Entree
 from pharmaflux.collecte.passage import Bilan, executer_passage
 from pharmaflux.collecte.telechargement import Telechargeur
+from pharmaflux.contrats.chargeur import charger_tous
+from pharmaflux.demo.jeu import JEU_PAR_DEFAUT
+from pharmaflux.evenements import rejeu
 
 FIXTURES = Path(__file__).parent / "fixtures"
 EN_TETES_IGNORES = {"transfer-encoding", "content-length", "content-encoding"}
@@ -236,3 +239,23 @@ def lecteur() -> Iterator[LecteurKafka]:
     lecteur_ = LecteurKafka(COURTIER)
     yield lecteur_
     lecteur_.close()
+
+
+# --- Le silver du jeu de démo, une fois par session --------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def demo_silver(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
+    """Les événements et le silver de ``demo/archive``, dans un dossier jetable (missions 05, 06).
+
+    Une vingtaine de secondes ; le silver (``test_silver_demo``) et le gold
+    (``test_gold_demo``) le lisent sans l'écrire.
+    """
+    from pharmaflux.silver import construction  # PyArrow : seulement pour qui le demande
+
+    sortie = tmp_path_factory.mktemp("demo") / "evenements"
+    rapport = rejeu.executer(JEU_PAR_DEFAUT, sortie, charger_tous(), list(charger_tous()))
+    assert rapport.code_sortie == 0
+    dossier = tmp_path_factory.mktemp("demo") / "lakehouse"
+    construction.construire(sortie, dossier, charger_tous(), list(charger_tous()))
+    return sortie, dossier

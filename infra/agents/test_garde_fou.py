@@ -461,6 +461,7 @@ class GardeFou(unittest.TestCase):
             "git commit -m x",
             "git switch main",
             "git push",
+            "git fetch",  # l'IeC seulement
             "gh pr comment 1 -b x",
             "git archive -o ../pharmaflux-codeur/src/x.tar HEAD",
             "git archive --output=x.tar HEAD",
@@ -482,6 +483,9 @@ class GardeFou(unittest.TestCase):
         self.assertTrue(self.bash(self.principal, "git count-objects -vH"))
         self.assertTrue(self.bash(self.principal, "gh pr checks 3"))
         for commande in (
+            "git fetch",
+            "git fetch origin",
+            "git fetch -q --prune origin",
             "git config --get core.hooksPath",
             "git config --get-all remote.origin.fetch",
             "git config get user.name",
@@ -496,6 +500,12 @@ class GardeFou(unittest.TestCase):
             "git config --list --add core.hooksPath /dev/null",
             "git config --unset core.hooksPath",
             "git config set core.hooksPath /dev/null",
+            "git fetch origin main:main",
+            "git fetch origin +refs/heads/*:refs/heads/*",
+            "git fetch --upload-pack=/bin/sh origin",
+            "git fetch --tags",
+            "git fetch https://exemple.invalid/depot.git",
+            "git pull",
             "git add CLAUDE.md",
             "git commit -m x",
             "git push",

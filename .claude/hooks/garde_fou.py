@@ -65,6 +65,10 @@ GIT_LECTURE = {
     "check-ignore",
     "count-objects",
 }
+# git fetch, pour l'IeC seulement : rafraîchir les références distantes (refs/remotes,
+# FETCH_HEAD) et lire l'état de GitHub. Ni refspec (« main:main » écrirait une branche
+# locale), ni --upload-pack (exécute une commande), ni --tags (écrit les étiquettes locales).
+GIT_FETCH_IEC = {"origin", "--prune", "-p", "--quiet", "-q"}
 # Commandes qui ne font que lire : elles peuvent nommer un chemin réservé.
 LECTURE = {
     "cat",
@@ -379,6 +383,8 @@ def verifier_git(role: str, mots: list[str]) -> None:
         or reste in (["--list"], ["-l"], ["list"])
     ):
         # Lecture d'une clé ou de toute la configuration ; toute autre forme écrit.
+        return
+    if role == "iec" and sous == "fetch" and all(a in GIT_FETCH_IEC for a in reste):
         return
     if role == "relecteur" and sous == "switch" and reste[:1] == ["--detach"] and len(reste) == 2:
         return

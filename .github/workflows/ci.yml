@@ -138,10 +138,20 @@ jobs:
           make index INDEX_MODELE=test
           make index INDEX_MODELE=test
 
-      # Le vrai modèle, téléchargé à la révision de son TOML, chaque fichier vérifié par son
-      # sha256 avant d'être mis en place (un fichier altéré fait échouer l'étape).
+      # Le vrai modèle, en cache d'un run à l'autre : la clé est l'empreinte de son TOML (révision
+      # et sha256 de chaque fichier), donc un épinglage qui change invalide le cache.
+      - name: Cache du modèle épinglé
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/pharmaflux-modeles
+          key: modele-${{ hashFiles('src/pharmaflux/index/modeles/e5-small-int8.toml') }}
+
+      # Ce que le cache n'a pas (ou a d'altéré) est téléchargé à la révision du TOML, chaque fichier
+      # vérifié par son sha256 avant d'être mis en place ; puis tout est revérifié, sans réseau.
       - name: Modèle épinglé (e5-small-int8, sha256 vérifiés)
-        run: uv run pharmaflux index modele installer e5-small-int8
+        run: |
+          uv run pharmaflux index modele installer e5-small-int8
+          uv run pharmaflux index modele verifier e5-small-int8
 
       # Ses tests (les jetons égaux à tokenizer.json, les vecteurs), puis un index réduit aux
       # CIS du jeu de questions v0 et trois recherches réelles : le modèle se charge et trouve.

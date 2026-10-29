@@ -70,7 +70,8 @@ puis deux `make index`) est à beko (décision 6).
 - **CI, job `integration`** (`timeout-minutes` 20), après `make gold` :
   - deux `make index INDEX_MODELE=test` : une construction, puis rien à
     faire, chacun vérifié ;
-  - `index modele installer e5-small-int8` (sha256 vérifiés) ;
+  - le modèle en cache (`actions/cache`, clé : l'empreinte du TOML), puis
+    `index modele installer` et `verifier` (sha256 vérifiés) ;
   - `pytest -m modele`, avec `PHARMAFLUX_MODELE_EXIGE=1` ;
   - un index réduit aux 16 CIS des questions v0, puis trois `chercher`.
 
@@ -163,12 +164,12 @@ donc `pharmaflux-qdrant`.
 
 ## Écarts à l'ordre
 
-1. **Le modèle de la CI n'est pas en cache.** Le cache demande
-   `actions/cache`, à épingler par SHA comme les trois autres actions, et je
-   ne peux pas relever son empreinte. Je l'ai demandée à l'IeC. En attendant,
-   l'étape télécharge environ 140 Mo à chaque run, chaque fichier vérifié par
-   son sha256 avant d'être mis en place. J'ajoute le cache dès que beko
-   donne l'empreinte.
+1. **Le cache du modèle en CI** est arrivé après le commit du palier : beko
+   a relevé `actions/cache@0057852…` (v4.3.0, publiée le 24/09/2025). L'étape
+   « Cache du modèle épinglé » a pour clé l'empreinte du TOML d'e5 et pour
+   chemin `~/pharmaflux-modeles`. `installer` ne télécharge que ce qui
+   manque ou est altéré, toujours vérifié par sha256, puis `verifier` revoit
+   tout, sans réseau. Ce n'est plus un écart.
 2. **Le test par tranches tourne dans le job `verifier`**, contre le Qdrant
    simulé, en 100 s. Il n'a besoin ni de Docker ni du modèle ; le job
    `integration` fait la même chaîne contre le vrai Qdrant avec `make index`.
@@ -178,8 +179,7 @@ donc `pharmaflux-qdrant`.
 
 ## Questions pour l'IeC
 
-1. L'empreinte d'`actions/cache` (écart 1) : dans cette mission, ou à la
-   suivante ?
+Aucune.
 
 ## Propositions d'évolution
 

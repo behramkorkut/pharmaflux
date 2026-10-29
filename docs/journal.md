@@ -637,3 +637,8 @@ passe à des pages de 100 : par pages de 1 000, `verifier` montait à 815 Mo,
 il tient en 422. `make index` (construire ou mettre à jour, la sortie dit
 lequel, puis vérifier), `prerequis.sh index`, l'étape de CI (encodeur de test
 sur tout le jeu, vrai modèle sur un sous-ensemble), ADR 0011, README.
+
+**Mission 07, cache du modèle en CI** (29/10). `actions/cache` v4.3.0,
+épinglée par SHA, garde `~/pharmaflux-modeles` d'un run à l'autre, avec pour
+clé l'empreinte du TOML d'e5 ; `index modele installer` ne télécharge que ce
+qui manque, toujours vérifié par sha256, puis `verifier` revoit tout.

@@ -369,8 +369,8 @@ la demande. Aucun appel réseau vers les sources.
 - **`make index`** après `make gold` : `construire` s'il n'y a pas d'index
   lisible, sinon `mettre-a-jour` (la sortie dit lequel), puis `verifier`.
   `INDEX_MODELE=test` sans modèle ; `prerequis.sh index MODELE`.
-- **CI** : deux `make index INDEX_MODELE=test`, puis le modèle installé
-  (sha256 vérifiés), `pytest -m modele`, un index réduit aux CIS des questions
+- **CI** : deux `make index INDEX_MODELE=test`, puis le modèle en cache
+  (`actions/cache`, clé : le TOML), installé et vérifié (sha256), `pytest -m modele`, un index réduit aux CIS des questions
   et trois `chercher`.
 - **Tests** :
   - `tests/qdrant_simule.py`, un Qdrant en mémoire, qui sait couper un appel ;

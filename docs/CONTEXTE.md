@@ -320,3 +320,65 @@ la demande. Aucun appel réseau vers les sources.
 - **Tests** : `conftest.py` importe `pharmaflux.silver` en premier
   (allocateur système d'Arrow) ; `demo_silver` est construit une fois par
   session et reste en lecture seule.
+
+## L'index : fragments, Qdrant, e5, incrément (mission 07)
+
+- **Fragments** (`index/fragments.py`, Python pur, ADR 0011) : une fonction de
+  la fiche du gold, cinq au plus par fiche (`identite`, `presentations`,
+  `avis`, `disponibilite`, `informations`), découpés par élément sous 1 200
+  caractères. Identifiant `uuid5("f1/<cis>/<section>/<partie>")`.
+  - Ni instant, ni lien, ni citation dans le texte : l'instant est dans
+    l'état de l'index, liens et sources sont en métadonnée.
+  - « Aucun signalement » n'est jamais « disponible ».
+  - `index fragments [--depuis T0] [--sortie F]` écrit un JSON Lines et un
+    `F.bilan.json`.
+- **Deux processus** : le gold (fragments) en sous-processus,
+  `python -m pharmaflux index fragments` ; l'encodage et Qdrant dans la
+  commande, sans PyArrow ni DuckDB. Chacun affiche son résident maximal ;
+  seuil 512 Mo.
+- **Qdrant** (`index/qdrant.py`, client `httpx`) :
+  - `127.0.0.1:16333`, volume `pharmaflux-qdrant`, image épinglée par
+    empreinte ;
+  - alias `pharmaflux-fragments` sur une collection par (format, modèle,
+    construction) ;
+  - état dans `pharmaflux-index-etat`, un point sans vecteur ; un alias que
+    l'état ne décrit pas fait refuser la lecture (code 2) ;
+  - vecteur nommé `dense`, recherche **exacte** ;
+  - parcours par pages de 100 (446 Mo par pages de 1 000).
+- **Modèle** (`index/encodeur.py`, `index/modeles/*.toml`) :
+  - e5-small-int8, révision et sha256 épinglés, fichiers sous
+    `$PHARMAFLUX_MODELES` ; `index modele relever|installer|verifier` ;
+    seul beko télécharge ;
+  - tokenizer `sentencepiece.bpe.model` (décalage fairseq), pas
+    `tokenizer.json` (384 Mo chargé) ;
+  - quatre formes de lot fixes de 1 024 jetons ;
+  - l'encodeur `test`, déterministe, pour les tests et la CI.
+- **Cache des vecteurs et verrou** : `data/index/` (`--travail`), hors de
+  `data/demo`, que `make rebatir` ne vide pas. Clé du cache : modèle,
+  révision, sha256 du texte.
+- **Incrément** (`index/changements.py`) depuis le silver : versions ouvertes
+  ou fermées dans `]t0, t1]`, liens vers les avis, bascules du jour.
+  - `vise` est écrit d'abord, l'instant à la fin ; écrire avant de retirer.
+  - Idempotent, reprise après coupure, silver en arrière refusé.
+- **Vérification** : reconstruction complète depuis le gold à l'instant de
+  l'index.
+  - Mêmes identifiants et mêmes charges (JSON canonique) ; vecteurs égaux au
+    cache ; 100 fragments réencodés à un cosinus ≥ 0,99 (égalité avec
+    l'encodeur de test).
+  - Code 0, 1 ou 2.
+- **`make index`** après `make gold` : `construire` s'il n'y a pas d'index
+  lisible, sinon `mettre-a-jour` (la sortie dit lequel), puis `verifier`.
+  `INDEX_MODELE=test` sans modèle ; `prerequis.sh index MODELE`.
+- **CI** : deux `make index INDEX_MODELE=test`, puis le modèle en cache
+  (`actions/cache`, clé : le TOML), installé et vérifié (sha256), `pytest -m modele`, un index réduit aux CIS des questions
+  et trois `chercher`.
+- **Tests** :
+  - `tests/qdrant_simule.py`, un Qdrant en mémoire, qui sait couper un appel ;
+  - `test_index_tranches.py`, le jeu publié en quatre tranches ;
+  - les tests `modele`, sautés sans les fichiers.
+- **Mesures du jeu** (29/10/2026) :
+  - 72 296 fragments ;
+  - construction complète en 18 min, 415 Mo pour l'encodage et 416 Mo pour
+    les fragments ;
+  - `chercher` 446 Mo, `verifier` 422 Mo, `evaluer` 470 Mo ;
+  - rappel à 5 de 17/22.

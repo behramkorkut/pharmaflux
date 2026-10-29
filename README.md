@@ -40,17 +40,23 @@ rejeu accéléré ; `make up` puis `make demo` (ADR 0008).
 entité, « état à une date » vérifié contre l'archive ; `make silver`
 (ADR 0009).
 
-**Mission 06 en cours** : le gold, calculé à la demande depuis le silver :
-colonnes typées, fiche médicament, disponibilité courante, alternatives,
-contrôles de qualité, et le jeu de questions recalculé depuis le gold ;
-`make gold` (ADR 0010).
+**Mission 06 fusionnée** (PR #7) : le gold, calculé à la demande depuis le
+silver : colonnes typées, fiche médicament, disponibilité courante,
+alternatives, contrôles de qualité, et le jeu de questions recalculé depuis
+le gold ; `make gold` (ADR 0010). **Le Lot 2 est fait.**
+
+**Mission 07 en cours** : l'index de l'assistant. La fiche médicament devient
+des fragments datés et prudents, encodés par un modèle local épinglé
+(multilingual-e5-small) dans Qdrant ; l'index est mis à jour par incréments
+depuis le silver, et vérifié contre sa reconstruction complète ;
+`make index` (ADR 0011).
 
 | Lot | Contenu | État |
 |---|---|---|
 | 0 | archivage des sources, profilage, décisions d'architecture | fait |
 | 1 | collecte, détection des changements, flux d'événements (Redpanda) | fait sur le Mac ; le VPS reste |
-| 2 | lakehouse Iceberg + DuckDB, historique, voyage dans le temps | fait à la fusion de la mission 06 |
-| 3 | assistant gouverné (sources citées, abstention) | à venir |
+| 2 | lakehouse Iceberg + DuckDB, historique, voyage dans le temps | fait |
+| 3 | assistant gouverné (sources citées, abstention) | en cours : l'index (mission 07) |
 | 4 | volet assurance : dépense exposée aux ruptures (Open Medic) | à venir |
 | 5 | observabilité, objectifs de service, incidents provoqués | à venir |
 
@@ -234,6 +240,58 @@ uv run pharmaflux gold sql --entrepot data/demo/lakehouse \
 # aucun_signalement 20 004 ; declare, presentation 36 ; declare, specialite 878
 ```
 
+### L'index : la fiche en fragments, cherchée, tenue à jour
+
+Après `make gold`, `make index` construit l'**index de l'assistant** (mission
+07, [ADR 0011](docs/adr/0011-index-fragments-qdrant-e5-increment-verification.md)).
+
+**Les fragments.** Chaque fiche du gold devient au plus cinq fragments :
+identité, présentations, avis, disponibilité, informations importantes. Le
+texte est déterministe, sans LLM, et garde la prudence du gold :
+« aucun signalement » n'y devient jamais « disponible ». Chaque fragment
+porte sa source et sa date ; l'index porte l'instant de l'état.
+
+**L'encodage.** Les fragments sont encodés localement par
+multilingual-e5-small (int8, ONNX, épinglé par révision et sha256), puis
+rangés dans Qdrant.
+
+**La mise à jour.** Elle ne recalcule que les médicaments touchés depuis
+l'instant de l'index (versions du silver, liens vers les avis, débuts annoncés
+et fenêtres qui basculent avec le jour). Puis `index verifier` compare l'index
+à sa reconstruction complète depuis le gold.
+
+```bash
+make index   # 1re fois : construction complète (72 296 fragments, 18 min) ; ensuite : par incréments, puis vérifié
+uv run pharmaflux index chercher "LARIAM 250 mg est-il en rupture de stock ?" -k 3
+```
+
+```text
+1. score 0.901 — CIS 65999556, disponibilite
+   sources : CIS_CIP_Dispo_Spec.txt (source du 2026-10-21, observée depuis le 2026-10-24T19:42:01Z) ; CIS_MITM.txt (source du 2026-10-13, observée depuis le 2026-10-24T19:42:03Z)
+   état de l'index au 2026-10-27T00:17:12Z
+   | CIS 65999556 — LARIAM 250 mg, comprimé sécable
+   | Médicament d'intérêt thérapeutique majeur (ATC P01BC02, liste publiée le 2024-12-18).
+   | Disponibilité, signalements en cours dans le fichier de l'ANSM (1) :
+   |   - Rupture de stock depuis le 2026-06-25 ; mis à jour le 2026-10-08 ; vise la spécialité entière (toutes ses présentations), aucune présentation (CIP13) n'est nommée
+2. score 0.892 — CIS 65999556, presentations
+   …
+```
+
+Ce n'est pas encore l'assistant : ni seuil, ni réponse rédigée (mission 08).
+
+**Les mesures, sur le jeu.** À la clôture de la mission, la construction
+complète a tenu en 411 Mo pour l'encodage et en 416 Mo pour le calcul des
+fragments, qui tourne dans un sous-processus, en 18 minutes. La recherche est exacte : 7 ms par requête sur les 72 296
+fragments.
+
+`index evaluer` donne une première mesure : sur les 22 questions du jeu v0
+qui nomment un médicament, le bon fragment est dans les cinq premiers pour
+17 d'entre elles.
+
+Le modèle et l'image Qdrant se téléchargent une fois, selon
+[`infra/index/README.md`](infra/index/README.md) ; `make up` et `make index`
+ne téléchargent rien.
+
 ### Les commandes
 
 Prérequis : [`uv`](https://docs.astral.sh/uv/). Python 3.12 est installé
@@ -269,6 +327,12 @@ uv run pharmaflux gold disponibilite # la disponibilité courante par présentat
 uv run pharmaflux gold alternatives  # les autres présentations du groupe générique (--cip13, --cis, --groupe)
 uv run pharmaflux gold qualite       # les quatorze contrôles de qualité ; code 2 si un bloquant tombe
 uv run pharmaflux gold sql           # du SQL DuckDB sur le gold à un instant, en lecture seule
+uv run pharmaflux index construire   # l'index de l'assistant : fragments du gold, encodés (e5), dans Qdrant
+uv run pharmaflux index mettre-a-jour # par incréments, de l'instant de l'index au silver
+uv run pharmaflux index verifier     # l'index contre sa reconstruction depuis le gold (code 1 au moindre écart)
+uv run pharmaflux index chercher "…" # les fragments les plus proches, avec leur source et l'instant de l'index
+uv run pharmaflux index etat         # instant, modèle, format, fragments par section
+uv run pharmaflux index evaluer      # le rappel sur le jeu de questions v0, sans seuil (pour la mission 08)
 ```
 
 Un passage télécharge la page de téléchargement de la BDPM et ses onze

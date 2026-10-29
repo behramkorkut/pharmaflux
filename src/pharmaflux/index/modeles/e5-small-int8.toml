@@ -1,0 +1,33 @@
+# Candidat 1 du modèle d'embeddings (mission 07, addendum 1 C1) : multilingual-e5-small,
+# quantifié int8 au format ONNX. 118 M de paramètres, vecteurs de 384 dimensions, fenêtre de
+# 512 jetons ; préfixes « passage: » et « query: ». Le modèle d'origine est
+# intfloat/multilingual-e5-small (MIT) ; l'export ONNX quantifié vient du dépôt Xenova, qui
+# garde sa licence.
+#
+# La révision et les empreintes ont été relevées par beko le 29/10/2026 (seul à télécharger) :
+#   uv run pharmaflux index modele relever e5-small-int8
+# puis recopiées ici telles que la commande les a affichées.
+
+nom = "e5-small-int8"
+depot = "Xenova/multilingual-e5-small"
+licence = "MIT"
+revision = "761b726dd34fb83930e26aab4e9ac3899aa1fa78"
+date_revision = 2025-07-22
+
+[[fichiers]]
+chemin = "onnx/model_quantized.onnx"
+sha256 = "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193"
+
+[[fichiers]]
+chemin = "tokenizer.json"
+sha256 = "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+
+[[fichiers]]
+chemin = "config.json"
+sha256 = "cb99455288675345e1a4f411438d5d0adbba5fbd3a67ea4fb03c015433b996c1"
+
+# Le tokenizer SentencePiece d'origine (XLM-R), lu au lieu de tokenizer.json : les mêmes jetons,
+# en quelques Mo au lieu de 384 (palier 2). Relevé par beko le 29/10/2026, à la même révision.
+[[fichiers]]
+chemin = "sentencepiece.bpe.model"
+sha256 = "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865"

@@ -94,15 +94,35 @@ class RapportQualite:
         )
 
 
+def exiger_les_onze(entrepot: Entrepot, instant: datetime) -> None:
+    """Refuse un entrepôt sans les onze entités, ou un instant où l'une n'est pas encore observée.
+
+    Avant la première observation du fichier de disponibilité, la vue dirait
+    « aucun signalement » de toutes les présentations, et les contrôles
+    compteraient comme absents des spécialités des CIS que l'on n'a pas encore
+    lus : ce serait affirmer ce que l'on ne sait pas.
+    """
+    manquantes = [e for e in ENTITES_GOLD if entrepot.table(e) is None]
+    if manquantes:
+        raise SilverRefuse(f"le gold croise les onze entités ; absentes : {', '.join(manquantes)}")
+    pas_encore = []
+    for entite in ENTITES_GOLD:
+        table = entrepot.table(entite)
+        assert table is not None
+        premiere = _premiere(table)
+        if premiere is None or premiere > instant:
+            pas_encore.append(entite)
+    if pas_encore:
+        raise SilverRefuse(
+            f"à {texte_instant(instant)}, pas encore observées : {', '.join(pas_encore)}"
+        )
+
+
 def controler(
     entrepot: Entrepot, contrats: Mapping[str, Contrat], instant: datetime
 ) -> RapportQualite:
-    """Les quatorze contrôles à ``instant`` ; refusé s'il manque une des onze entités."""
-    manquantes = [e for e in ENTITES_GOLD if entrepot.table(e) is None]
-    if manquantes:
-        raise SilverRefuse(
-            f"les contrôles croisent les onze entités ; absentes : {', '.join(manquantes)}"
-        )
+    """Les quatorze contrôles à ``instant`` ; refusés sans les onze entités observées."""
+    exiger_les_onze(entrepot, instant)
     etats = etats_types(entrepot, contrats, instant)
     rapport = RapportQualite(instant)
     rapport.controles += _invariants(entrepot, etats, instant)

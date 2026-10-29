@@ -35,6 +35,7 @@ from pharmaflux.collecte.empreintes import empreinte_comparaison, sha256_hex
 from pharmaflux.collecte.manifeste import Enregistrement
 from pharmaflux.contrats.chargeur import charger_identifiant, charger_tous
 from pharmaflux.contrats.modele import TypeNom, TypeValeur
+from pharmaflux.demo.jeu import JEU_PAR_DEFAUT
 from pharmaflux.evenements import rejeu
 from pharmaflux.gold import COLONNES_ILLISIBLES, COLONNES_VERSION_GOLD, Classe
 from pharmaflux.gold import qualite as qualite_gold
@@ -543,3 +544,32 @@ def test_la_cli_n_importe_pas_les_bibliotheques_du_gold() -> None:
         [sys.executable, "-c", code], capture_output=True, text=True, check=True, timeout=120
     )
     assert sortie.stdout.strip() == "[]"
+
+
+def test_une_question_hors_de_la_fenetre_du_silver_fait_sortir_en_2(
+    fixtures_gold: tuple[Path, Path],
+) -> None:
+    """H.2 : ce silver s'arrête à 15:17 ; les archives citées par le jeu sont de 19:41 et après."""
+    _, dossier = fixtures_gold
+    base = ["questions", "verifier", "--racine", str(JEU_PAR_DEFAUT)]
+    assert CliRunner().invoke(application, base).exit_code == 0
+    resultat = CliRunner().invoke(application, [*base, "--entrepot", str(dossier)])
+    assert resultat.exit_code == 2, resultat.output
+    assert resultat.stdout.splitlines()[-1] == (
+        "25 question(s) depuis le gold : 25 non calculable depuis le gold."
+    )
+    assert "hors de la fenêtre du silver" in resultat.stdout
+
+
+def test_un_instant_avant_la_premiere_observation_est_refuse(
+    fixtures_gold: tuple[Path, Path],
+) -> None:
+    """Avant 14:17, rien n'est observé : ni contrôle, ni vue ne parle à la place de la source."""
+    _, dossier = fixtures_gold
+    for commande in (["qualite"], ["disponibilite"], ["fiche", "--tout"]):
+        resultat = CliRunner().invoke(
+            application,
+            ["gold", *commande, "--entrepot", str(dossier), "--a", "2026-10-24T14:00:00Z"],
+        )
+        assert resultat.exit_code == 2, commande
+        assert "pas encore observées : bdpm.asmr" in texte_nu(resultat.output)

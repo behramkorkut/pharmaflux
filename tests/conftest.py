@@ -10,6 +10,10 @@ saute, et le dit (un échec en CI, ``PHARMAFLUX_INTEGRATION_EXIGEE``).
 
 from __future__ import annotations
 
+# L'allocateur système d'Arrow, posé avant que le premier module de test n'importe PyArrow :
+# les tests mesurent la mémoire comme la ligne de commande la consomme (ADR 0009).
+import pharmaflux.silver  # noqa: F401  # isort: skip
+
 import os
 import re
 import uuid

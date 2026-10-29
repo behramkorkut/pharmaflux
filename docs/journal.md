@@ -532,3 +532,19 @@ bloquants et dix mesurés, tous à leur chiffre du §0 sur le jeu, aucun
 bloquant ne tombe ; `gold etat`, `gold qualite`, `gold sql`. Un test l'a
 montré : `strptime` d'Arrow lit `2026-02-30` comme le 2 mars, d'où un
 aller-retour de la date avant de la tenir pour lisible.
+
+**Mission 06, palier 2** (29/10). Les trois vues métier, construites en
+PyArrow et en Python : la fiche médicament (21 445 fiches, dont 5 562
+partielles hors de `CIS_bdpm.txt`), la disponibilité courante (20 918 lignes :
+914 signalements en cours, dont 878 dépliés depuis une ligne sans CIP13,
+20 004 « aucun signalement »), les alternatives (groupe générique ×
+présentations × disponibilité). La priorité « déclaré, puis fin de
+publication, puis aucun signalement » est testée branche par branche sur un
+fichier de disponibilité synthétique, et chaque vue est égale, en
+multiensemble, à une requête DuckDB de référence écrite à part (fixtures à
+trois instants, et 28 CIS du jeu). `questions verifier --entrepot` :
+**les 25 questions concordent depuis le gold**, 24 par une vue, 1 par les
+colonnes typées. Deux garde-fous de plus : un instant où l'une des onze
+entités n'est pas encore observée est refusé (sinon « aucun signalement »
+serait affirmé avant d'avoir lu le fichier), et la sortie JSON se fait par
+lots (la fiche entière passait de 552 à 415 Mo).

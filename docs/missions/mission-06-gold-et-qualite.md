@@ -303,3 +303,104 @@ des contrôles de qualité sans bloquant et les 25 questions concordantes.
 - **Pas d'usage des VPS d'Alamel**, et rien qui touche aux conteneurs
   d'Alamel du colima (`alamel-dev-postgres`, `alamel-dev-minio`) ni à la
   pré-production du VPS-1.
+
+## Addendum 1 — le §0 tranché (29/10/2026)
+
+Réponse au §0 du codeur (`points-a-trancher.md`, commit `74c52e4`). Les
+propositions sont **toutes retenues**. Deux exigences s'y ajoutent
+(ci-dessous), qui découlent de tes propres choix. Ce qui n'est pas cité ici
+est retenu tel que proposé.
+
+### Exigences ajoutées
+
+1. **Les vues en PyArrow sont vérifiées contre une référence
+   indépendante.** Tu proposes de construire la fiche, la disponibilité et
+   les alternatives à la main en PyArrow (tri, décalages, `take` par index)
+   pour tenir sous 512 Mo. Le choix est retenu, mesures à l'appui (318 Mo
+   contre 552 à 705 Mo). Mais un code de jointure écrit à la main est
+   exactement l'endroit où une ligne se perd ou se colle au mauvais CIS.
+   - Écris pour chaque vue une **requête DuckDB de référence**, aussi
+     simple que possible, dans les tests seulement.
+   - Sur les fixtures, la vue PyArrow et la requête donnent le même
+     résultat, comparé en multiensemble, listes comprises.
+   - Sur le jeu de démo, la même comparaison se fait sur un échantillon
+     fixe de CIS : au moins tous les CIS des questions, plus les cas limites
+     du §0 (un CIS dans plusieurs groupes, celui à 37 présentations, celui
+     à 44 avis SMR, BEFIZAL L.P. 62119207, une fiche partielle, un CIS
+     signalé sans présentation). Le rapport du palier 2 donne la mémoire
+     de ce test.
+2. **La disponibilité d'une présentation suit une priorité écrite.** Une
+   présentation peut être visée par une ligne directe, par une ligne de sa
+   spécialité, et avoir une ligne fermée avant l'instant. La règle :
+   - une ligne `declare` est en cours (directe ou par la spécialité) : une
+     ligne par signalement en cours, et ni `fin_de_publication` ni
+     `aucun_signalement` pour cette présentation ;
+   - sinon, une ligne l'a visée et a été fermée avant l'instant :
+     `fin_de_publication`, avec la date de la fermeture la plus récente et
+     son dernier statut ;
+   - sinon : `aucun_signalement`.
+
+   `fin_de_publication` lit l'histoire du silver, mais seulement des
+   versions dont `fin_validite` est au plus l'instant : on ne lit rien de
+   ce qu'on a appris après. C'est cohérent avec C.1. L'ADR 0010 l'écrit,
+   et un test couvre chaque branche sur une fixture.
+
+### Les questions
+
+- **A.1** : oui. On type depuis les anomalies, et une valeur canonique non
+  typable déclenche un contrôle bloquant (contrôle 3).
+  **A.2** : oui pour `colonnes_illisibles` dans chaque vue.
+- **C.1** : oui, on écarte `fin_validite`, `id_fermeture` et
+  `archive_fermeture` du gold. L'argument (« répondre avec ce qu'on ne
+  savait pas encore ») va dans l'ADR 0010.
+- **D.1** : oui pour les fiches partielles, marquées `dans_referentiel =
+  false`. **D.2** : oui. Une information est en cours quand
+  `date_debut <= jour <= date_fin`, bornes incluses, `jour` étant la date
+  UTC de l'instant. Une `date_fin` vide veut dire en cours. La règle du
+  jour UTC (§0 L.8) vaut pour tout le gold.
+- **E.1** : oui, avec la priorité de l'exigence 2. **E.2** : oui pour
+  `debut_a_venir`, un booléen calculé comme `date_debut > jour`, sans autre
+  interprétation.
+- **F.1** : oui. La vue `alternatives` est triée par `numero_tri` et ne
+  classe rien.
+- **G.1** : le contrôle 5 reste **mesuré**. La règle qui classe les
+  contrôles (bloquant = invariant de la chaîne, mesuré = fait de la
+  source) est retenue telle quelle, et l'ADR 0010 la reprend. Un contrôle
+  mesuré s'affiche toujours, même à 0.
+- **H.1** : oui pour les routes par les vues (24 par une vue, 1 par les
+  colonnes typées) : c'est ce qui vérifie les vues sur des données réelles.
+  La comparaison se fait en multiensemble, après normalisation par le
+  contrat puis typage. **H.2** : oui. Avec `--entrepot`, une question non
+  calculable depuis le gold sort en code 2. Sans l'option, rien ne change.
+- **I.1** : oui pour le groupe `pharmaflux gold` et ses six commandes, et
+  pour `gold sql` séparée de `silver sql`, qui réutilise sa barrière sans la
+  modifier. Le `--format texte` de `gold fiche` est retenu. Il est
+  lisible par un humain et sert au README, mais n'engage pas le format des
+  fragments du Lot 3 : l'ADR 0010 le dit.
+
+### Précisions
+
+- **Les cibles** : `make gold` (qualité puis questions avec `--entrepot`)
+  et `make fiche CIS=… A=…` sont retenues. L'étape de CI vient juste après
+  « make silver ». `pr.md` donne sa durée réelle.
+- **Les fixtures de test** : les cas que le jeu ne contient pas (une ligne
+  de disponibilité qui disparaît, une valeur illisible, une ligne sans
+  CIP13 sur une spécialité à plusieurs présentations) se construisent
+  dans les tests, comme la `SUITE` de `tests/test_rejeu.py`. Si un fichier
+  est ajouté sous `tests/fixtures/`, son nom ou un `README` dit qu'il est
+  **synthétique** : un lecteur ne doit pas le prendre pour une archive
+  réelle de la BDPM.
+- **La date que cite une fiche (L.1)** : on la dit honnêtement, sous la
+  forme « observée depuis `connu_depuis`, source du `date_source` ». La
+  date du dernier fichier retenu par entité est une proposition pour
+  `pr.md`, hors mission, puisque le silver ne change pas.
+- **La mémoire** : le seuil reste 512 Mo par commande, et chaque commande
+  `gold` est mesurée aux paliers 1 et 2. Le test de l'exigence 1 sur le jeu
+  est mesuré aussi.
+- **La non-régression (L.5)** est retenue. `questions verifier` sans
+  `--entrepot` sur `~/pharmaflux-data`, et le calcul gold sur le jeu de
+  démo seulement.
+- **Les paliers ne changent pas.** Le palier 1 couvre le typage, `gold etat`,
+  `gold qualite` et `gold sql` (sur les entités typées). Le palier 2 couvre
+  la fiche, la disponibilité, les alternatives, leurs vérifications de
+  référence et les questions.

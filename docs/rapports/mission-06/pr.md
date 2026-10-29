@@ -109,8 +109,8 @@ demo`, `make silver`, puis `make gold` (sortie citée dans `palier-3.md`).
 
 ## Durée de l'étape `make gold` dans la CI
 
-À compléter après la publication. Estimée à 5-10 s au §0, après « make
-silver », mesurée à 37 s sur la PR #6.
+À compléter après la publication. Estimée à 5-10 s au §0. Pour comparaison,
+l'étape make silver dure 37 s (PR #6).
 
 ## Écarts acceptés
 

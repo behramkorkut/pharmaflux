@@ -16,7 +16,7 @@
 |---|---|---|---|---|---|
 | Chef de projet | beko | `pharmaflux/` | `main` | tout | tout (seul à pousser, ouvrir la PR, fusionner) |
 | Ingénieur en chef (IeC) | session Claude dédiée | `pharmaflux/` | `main` | ordres de mission, consignes, garde-fous, contrôles | lecture |
-| Codeur | Claude Fable | `pharmaflux-codeur/` | `mission-NN-…` | code, tests, docs techniques, rapports | lecture + `add` / `commit` locaux |
+| Codeur | session Claude dédiée, modèle nommé dans l'ordre (Fable aux missions 00 à 05, Opus à la mission 06) | `pharmaflux-codeur/` | `mission-NN-…` | code, tests, docs techniques, rapports | lecture + `add` / `commit` locaux |
 | Relecteur | session neuve, autre modèle de préférence | `pharmaflux-relecteur/` | sommet figé de la branche | sa relecture seulement | lecture |
 
 Les deux dossiers d'agents sont des *worktrees* git du même dépôt, créés

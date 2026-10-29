@@ -2,8 +2,8 @@
 
 **Projet :** Pharmaflux — projet portfolio
 **Client :** client fictif — **direction santé d'une mutuelle** de taille moyenne (personas §3). Aucune donnée client : uniquement des données publiques réelles.
-**Version :** 0.6 _(après la mission 04 : jeu de démo figé, rejeu accéléré, `make demo` ; Lot 2 précisé pour la mission 05)_
-**Date :** 28 octobre 2026 _(v0.1 : 23 octobre 2026 ; v0.2 à v0.4 : 26 octobre 2026 ; v0.5 : 27 octobre 2026)_
+**Version :** 0.7 _(après la mission 05 : silver Iceberg historisé, « état à une date », `make silver` ; gold et qualité précisés pour la mission 06)_
+**Date :** 29 octobre 2026 _(v0.1 : 23 octobre 2026 ; v0.2 à v0.4 : 26 octobre 2026 ; v0.5 : 27 octobre 2026 ; v0.6 : 28 octobre 2026)_
 **Auteur :** Behram Korkut
 
 **Sources de données (publiques, réelles) :**
@@ -32,6 +32,7 @@
 | 4 | PRD v0.4 : avancement du Lot 1 (§4) ; forme canonique par type et forme déclarée vérifiée par une mesure (§6.2) ; valeur illisible gardée brute, et non rejetée (§6.2) ; schéma d'événement v1, identité d'une ligne sans clé unique, ordre des colonnes et des rangs, garde-fou de volume chiffré, premier snapshot (§6.3) ; reprise égale au rejeu complet (§7.1) ; mémoire de pointe au-dessus du plafond du VPS (§9) | Mission 02 (26/10/2026) : PR #3, ADR 0005 et 0006, contrôles des paliers 1 à 3, relectures 1 et 2 |
 | 5 | PRD v0.5 : avancement du Lot 1 (§4) ; bus précisé : topics, clé, valeur, compatibilité des schémas, rétention, file des messages en échec, vérification (§6.4) ; publication sans perte ni doublon d'identifiant, reprise (§7.1) ; jeu de démo figé dans le dépôt, rejeu accéléré dans l'ordre des observations, `make up` (§7.3) ; risque mémoire levé, rythme réel mesuré (§9) | Mission 03 (27/10/2026) : PR #4, ADR 0007, contrôles des paliers 1 à 3, relecture 1, contrôle final ; ordre de la mission 04 |
 | 6 | PRD v0.6 : Lot 1 fait sur le Mac, seul le VPS reste (§4) ; Lot 2 découpé en deux missions (§4) ; silver précisé : tables Iceberg par entité, historisation sur la date d'observation, « état à une date », vérification contre l'archive, consommateur du bus idempotent (§6.5) ; silver reconstruit identique depuis le bus ou depuis les fichiers d'événements (§7.1) ; mémoire de la démo mesurée (§9) | Mission 04 (27/10/2026) : PR #5, ADR 0008, contrôles des paliers 1 à 3, relecture 1, contrôle final, premier passage de la CI ; ordre de la mission 05 |
+| 7 | PRD v0.7 : Lot 2, mission 05 faite (§4) ; gold précisé : colonnes typées par entité, vues métier, valeur illisible jamais devinée, gold calculé depuis le silver à un instant donné, contrôles de qualité (§6.5) ; jeu de questions recalculé depuis le gold (annexe B) ; mémoire du silver mesurée, le silver tourne sur le Mac en v1, seuil d'alerte de 512 Mo (§9) | Mission 05 (28-29/10/2026) : PR #6, ADR 0009, contrôles des paliers 1 à 3, relectures 1 et 2, contrôle final ; ordre de la mission 06 |
 
 ---
 
@@ -164,6 +165,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - Requête « état au JJ/MM/AAAA HH:MM » et vérification contre le fichier archivé du même jour.
 - Contrôles de qualité automatiques (unicité des clés, référentiel CIS ↔ CIP13 cohérent, volumes attendus).
 - _Découpage (28/10/2026) : le Lot 2 commence sur le Mac, sans attendre le VPS. La **mission 05** construit le silver (un consommateur du bus, une table historisée par entité), la requête « état à une date » et sa vérification contre l'archive. La **mission 06** construira le gold (fiche médicament, disponibilité courante) et les contrôles de qualité._
+- _Avancement : la mission 05 (fusionnée le 29/10/2026) a livré le silver. Une table Iceberg par entité est alimentée par un consommateur du bus idempotent, qui garde sa position dans le commit Iceberg. Le silver se construit à l'identique depuis les fichiers d'événements. `pharmaflux silver etat` répond « état à une date », et `silver verifier` est conforme sur les 22 archives du jeu de démo (18 retenues, 4 écartées). `make silver` enchaîne les deux après `make demo`, et la CI le lance (38 s) (ADR 0009). Reste la mission 06 : le gold et les contrôles de qualité._
 
 ### Lot 3 — Assistant gouverné en temps réel
 
@@ -264,6 +266,10 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - **Fonction « état à une date »** : les versions valides à l'instant demandé. Elle sert sur le silver dès la mission 05, puis sur toutes les vues gold.
 - **Vérification contre l'archive** : pour chaque archive retenue, l'état au moment de son observation est égal, empreinte par empreinte, à son snapshot normalisé recalculé depuis le bronze. C'est l'indicateur « reconstruction de l'état à une date passée » du §2.2.
 - **Le consommateur du silver lit le bus** (§5, étape 4). Il est idempotent : il dédoublonne par identifiant d'événement, et une reprise après une coupure, à n'importe quel point, redonne le même silver.
+- **Gold, colonnes typées** : pour chaque entité, l'état du silver à un instant, avec les colonnes typées selon le type du contrat (date, entier, décimal, booléen, liste). Une valeur que le type ne sait pas lire n'est **jamais devinée** : sa colonne typée est vide, la valeur brute reste dans le silver avec sa règle, et le contrôle de qualité la compte.
+- **Gold, vues métier** : la fiche médicament (une ligne par spécialité : présentations, composition, groupe générique, conditions de prescription, avis SMR et ASMR, statut MITM, disponibilité, informations importantes en cours) et la disponibilité courante par présentation. Une ligne de disponibilité sans CIP13 vise toutes les présentations de la spécialité : le gold le rend explicite, sans en dire plus que l'ANSM (ADR 0003). Les jointures sont externes : un CIS absent du référentiel n'est pas une erreur (§6.3).
+- **Le gold est une fonction du silver et d'un instant** : « état à une date » vaut pour chaque vue gold, et le gold n'a pas d'histoire propre à garder cohérente avec celle du silver.
+- **Contrôles de qualité** à un instant donné : unicité des clés déclarées uniques, cohérence du référentiel CIS ↔ CIP13, volumes attendus, valeurs illisibles comptées par colonne. Chaque contrôle est soit **bloquant** (code d'erreur), soit **mesuré** (affiché, jamais absorbé), et la règle qui le classe est écrite.
 
 ### 6.6 Référentiels et correspondances
 
@@ -361,7 +367,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 |---|---|---|---|
 | **Format d'un fichier source modifié sans préavis** | Élevé | Moyenne | Contrats de schéma ; collecte qui s'arrête proprement et alerte ; incident documenté |
 | **Fichier servi vide ou tronqué par la source**, sans erreur HTTP (observé le 26/10/2026) | Élevé | Faible | Archivé tel quel ; garde-fou de volume avant toute comparaison (§6.3) ; jamais d'événement `supprimee` en masse |
-| **Mémoire de pointe au-dessus du plafond du VPS** : 474 Mo au rejeu complet, contre 256 Mo pour l'unité systemd (mission 02) | Élevé | **Levé pour la chaîne** par la mission 03 : 118 à 149 Mo en flux ; `verifier-bus` monte à 190-230 Mo, sans cible. Mission 04 : `demo rejouer` (rejeu et publication du jeu de démo) 145 Mo résidents ; `evenements` de 0,7 à 35,8 Mo par entité sous `tracemalloc` | Plafond de l'unité gardé, au service de la pré-production voisine ; mesure à refaire sur le VPS, avec le bus, avant d'y lancer autre chose que la collecte. Le silver (mission 05) apporte PyArrow : sa mémoire se mesure avant toute idée de le faire tourner sur le VPS |
+| **Mémoire de pointe au-dessus du plafond du VPS** : 474 Mo au rejeu complet, contre 256 Mo pour l'unité systemd (mission 02) | Élevé | **Levé pour la chaîne** par la mission 03 : 118 à 149 Mo en flux ; `verifier-bus` monte à 190-230 Mo, sans cible. Mission 04 : `demo rejouer` (rejeu et publication du jeu de démo) 145 Mo résidents ; `evenements` de 0,7 à 35,8 Mo par entité sous `tracemalloc` | Plafond de l'unité gardé, au service de la pré-production voisine ; mesure à refaire sur le VPS, avec le bus, avant d'y lancer autre chose que la collecte. Le silver (mission 05) apporte PyArrow, PyIceberg et DuckDB. Leurs imports pèsent déjà 102 Mo résidents. Les commandes du silver mesurent de 123 à 424 Mo sur le jeu de démo : `consommer` 357, `construire` 272, `verifier` 310, `comparer` 424. **En v1, le silver et le gold tournent sur le Mac**, là où est le bus, avec un seuil d'alerte de 512 Mo par commande ; le VPS ne fait que collecter |
 | **Rythme réel de mise à jour faible** (peu d'événements à montrer) : en 45 heures (24-26/10/2026), en dehors de l'état initial, un seul fichier a changé, deux fois, plus un fichier servi vide | Élevé | **Avérée** | Archivage dès le Lot 0 ; mode rejeu accéléré (mission 04 : 67 h 35 min observées rejouées en 4 min 03 s) ; la démo montre ce rythme et l'incident tels quels ; mesure honnête publiée ; l'historique s'allonge chaque heure |
 | **Sens d'une disparition de ligne ambigu** (remise à disposition ? arrêt ?) | Moyen | Élevée | ADR 0003 « proposé » (fin de publication, pas remise), revu au plus tard le 07/12/2026 sur les disparitions observées ; libellés prudents dans l'assistant |
 | Granularités incompatibles (dépense annuelle, disponibilité quotidienne) | Moyen | Certaine | Indicateur « dépense exposée » défini et documenté avec ses limites |
@@ -432,7 +438,7 @@ Chaque question porte :
 - pour une réponse, un **attendu rejouable** : la date de référence, l'**archive citée** (chemin dans le bronze et sha256), le contrat, la clé, les colonnes et les **lignes attendues, brutes**, telles que le fichier les écrit. `valeurs = []` signifie « aucune ligne » : « aucun générique » ou « aucun signalement à cette date » devient un fait vérifié, pas une affirmation ;
 - un champ `prudence` : la nuance que la réponse doit respecter (« aucun signalement » n'est pas « disponible partout » ; un arrêt annoncé n'est pas encore un arrêt). Il n'est pas vérifié par la machine ; il sert à la notation du Lot 3.
 
-`pharmaflux questions verifier` relit chaque archive citée, contrôle son sha256 et son contrat, recalcule les lignes et sort en erreur au moindre écart. En v0, les attendus sont calculés **depuis le bronze** ; à partir du Lot 2, depuis le gold à une date donnée, et les deux calculs doivent concorder.
+`pharmaflux questions verifier` relit chaque archive citée, contrôle son sha256 et son contrat, recalcule les lignes et sort en erreur au moindre écart. En v0, les attendus sont calculés **depuis le bronze** ; à partir du Lot 2 (mission 06), aussi depuis le gold à l'instant de l'archive citée, et les deux calculs doivent concorder. Une question dont l'archive est hors de la fenêtre du silver est dite « non calculable depuis le gold », jamais comptée conforme.
 
 | Catégorie | Exemple | Attendu |
 |---|---|---|

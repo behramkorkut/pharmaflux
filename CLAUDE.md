@@ -14,7 +14,7 @@ du **dossier** où ta session a été lancée :
 | Dossier | Rôle | Ce que tu fais |
 |---|---|---|
 | `pharmaflux/` (branche `main`) | ingénieur en chef (IeC) | ordres de mission, contrôles, consignes |
-| `pharmaflux-codeur/` (branche `mission-NN-…`) | **codeur** (Claude Fable) | code, tests, rapports, commits locaux |
+| `pharmaflux-codeur/` (branche `mission-NN-…`) | **codeur** (Claude ; le modèle est nommé dans l'ordre) | code, tests, rapports, commits locaux |
 | `pharmaflux-relecteur/` (sommet figé) | relecteur (session neuve) | `/relire-mission NN`, consigne `docs/agents/relecteur.md` |
 
 **beko** est le chef de projet : il valide, il est **seul à pousser**,
@@ -66,8 +66,9 @@ ouvrir les PR, fusionner et installer quoi que ce soit sur le système.
 - **git, en local seulement**, sur ta branche de mission :
   - permis : `git status`, `log`, `diff`, `show`, `git add <fichiers
     précis>`, `git commit -F -` (heredoc **sans retrait**) avec les
-    trailers `Commis-par: codeur` et `Co-Authored-By: Claude Fable 5.1
-    <noreply@anthropic.com>` ;
+    trailers `Commis-par: codeur` et `Co-Authored-By: <le modèle que
+    nomme l'ordre de mission> <noreply@anthropic.com>` (par exemple
+    `Claude Opus 5.5`) ;
   - tout le reste est à beko : push, PR, branches, fusion, `gh`. Jamais de
     réécriture d'historique (`--amend`, `reset`, `rebase`…), jamais
     `git add -A` / `git add .`.

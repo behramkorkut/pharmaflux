@@ -653,3 +653,12 @@ minimal 0,9954), 418 et 416 Mo. Le second met à jour : rien à faire, 418 et
 419 Mo ; `verifier` conforme, 418 et 418 Mo. Second point de mémoire sous
 512 Mo : les 624 Mo de la première construction du palier 2 ne se sont pas
 reproduits.
+
+**Mission 07, relecture et `pr.md`** (29/10). Relecture 1 CONFORME, 0
+bloquant ; trois points corrigés en `50e7533` : `construire` efface aussi la
+collection que l'ancien état décrivait, un index réduit se déclare (`etat
+--complet`, refus de `mettre-a-jour`, `verifier` sur ses CIS), `verifier`
+prend le verrou. Pas de tour 2. Non-régression complète rejouée sur
+`50e7533` : 601 tests, `evenements` identique à `98505d3`, `silver verifier`
+22/22, `make gold` sans bloquant et 25 concordantes, l'index du Mac
+conforme. Description de la PR, puis revue finale de l'IeC.

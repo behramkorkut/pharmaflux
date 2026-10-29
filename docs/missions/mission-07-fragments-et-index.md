@@ -348,3 +348,155 @@ CI de la PR passe **du premier coup**.
 - **Pas d'usage des VPS d'Alamel**, et rien qui touche aux conteneurs
   d'Alamel du colima (`alamel-dev-postgres`, `alamel-dev-minio`) ni à la
   pré-production du VPS-1.
+
+## Addendum 1 — le §0 tranché (29/10/2026)
+
+Réponse au §0 du codeur (`points-a-trancher.md`, commit `f7e4d1b`). Les
+avis du tableau récapitulatif sont **tous retenus**, y compris les deux
+écarts à la lettre de l'ordre (D2 et E1), qui sont justes. Les précisions
+ci-dessous s'y ajoutent. Ce qui n'est pas cité ici est retenu tel que
+proposé.
+
+### Ce que l'addendum change dans l'ordre
+
+- **Le journal de CI transmis vient du run de `main`** (`98505d3`), pas de
+  la PR #7, dont la CI était passée. L'ordre et le PRD v0.8 disaient
+  « PR #7 ». La première entrée du journal le corrige, et l'IeC le
+  corrigera dans le PRD.
+- **L'instant de l'état n'est pas dans chaque fragment (D2).** Il est
+  tenu une fois, dans l'état de l'index, et `chercher` (puis l'assistant)
+  le **rend avec chaque résultat**. La phrase de l'objectif (« chacun
+  porte sa source, la date de sa source et l'instant de l'état ») se lit
+  ainsi.
+- **L'incrément suit aussi les bascules du jour (E1)** : un début de
+  signalement annoncé qui devient en cours, une information importante qui
+  entre dans sa fenêtre ou en sort. Sans elles, l'index divergerait de la
+  reconstruction : c'est exactement ce que la vérification doit
+  empêcher. Un test unitaire couvre chaque bascule.
+
+### A. Le registre
+
+- **A1** : oui, le nettoyage des sujets et des topics de test se fait une
+  fois, en fin de session.
+- **A2** : oui pour le réessai (3 essais, attentes de 0,2 puis 0,8 s,
+  seulement quand **aucune réponse** n'a été reçue, jamais sur une réponse
+  ni sur un `ReadTimeout`), avec la ligne horodatée à chaque réessai et le
+  total affiché par `schemas enregistrer`. **Strict** : un réessai pendant
+  les tests d'intégration fait échouer la session. La seule exception est
+  le test de reproduction, dont c'est l'objet. Le message d'échec dit
+  « un réessai a servi » et renvoie aux lignes horodatées.
+- **A3** : oui, `--memory` et `--smp` ne changent pas.
+- **Le test de reproduction** (30 cycles) est dans la suite
+  d'intégration. Il passe avec le réessai, et il **affiche** le nombre de
+  réessais qui ont servi, sans en exiger un : c'est une mesure, pas une
+  assertion sur la fréquence.
+- **`supprimer`** : la suppression définitive est tentée même quand la
+  suppression douce répond 404. Un test le couvre.
+- **Healthcheck du registre** et **diagnostic en CI** (journal en
+  `debug` par l'API d'administration, journal complet du courtier,
+  `rpk cluster health` et `docker stats` en artefact, `-rE`) : retenus.
+  L'action `upload-artifact` est épinglée par empreinte, comme les autres.
+
+### B. La base vectorielle
+
+- **B1** : Qdrant, avec un client `httpx` à nous, testé par
+  `MockTransport`. Pas de `qdrant-client`.
+- **B2** : port `127.0.0.1:16333`, gRPC non exposé, volume
+  `pharmaflux-qdrant`, télémétrie coupée, `mem_limit: 512m`.
+- **B3** : oui pour l'alias `pharmaflux-fragments`, une collection par
+  (format, modèle), et l'état dans une collection à part.
+- **Précision pour la mission 08** : le vecteur dense est un **vecteur
+  nommé** (`dense`, par exemple), pour qu'un vecteur creux nommé s'ajoute
+  à côté sans changer la façon de lire le dense. Le format des fragments
+  changera de toute façon avec l'hybride, donc une nouvelle collection.
+
+### C. Le modèle
+
+- **C1** : oui, le modèle se choisit au début du palier 2, sur mesure,
+  entre e5-small (int8) et potion-multilingual-128M. **La règle de
+  choix** :
+  1. sous 512 Mo résidents pour `chercher` et pour l'encodage ;
+  2. puis la meilleure qualité mesurée, au rappel à 5 sur les questions
+     v0 qui nomment un médicament ;
+  3. si le meilleur modèle met plus d'**une heure** pour encoder le jeu sur
+     le Mac, tu t'arrêtes et on en parle avant de le retenir.
+
+  L'ADR 0011 enregistre les mesures des deux modèles, pas seulement du
+  modèle retenu.
+- **C2** : oui. En CI, la chaîne complète du jeu tourne avec l'encodeur de
+  test, et le vrai modèle sur un sous-ensemble fixe. La CI télécharge les
+  fichiers épinglés (révision, sha256), avec un cache : c'est un
+  téléchargement vérifié, comme `uv sync`. Sur le Mac, seul beko les
+  télécharge.
+- **C3** : oui, le cache des vecteurs fait partie de la mission. Il vit
+  **hors de `data/demo`**, pour que `make rebatir` ne l'efface pas. Sa clé
+  est (modèle, révision, sha256 du texte encodé).
+- **C4** : oui pour `$PHARMAFLUX_MODELES`, par défaut
+  `~/pharmaflux-modeles`. Tu n'y écris jamais : le script de beko y
+  installe les fichiers, et ton code les lit et vérifie leurs empreintes.
+
+### D. Les fragments
+
+- **D1** : oui pour les cinq fragments par fiche, la ligne d'identité en
+  tête de chacun, la découpe par élément, la mention « (suite, partie k
+  sur n) ». La borne de découpe se recale au palier 2 sur le décompte
+  réel du tokenizer. Si elle change, c'est avant que le format 1 soit
+  figé.
+- **D3** : oui. Extraire le titre de sa balise HTML et décoder les entités
+  (`&ecirc;` → « ê »), c'est changer la forme, pas le sens, comme
+  l'encodage à la normalisation (PRD §6.2). La licence BDPM le permet. Le
+  titre est repris **mot pour mot**, et le lien va dans les métadonnées.
+  La valeur brute reste dans le silver.
+- **D4** : oui, les alternatives sont hors des fragments. La mission 08
+  les lira dans le gold au moment de répondre.
+- **Le test du mot « disponible »** sur tout le jeu est retenu. Il fait
+  partie des tests de prudence du palier 1.
+- **K4** : oui, les fiches partielles sont indexées, avec la phrase de
+  prudence.
+
+### E, F, G, H, I, J
+
+- **E2** : oui, le gold est calculé en entier, puis filtré sur les CIS
+  touchés. Un seul chemin de calcul.
+- **F** : oui. 100 vecteurs tirés de façon fixe avec le vrai modèle, et
+  tous les vecteurs avec l'encodeur de test.
+- **G** : oui pour `index evaluer` dans la mission. Il écrit le tableau
+  (rappel à 1, 5 et 10, rang réciproque moyen, score du premier résultat
+  hors périmètre) sans seuil ni code d'erreur sur la qualité. C'est une
+  mesure pour la mission 08.
+- **H** : le groupe `pharmaflux index` et ses commandes sont retenus, avec
+  le verrou. Le verrou vit hors de `data/demo`, comme le cache.
+- **I** : oui, `make index` choisit entre `construire` et
+  `mettre-a-jour`, puis lance `verifier`. **Sa sortie dit lequel des deux
+  a tourné.** `timeout-minutes` passe à 20.
+- **J** : oui pour deux processus. Le sous-processus des fragments et le
+  processus d'encodage sont mesurés à part, chacun sous 512 Mo.
+
+### K
+
+- **K2** (le job `verifier` attend un courtier absent) : hors mission,
+  noté pour plus tard.
+- **K5** : d'accord, aucune relance automatique de test.
+- **K6** : les dépendances `onnxruntime` et `tokenizers`, et
+  `safetensors` si Model2Vec reste candidat, entrent au palier 2. Elles
+  suivent la règle des deux semaines et les plafonds de l'ADR 0009. Le
+  rapport du palier 2 justifie chaque version.
+- **K7** : oui. Au palier 1, tu écris les deux procédures de
+  téléchargement, sans les lancer :
+  - le TOML et le script du modèle, pour les deux candidats ;
+  - l'image Qdrant, épinglée par empreinte. Tu ne peux pas vérifier sa
+    date de publication : la procédure dit à beko comment choisir la
+    version qui a deux semaines, puis comment relever l'empreinte.
+
+  beko les lance pendant le contrôle du palier 1.
+- **Le refus du garde-fou sur `docker image ls`** : tu l'as signalé et tu
+  as pris la forme que le message citait comme permise. C'est la bonne
+  conduite. L'IeC relira cette règle du garde-fou.
+
+### La clôture
+
+Elle ne change pas. La cible `make index`, lancée par beko avec le
+**vrai modèle**, construit l'index du jeu en entier la première fois : la
+durée de cet encodage est mesurée et citée. Un second `make index`
+juste après passe par `mettre-a-jour`, ne trouve rien à faire, et
+`verifier` est conforme. La CI de la PR passe du premier coup.

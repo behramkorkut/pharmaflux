@@ -69,6 +69,11 @@ GIT_LECTURE = {
 # FETCH_HEAD) et lire l'état de GitHub. Ni refspec (« main:main » écrirait une branche
 # locale), ni --upload-pack (exécute une commande), ni --tags (écrit les étiquettes locales).
 GIT_FETCH_IEC = {"origin", "--prune", "-p", "--quiet", "-q"}
+# git ls-remote, pour l'IeC seulement : relever l'empreinte d'une étiquette à épingler (une
+# action de la CI). Il lit et n'écrit rien en local ; --upload-pack exécuterait une commande.
+GIT_LS_REMOTE_OPTIONS = {"--tags", "--heads", "--refs", "-t", "-h", "-q", "--quiet"}
+# Les outils d'un connecteur GitHub : l'IeC n'en lit que ce qui commence ainsi.
+MCP_GITHUB_LECTURE = ("get", "list", "search", "read", "view")
 # Commandes qui ne font que lire : elles peuvent nommer un chemin réservé.
 LECTURE = {
     "cat",
@@ -347,6 +352,16 @@ def segments(commande: str) -> list[tuple[list[str], list[str]]]:
     return resultat
 
 
+def _ls_remote_iec(reste: list[str]) -> bool:
+    """« origin » ou un dépôt https de GitHub, puis des motifs de références, en lecture."""
+    positionnels = [a for a in reste if not a.startswith("-")]
+    if any(a.startswith("-") and a not in GIT_LS_REMOTE_OPTIONS for a in reste):
+        return False
+    return bool(positionnels) and (
+        positionnels[0] == "origin" or positionnels[0].startswith("https://github.com/")
+    )
+
+
 def verifier_git(role: str, mots: list[str]) -> None:
     args = mots[1:]
     while args and args[0] in ("--no-pager", "-P"):
@@ -385,6 +400,8 @@ def verifier_git(role: str, mots: list[str]) -> None:
         # Lecture d'une clé ou de toute la configuration ; toute autre forme écrit.
         return
     if role == "iec" and sous == "fetch" and all(a in GIT_FETCH_IEC for a in reste):
+        return
+    if role == "iec" and sous == "ls-remote" and _ls_remote_iec(reste):
         return
     if role == "relecteur" and sous == "switch" and reste[:1] == ["--detach"] and len(reste) == 2:
         return
@@ -563,12 +580,15 @@ def verifier_bash(role: str, commande: str) -> None:
             verifier_git(role, mots)
             continue
         if tete == "gh":
+            # L'IeC lit GitHub (PR, CI, artefacts de diagnostic, versions à épingler) ; il
+            # n'y écrit jamais : push, PR, fusion et tout le reste sont à beko.
             if (
                 role == "iec"
                 and mots[1:3]
                 and (
                     (mots[1] == "pr" and mots[2] in ("view", "checks", "list", "diff"))
-                    or (mots[1] == "run" and mots[2] in ("list", "view"))
+                    or (mots[1] == "run" and mots[2] in ("list", "view", "download"))
+                    or (mots[1] == "release" and mots[2] in ("list", "view"))
                 )
             ):
                 continue
@@ -616,6 +636,12 @@ def juger(appel: dict, dossier_projet: Path) -> None:
     # Claude Code (sans CLAUDECODE) : ils échapperaient aux crochets git.
     if role != "iec" and re.match(r"mcp__(terminal|computer-use|claude-in-chrome)__", outil):
         raise Refus(f"outil « {outil} » réservé : il contourne les garde-fous de ton rôle.")
+    # Un connecteur GitHub échappe aux règles de Bash : lecture seule, pour l'IeC seulement.
+    if outil.startswith("mcp__") and "github" in outil.lower():
+        action = outil.rsplit("__", 1)[-1].lower()
+        if role != "iec" or not action.startswith(MCP_GITHUB_LECTURE):
+            raise Refus(f"outil « {outil} » : GitHub en lecture seule, pour l'IeC seulement.")
+        return
     if outil == "Bash":
         verifier_bash(role, str(entree.get("command", "")))
         return

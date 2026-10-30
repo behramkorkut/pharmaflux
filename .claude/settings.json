@@ -78,7 +78,12 @@
       "Bash(gh workflow:*)",
       "Bash(gh run cancel:*)",
       "Bash(gh run delete:*)",
-      "Bash(gh release:*)",
+      "Bash(gh release create:*)",
+      "Bash(gh release delete:*)",
+      "Bash(gh release edit:*)",
+      "Bash(gh release upload:*)",
+      "Bash(gh release delete-asset:*)",
+      "Bash(gh run rerun:*)",
       "Bash(env -u* git*)",
       "Bash(env --unset* git*)",
       "Bash(unset *CLAUDE*)",
@@ -99,7 +104,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__terminal__.*|mcp__computer-use__.*|mcp__claude-in-chrome__.*",
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__terminal__.*|mcp__computer-use__.*|mcp__claude-in-chrome__.*|mcp__.*[Gg]it[Hh]ub.*",
         "hooks": [
           {
             "type": "command",

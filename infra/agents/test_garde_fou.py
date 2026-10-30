@@ -515,6 +515,56 @@ class GardeFou(unittest.TestCase):
             with self.subTest(commande=commande):
                 self.assertFalse(self.bash(self.principal, commande))
 
+    def test_iec_lit_github_sans_y_ecrire(self) -> None:
+        for commande in (
+            "gh pr view 8 --json title",
+            "gh pr list --state merged",
+            "gh run list --branch main --limit 5",
+            "gh run view 40881334581 --log-failed",
+            "gh run download 40881334581 -n diagnostic-courtier -D /tmp/diag",
+            "gh release list -R qdrant/qdrant --limit 15",
+            "gh release view v4.3.0 -R actions/cache --json publishedAt",
+            "git ls-remote --tags https://github.com/actions/cache v4.3.0",
+            "git ls-remote origin refs/heads/main",
+        ):
+            with self.subTest(commande=commande):
+                self.assertTrue(self.bash(self.principal, commande))
+        for commande in (
+            "gh pr create --fill",
+            "gh pr comment 8 -b x",
+            "gh run rerun 1",
+            "gh run cancel 1",
+            "gh release create v1",
+            "gh release delete v1",
+            "gh api repos/o/r/git/refs -X POST",
+            "gh workflow run ci.yml",
+            "git ls-remote --upload-pack=/bin/sh origin",
+            "git ls-remote https://exemple.invalid/depot.git",
+            "git ls-remote",
+        ):
+            with self.subTest(commande=commande):
+                self.assertFalse(self.bash(self.principal, commande))
+        for commande in ("gh run list", "gh release list -R a/b", "git ls-remote origin"):
+            with self.subTest(commande=commande):
+                self.assertFalse(self.bash(self.codeur, commande))
+                self.assertFalse(self.bash(self.relecteur, commande))
+
+    def test_connecteur_github_en_lecture_pour_l_iec_seulement(self) -> None:
+        for outil in ("mcp__github__get_pull_request", "mcp__github__list_workflow_runs"):
+            with self.subTest(outil=outil):
+                self.assertTrue(self.juger(self.principal, outil))
+                self.assertFalse(self.juger(self.codeur, outil))
+                self.assertFalse(self.juger(self.relecteur, outil))
+        for outil in (
+            "mcp__github__merge_pull_request",
+            "mcp__github__create_pull_request",
+            "mcp__github__push_files",
+            "mcp__github__delete_branch",
+            "mcp__claude_ai_GitHub__create_or_update_file",
+        ):
+            with self.subTest(outil=outil):
+                self.assertFalse(self.juger(self.principal, outil))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -566,3 +566,6 @@ Elle ne change pas.
   (`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` ou
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). Le modèle
   **de l'assistant** ne change pas : Claude Opus 5.5.
+- **Le relecteur** (`/relire-mission 08`, session neuve) est un autre
+  modèle que le dernier codeur : Claude Fable ou Claude Opus 4.8 à l'effort
+  maximal, au choix de beko.

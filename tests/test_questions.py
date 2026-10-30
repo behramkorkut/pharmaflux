@@ -192,6 +192,40 @@ def test_jeu_mal_forme_refuse(ancien: str, nouveau: str, message: str) -> None:
         _charger(texte)
 
 
+_DEPENSE_V1 = """\
+version = "v1"
+description = "Essai v1"
+instant = "2026-10-27T00:17:12Z"
+
+[[questions]]
+id = "depense-001"
+categorie = "depense"
+question = "Quelle dépense remboursée en 2025 pour les statines ?"
+comportement = "abstention"
+motif = "la dépense remboursée (Open Medic) n'est pas disponible avant le Lot 4"
+calculable_au = "lot4"
+"""
+
+
+def test_v1_accepte_une_abstention_differee_de_depense() -> None:
+    """Contrôle du palier 1, point 1 : en v1 une abstention peut porter « calculable_au »
+    (l'assistant s'abstient, la dépense devient calculable au Lot 4)."""
+    jeu = _charger(_DEPENSE_V1)
+    (question,) = jeu.questions
+    assert question.comportement is Comportement.ABSTENTION
+    assert question.calculable_au == "lot4"
+    assert question.motif is not None
+
+
+def test_v0_refuse_une_abstention_avec_calculable_au() -> None:
+    """La v0 ne change pas : « calculable_au » n'a de sens que pour une réponse."""
+    texte = _DEPENSE_V1.replace('version = "v1"', 'version = "v0"').replace(
+        '\ninstant = "2026-10-27T00:17:12Z"', ""
+    )
+    with pytest.raises(JeuInvalide, match="n'a de sens que pour une réponse"):
+        _charger(texte)
+
+
 def test_identifiants_en_double_et_fichier_absent(tmp_path: Path) -> None:
     double = QUESTION_MINIMALE + "\n" + QUESTION_MINIMALE.split("\n", 3)[3]
     with pytest.raises(JeuInvalide, match="en double : disponibilite-001"):

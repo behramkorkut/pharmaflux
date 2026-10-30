@@ -29,12 +29,13 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from importlib.metadata import version as version_du_paquet
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, TextIO
+from typing import TYPE_CHECKING, Annotated, Any, TextIO
 
 import httpx
 import typer
 
 from pharmaflux import bronze
+from pharmaflux.assistant.client import EFFORT_DEFAUT, ClientLLM
 from pharmaflux.bus import enveloppe as env
 from pharmaflux.bus import publication, suivi, verification
 from pharmaflux.bus.client import (
@@ -94,6 +95,9 @@ fabriquer_lecteur_silver: Callable[[str], LecteurSilver | None] = lambda _courti
 fabriquer_transport_qdrant: Callable[[], httpx.BaseTransport | None] = (  # noqa: E731
     lambda: None
 )
+# L'assistant (mission 08) : les tests injectent le double du client Claude ; None = le vrai
+# client (ClientClaude), qui n'importe anthropic qu'à sa construction. Aucun appel réel aux tests.
+fabriquer_client_llm: Callable[[], ClientLLM | None] = lambda: None  # noqa: E731
 
 application = typer.Typer(
     name="pharmaflux",
@@ -2142,3 +2146,175 @@ def modele_verifier(nom: ArgumentModele) -> None:
     if ecarts:
         raise typer.Exit(code=1)
     typer.echo(f"{nom} : {len(epinglage.fichiers)} fichier(s) en place, sha256 vérifiés")
+
+
+# --- assistant (mission 08) --------------------------------------------------------------------
+# L'assistant gouverné : refus médical et abstentions hors LLM, recherche hybride, LLM sous le
+# plafond, contrôle des citations par le code. anthropic n'est importé que par le vrai client, à
+# sa construction (jamais aux tests, qui passent par le double).
+
+DONNEES_ASSISTANT = Path("data/assistant")  # journal des dépenses et cache des réponses, hors git
+
+assistant = typer.Typer(
+    name="assistant",
+    help="L'assistant gouverné (mission 08) : réponses sourcées et datées, abstention, refus"
+    " médical, sous le plafond de dépense.",
+    no_args_is_help=True,
+)
+application.add_typer(assistant)
+
+OptionDonnees = Annotated[
+    Path,
+    typer.Option("--donnees", help="Journal des dépenses et cache des réponses, hors git."),
+]
+
+
+class FormatAssistant(StrEnum):
+    TEXTE = "texte"
+    JSON = "json"
+
+
+@assistant.command("demander")
+def assistant_demander(
+    question: Annotated[str, typer.Argument(help="La question, en français.")],
+    format_: Annotated[
+        FormatAssistant, typer.Option("--format", help="texte (défaut) ou json (la trace).")
+    ] = FormatAssistant.TEXTE,
+    effort: Annotated[
+        str, typer.Option("--effort", help="Effort du modèle : low (défaut), medium, high.")
+    ] = EFFORT_DEFAUT,
+    qdrant: OptionQdrant = None,
+    modele_: OptionModele = MODELE_PAR_DEFAUT,
+    donnees: OptionDonnees = DONNEES_ASSISTANT,
+) -> None:
+    """Répond à une question, gouvernée de bout en bout, sous le plafond de dépense.
+
+    Le refus médical et les abstentions dures se décident hors du LLM ; la recherche est
+    hybride ; les citations, les nombres et les dates de la réponse sont contrôlés par le code,
+    qui rend aussi les sources, leurs dates et l'instant de l'index. Code 0 pour tout résultat
+    (réponse, abstention ou refus). Code 2 : clé d'API absente, budget dépassé, pas d'index,
+    modèle différent de celui de l'index, Qdrant injoignable.
+    """
+    from pharmaflux.assistant import chemin
+    from pharmaflux.assistant.budget import BudgetDepasse, Journal
+    from pharmaflux.assistant.cache import CacheReponses
+    from pharmaflux.assistant.client import CleAbsente, ClientClaude, cle_presente
+    from pharmaflux.index import construction, encodeur
+    from pharmaflux.index.qdrant import Qdrant, QdrantIndisponible
+
+    double = fabriquer_client_llm()
+    if double is None and not cle_presente():
+        typer.echo("assistant refusé : clé absente (ANTHROPIC_API_KEY)", err=True)
+        raise typer.Exit(code=2)
+    try:
+        cache = CacheReponses(donnees)
+        try:
+            encodeur_ = encodeur.charger(modele_)
+            client = double or ClientClaude()
+            with Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as qd:
+                reponse = chemin.demander(
+                    qd,
+                    encodeur_,
+                    client,
+                    question,
+                    Journal(donnees / "depenses.jsonl"),
+                    cache,
+                    effort=effort,
+                )
+        finally:
+            cache.close()
+    except (
+        CleAbsente,
+        BudgetDepasse,
+        construction.IndexRefuse,
+        encodeur.ModeleIndisponible,
+        QdrantIndisponible,
+    ) as exc:
+        typer.echo(f"assistant refusé : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if format_ is FormatAssistant.JSON:
+        typer.echo(json.dumps(_reponse_json(reponse), ensure_ascii=False))
+    else:
+        for ligne in _rendre_reponse(reponse):
+            typer.echo(ligne)
+
+
+_ENTETE_COMPORTEMENT = {
+    "reponse": "Réponse",
+    "abstention": "Abstention",
+    "refus_medical": "Refus (question médicale)",
+}
+
+
+def _cout_texte(reponse: Any) -> str:
+    if reponse.usage is None:
+        return "0 $ (décision hors LLM)"
+    if reponse.depuis_cache:
+        return "0 $ (réponse en cache)"
+    return f"{reponse.cout:.4f} $"
+
+
+def _rendre_reponse(reponse: Any) -> list[str]:
+    reserve = " avec réserve" if reponse.reserve else ""
+    lignes = [_ENTETE_COMPORTEMENT[reponse.comportement] + reserve + " :"]
+    if reponse.texte:
+        lignes.append(reponse.texte)
+    if reponse.motif:
+        lignes.append(f"motif : {reponse.motif}")
+    if reponse.orientation:
+        lignes.append(f"orientation : {reponse.orientation}")
+    for c in reponse.citations:
+        lignes.append(f"  [{c.etiquette}] CIS {c.code_cis}, {c.section} — {c.sources}")
+    lignes.append(f"état de l'index au {reponse.instant_index}")
+    lignes.append(f"coût : {_cout_texte(reponse)}")
+    return lignes
+
+
+def _reponse_json(reponse: Any) -> dict[str, Any]:
+    usage = reponse.usage
+    return {
+        "comportement": reponse.comportement,
+        "texte": reponse.texte,
+        "motif": reponse.motif,
+        "orientation": reponse.orientation,
+        "reserve": reponse.reserve,
+        "citations": [
+            {
+                "etiquette": c.etiquette,
+                "code_cis": c.code_cis,
+                "section": c.section,
+                "denomination": c.denomination,
+                "dans_referentiel": c.dans_referentiel,
+                "sources": c.sources,
+            }
+            for c in reponse.citations
+        ],
+        "instant_index": reponse.instant_index,
+        "decision": reponse.decision,
+        "depuis_cache": reponse.depuis_cache,
+        "cout": reponse.cout,
+        "usage": None
+        if usage is None
+        else {
+            "jetons_entree": usage.jetons_entree,
+            "jetons_sortie": usage.jetons_sortie,
+            "jetons_cache_lecture": usage.jetons_cache_lecture,
+            "jetons_cache_ecriture": usage.jetons_cache_ecriture,
+        },
+        "effort": reponse.effort,
+        "trace": reponse.trace,
+    }
+
+
+@assistant.command("depenses")
+def assistant_depenses(donnees: OptionDonnees = DONNEES_ASSISTANT) -> None:
+    """Le total dépensé pour la mission et ce qui reste du plafond, lus dans le journal local."""
+    from pharmaflux.assistant.budget import MISSION, PLAFOND, Journal
+
+    journal = Journal(donnees / "depenses.jsonl")
+    appels = [ligne for ligne in journal.lignes() if ligne.mission == MISSION]
+    total = journal.total()
+    typer.echo(
+        f"mission {MISSION} : {len(appels)} appel(s), {total:.4f} $ dépensé(s) ;"
+        f" reste {PLAFOND - total:.4f} $ sur {PLAFOND:.2f} $"
+    )

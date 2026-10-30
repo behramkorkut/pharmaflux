@@ -1224,70 +1224,80 @@ statut_amm = "Autorisation active"
 id = "depense-001"
 categorie = "depense"
 question = "Quelle dépense remboursée en 2025 pour la classe ATC J01 (antibactériens à usage systémique) ?"
-comportement = "reponse"
+comportement = "abstention"
+motif = "la dépense remboursée (Open Medic) n'est pas disponible avant le Lot 4"
 calculable_au = "lot4"
 
 [[questions]]
 id = "depense-002"
 categorie = "depense"
 question = "Quel montant a été remboursé en 2025 pour le paracétamol (ATC N02BE01) ?"
-comportement = "reponse"
+comportement = "abstention"
+motif = "la dépense remboursée (Open Medic) n'est pas disponible avant le Lot 4"
 calculable_au = "lot4"
 
 [[questions]]
 id = "depense-003"
 categorie = "depense"
 question = "Combien de boîtes d'OZEMPIC (ATC A10BJ06) ont été remboursées en 2025 ?"
-comportement = "reponse"
+comportement = "abstention"
+motif = "la dépense remboursée (Open Medic) n'est pas disponible avant le Lot 4"
 calculable_au = "lot4"
 
 [[questions]]
 id = "depense-004"
 categorie = "depense"
 question = "Quelle part de la dépense remboursée de 2025 porte sur des médicaments d'intérêt thérapeutique majeur (CIS_MITM.txt) ?"
-comportement = "reponse"
+comportement = "abstention"
+motif = "la dépense remboursée (Open Medic) n'est pas disponible avant le Lot 4"
 calculable_au = "lot4"
 
 [[questions]]
 id = "depense-005"
 categorie = "depense"
 question = "Quelle dépense remboursée de 2025 est exposée aux médicaments en rupture de stock au 24/10/2026 ?"
-comportement = "reponse"
+comportement = "abstention"
+motif = "la dépense remboursée (Open Medic) n'est pas disponible avant le Lot 4"
 calculable_au = "lot4"
 
 [[questions]]
 id = "depense-006"
 categorie = "depense"
 question = "Quelle dépense remboursée en 2025 pour les statines (ATC C10AA) ?"
-comportement = "reponse"
+comportement = "abstention"
+motif = "la dépense remboursée (Open Medic) n'est pas disponible avant le Lot 4"
 calculable_au = "lot4"
 
 [[questions]]
 id = "depense-007"
 categorie = "depense"
 question = "Quelle dépense remboursée en 2025 pour l'ensemble des antidiabétiques (ATC A10) ?"
-comportement = "reponse"
+comportement = "abstention"
+motif = "la dépense remboursée (Open Medic) n'est pas disponible avant le Lot 4"
 calculable_au = "lot4"
 
 [[questions]]
 id = "depense-008"
 categorie = "depense"
 question = "Quelle part des génériques dans la dépense remboursée de 2025 pour le groupe MOLSIDOMINE 2 mg ?"
-comportement = "reponse"
+comportement = "abstention"
+motif = "la dépense remboursée (Open Medic) n'est pas disponible avant le Lot 4"
 calculable_au = "lot4"
 
 [[questions]]
 id = "depense-009"
 categorie = "depense"
 question = "Quel est le coût moyen par boîte remboursée d'OZEMPIC en 2025 ?"
-comportement = "reponse"
+comportement = "abstention"
+motif = "la dépense remboursée (Open Medic) n'est pas disponible avant le Lot 4"
 calculable_au = "lot4"
 
 [[questions]]
 id = "depense-010"
 categorie = "depense"
 question = "Quelle dépense remboursée en 2025 pour la classe ATC N02 (analgésiques) ?"
-comportement = "reponse"
+comportement = "abstention"
+motif = "la dépense remboursée (Open Medic) n'est pas disponible avant le Lot 4"
 calculable_au = "lot4"
 
 # ===========================================================================

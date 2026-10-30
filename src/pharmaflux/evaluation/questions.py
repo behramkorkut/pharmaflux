@@ -134,7 +134,8 @@ def charger_octets(octets: bytes, origine: str, contrats: Mapping[str, Contrat])
     if version == "v1" and instant is None:
         raise JeuInvalide(f"{origine} : la v1 déclare « instant » (l'instant de l'index attendu)")
     questions = tuple(
-        _question(table, contrats) for table in racine.tables("questions", obligatoire=True)
+        _question(table, contrats, version)
+        for table in racine.tables("questions", obligatoire=True)
     )
     if not questions:
         raise JeuInvalide(f"{origine} : aucune question")
@@ -146,7 +147,7 @@ def charger_octets(octets: bytes, origine: str, contrats: Mapping[str, Contrat])
     return Jeu(version=version, description=description, instant=instant, questions=questions)
 
 
-def _question(table: _Table, contrats: Mapping[str, Contrat]) -> Question:
+def _question(table: _Table, contrats: Mapping[str, Contrat], version: str) -> Question:
     id_ = table.texte("id")
     forme = MOTIF_ID.fullmatch(id_)
     if forme is None:
@@ -177,7 +178,7 @@ def _question(table: _Table, contrats: Mapping[str, Contrat]) -> Question:
     table_attendu = table.table_facultative("attendu")
     attendu = None if table_attendu is None else _attendu(table_attendu, contrats)
     table.terminer()
-    _coherence(table.contexte, comportement, attendu, motif, calculable_au)
+    _coherence(table.contexte, comportement, attendu, motif, calculable_au, version)
     _coherence_notation(table.contexte, comportement, cis_attendu, section_attendue, reserve)
     return Question(
         id=id_,
@@ -202,6 +203,7 @@ def _coherence(
     attendu: Attendu | None,
     motif: str | None,
     calculable_au: str | None,
+    version: str,
 ) -> None:
     if calculable_au is not None and calculable_au not in LOTS:
         raise JeuInvalide(f"{contexte} : calculable_au « {calculable_au} » ; attendu : lot1 à lot5")
@@ -217,7 +219,11 @@ def _coherence(
         return
     if motif is None:
         raise JeuInvalide(f"{contexte} : une {comportement.value} exige un « motif »")
-    if calculable_au is not None:
+    # La v1 permet à une abstention de porter « calculable_au » : l'assistant s'abstient
+    # aujourd'hui (une dépense, avant le Lot 4), et la valeur deviendra calculable au lot nommé.
+    # La v0 garde la règle stricte, et un refus ne porte jamais « calculable_au ».
+    abstention_differee = comportement is Comportement.ABSTENTION and version == "v1"
+    if calculable_au is not None and not abstention_differee:
         raise JeuInvalide(f"{contexte} : « calculable_au » n'a de sens que pour une réponse")
     if comportement is Comportement.REFUS_MEDICAL and attendu is not None:
         raise JeuInvalide(f"{contexte} : un refus n'a pas d'« attendu »")

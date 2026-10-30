@@ -694,3 +694,30 @@ jeu de démo et depuis le gold (55 conformes, 55 concordent) : `avis_has-005`
 devient une réponse avec réserve, `alternatives-004` est retirée, et s'ajoutent
 les pièges (nom proche, CIS hors référentiel, médicale déguisée, deux
 médicaments) et deux cas limites sans refus.
+
+**Mission 08, palier 2** (30/10). L'assistant gouverné (`pharmaflux.assistant`),
+aucun appel réel depuis ma session : tous les tests passent par le double du
+client, la démonstration des cinq questions est préparée pour beko (addendum 2).
+Le chemin d'une question (`chemin.py`) : refus médical en tête puis abstentions
+dures (hors LLM), repérage et « deux médicaments », recherche hybride, porte
+structurelle (aucun fragment du médicament visé → abstention), LLM sous le
+plafond et caché, enfin le contrôle du code (citations parmi les fragments
+fournis ; nombres et dates du texte retrouvés dans un fragment cité ou la
+question, après normalisation — « 09/09/2026 », « 9 septembre 2026 »,
+« 20260909 » se rejoignent). Les sources, leurs dates et l'instant de l'index
+sont **rendus par le code**. Opus 5.5, sortie structurée, effort `low`,
+`max_tokens` 4 000, pas de repli ; un refus du modèle ou `max_tokens` est une
+abstention technique. Budget : estimation locale avant l'appel (jamais
+`count_tokens`), coût réel après dans `data/assistant/depenses.jsonl`, plafond
+20 $ ; cache des réponses par (prompt, contenu, modèle, effort, schéma). Les
+trois points du contrôle du palier 1 : les dix `depense` de la v1 passent en
+abstention (`calculable_au` gardé, parseur élargi à la v1 seule) ; le RRF côté
+client est déclaré (rapport, et ADR 0012 au palier 3) ; la coupure du registre,
+piste keep-alive examinée (client `httpx` persistant, `keepalive_expiry` 5 s par
+défaut, réessai qui recouvre) mais non confirmée côté serveur (délai de Redpanda
+non documenté), donc client inchangé, règle de la mission 07 gardée. Dépendance
+`anthropic` ajoutée (`uv.lock` au 16/10, sans toucher aux paquets déjà
+verrouillés). Vérifié contre le vrai index avec le double : refus, abstention et
+porte structurelle sans appel ; « LARIAM en rupture ? » rend une réponse citant
+le CIS 65999556 daté. 649 tests verts (intégration et modèle compris, 0 réessai
+du registre).

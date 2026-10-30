@@ -19,7 +19,7 @@ from typer.testing import CliRunner
 
 from pharmaflux import cli
 from pharmaflux.cli import application
-from pharmaflux.index import construction, encodeur
+from pharmaflux.index import construction, encodeur, lexical
 from pharmaflux.index.construction import Cache, Fragments, IndexRefuse
 from pharmaflux.index.encodeur import EncodeurTest
 from pharmaflux.index.fragments import fragments
@@ -67,7 +67,7 @@ def test_construire_ecrit_tous_les_fragments_puis_l_alias_puis_l_etat(
     frags = ecrire_fragments(tmp_path, trois_fiches())
     bilan = construire(simule, tmp_path, frags)
     assert bilan.fragments == frags.nombre == 7 and bilan.encodes == 7
-    assert bilan.collection == "pharmaflux-f1-test-20261027T001712Z"
+    assert bilan.collection == "pharmaflux-f2-test-20261027T001712Z"
     assert simule.alias == {ALIAS: bilan.collection}
     attendus = {f["identifiant"]: f for f in frags.lire()}
     points = simule.points(ALIAS)
@@ -84,7 +84,7 @@ def test_construire_ecrit_tous_les_fragments_puis_l_alias_puis_l_etat(
             "collection": bilan.collection,
             "instant": INSTANT,
             "vise": None,
-            "format": 1,
+            "format": 2,
             "modele": "test",
             "empreinte_modele": "test@1",
             "dimension": 32,
@@ -123,14 +123,62 @@ def test_chercher_rend_les_plus_proches_avec_l_instant_de_l_index(
     with Qdrant("http://qdrant.test", simule.transport()) as client:
         etat, resultats = construction.chercher(client, EncodeurTest(), cible["texte"], 3)
         assert etat["instant"] == INSTANT
-        assert resultats[0].charge["texte"] == cible["texte"] and resultats[
-            0
-        ].score == pytest.approx(1)
+        # L'hybride (défaut) : le texte exact de la cible la met au rang 1 (dense ET lexical).
+        assert resultats[0].charge["texte"] == cible["texte"]
         assert [r.rang for r in resultats] == [1, 2, 3]
+        # Le dense seul rend la cible à un cosinus de 1.
+        _, denses = construction.chercher(
+            client, EncodeurTest(), cible["texte"], 3, mode=construction.MODE_DENSE
+        )
+        assert denses[0].charge["texte"] == cible["texte"] and denses[0].score == pytest.approx(1)
         _, filtres = construction.chercher(
             client, EncodeurTest(), "x", 10, filtre_egal("section", "identite")
         )
         assert {r.charge["section"] for r in filtres} == {"identite"} and len(filtres) == 3
+
+
+def test_construire_ecrit_le_vecteur_creux_bm25(simule: QdrantSimule, tmp_path: Path) -> None:
+    frags = ecrire_fragments(tmp_path, trois_fiches())
+    construire(simule, tmp_path, frags)
+    attendus = {f["identifiant"]: f["texte"] for f in frags.lire()}
+    for identifiant, point in simule.points(ALIAS).items():
+        attendu = lexical.en_creux(lexical.vecteur_document(attendus[identifiant]))
+        assert construction._creux_normalise(point["vector"]["lexical"]) == (
+            construction._creux_normalise(attendu)
+        ), "le vecteur creux est une fonction du texte, écrit à côté du dense"
+
+
+def test_fusion_rrf_par_rang_et_ex_aequo_tranches_par_identifiant() -> None:
+    a = [{"id": "x", "score": 9.0, "payload": {"t": "X"}}, {"id": "y", "score": 8.0, "payload": {}}]
+    b = [{"id": "y", "score": 5.0, "payload": {}}, {"id": "z", "score": 4.0, "payload": {}}]
+    fusion = construction.fusion_rrf([a, b], 3, constante=60)
+    # y paraît dans les deux voies (1/61 + 1/62) ; x au rang 1 de a (1/61) ; z au rang 2 de b.
+    assert [p["id"] for p in fusion] == ["y", "x", "z"]
+    assert fusion[0]["payload"] == {"t": "X"} or fusion[0]["id"] == "y"
+    # Deux ex æquo (chacun rang 1 d'une voie) : l'identifiant croissant tranche.
+    exaequo = construction.fusion_rrf(
+        [[{"id": "b", "score": 1.0, "payload": {}}], [{"id": "a", "score": 1.0, "payload": {}}]], 2
+    )
+    assert [p["id"] for p in exaequo] == ["a", "b"]
+
+
+def test_chercher_lexical_et_hybride_trouvent_par_le_mot(
+    simule: QdrantSimule, tmp_path: Path
+) -> None:
+    frags = ecrire_fragments(tmp_path, trois_fiches())
+    construire(simule, tmp_path, frags)
+    with Qdrant("http://qdrant.test", simule.transport()) as client:
+        # « PARACETAMOL » n'est la dénomination que de 60000002 : le lexical le trouve par le mot.
+        _, lex = construction.chercher(
+            client, EncodeurTest(), "PARACETAMOL", 3, mode=construction.MODE_LEXICAL
+        )
+        assert lex and lex[0].charge["code_cis"] == "60000002"
+        assert all(r.charge["code_cis"] == "60000002" for r in lex), "seul 60000002 porte ce mot"
+        # L'hybride le remonte aussi, là où le dense (aléatoire ici) ne l'aurait pas mis en tête.
+        _, hyb = construction.chercher(
+            client, EncodeurTest(), "PARACETAMOL", 5, mode=construction.MODE_HYBRIDE
+        )
+        assert "60000002" in {r.charge["code_cis"] for r in hyb}
 
 
 def test_chercher_refuse_sans_index_ou_avec_un_autre_modele(
@@ -286,16 +334,24 @@ def test_evaluer_mesure_les_rangs_sans_seuil(simule: QdrantSimule, tmp_path: Pat
     )
     with Qdrant("http://qdrant.test", simule.transport()) as client:
         mesure = evaluation.evaluer(client, EncodeurTest(), jeu)
-    assert [(x.question, x.code_cis, x.section, x.rang) for x in mesure.lignes] == [
+    attendu_rangs = [
         ("disponibilite-1", "60000002", "disponibilite", 1),
         ("remboursement-1", "60000001", "presentations", 1),
         ("avis-1", "60000003", "avis", None),
-    ], "le CIP13 retrouve son CIS dans les fragments ; 60000003 n'a pas d'avis"
-    assert mesure.rappel(1) == 2 and mesure.rang_reciproque() == pytest.approx(2 / 3)
+    ]  # le CIP13 retrouve son CIS dans les fragments ; 60000003 n'a pas d'avis
+    for mode in evaluation.MODES:  # le texte exact trouve le fragment au rang 1, dans chaque mode
+        assert [
+            (x.question, x.code_cis, x.section, x.rangs[mode]) for x in mesure.lignes
+        ] == attendu_rangs, mode
+    assert mesure.rappel(evaluation.MODE_HYBRIDE, 1) == 2
+    assert mesure.rang_reciproque(evaluation.MODE_HYBRIDE) == pytest.approx(2 / 3)
     assert [q for q, _ in mesure.hors] == ["medical-1"]
     texte = evaluation.formater(mesure)
     assert (
         texte[0]
         == "index au 2026-10-27T00:17:12Z, modèle test@1 ; 3 questions nomment un médicament"
     )
-    assert texte[2].startswith("bon CIS + section  @1 2/3  @5 2/3  @10 2/3")
+    assert texte[2].split() == ["mode", "bon", "CIS", "@1/5/10", "bon", "CIS+section", "@1/5/10",
+                                "rang", "réciproque", "moyen"]  # fmt: skip
+    hybride = next(ligne for ligne in texte if ligne.startswith("hybride"))
+    assert "@1 2/3  @5 2/3  @10 2/3" in hybride and hybride.endswith("0.667")

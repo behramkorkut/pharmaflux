@@ -131,14 +131,22 @@ class QdrantSimule:
             )
         if reste == ["points", "query"]:
             candidats = [p for p in points.values() if _garde(p, corps.get("filter"))]
-            notes = sorted(
-                ((_cosinus(corps["query"], p["vector"]["dense"]), p["id"]) for p in candidats),
-                key=lambda x: (-x[0], x[1]),
-            )[: corps["limit"]]
+            if corps.get("using") == "lexical":
+                idf = _idf(points.values())
+                notes = [
+                    (s, p["id"])
+                    for p in candidats
+                    if (s := _bm25(corps["query"], p["vector"].get("lexical"), idf)) > 0
+                ]  # un creux sans terme commun ne paraît pas (index inversé)
+            else:
+                notes = [
+                    (_cosinus(corps["query"], p["vector"]["dense"]), p["id"]) for p in candidats
+                ]
+            classees = sorted(notes, key=lambda x: (-x[0], x[1]))[: corps["limit"]]
             return _ok(
                 {
                     "points": [
-                        {"id": i, "score": s, "payload": points[i]["payload"]} for s, i in notes
+                        {"id": i, "score": s, "payload": points[i]["payload"]} for s, i in classees
                     ]
                 }
             )
@@ -179,3 +187,26 @@ def _garde(point: dict[str, Any], filtre: dict[str, Any] | None) -> bool:
 def _cosinus(a: list[float], b: list[float]) -> float:
     produit = sum(x * y for x, y in zip(a, b, strict=True))
     return produit / (math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b)))
+
+
+def _idf(points: Any) -> dict[int, float]:
+    """L'IDF BM25 de chaque indice sur la collection, comme le modificateur ``idf`` de Qdrant."""
+    docs = [p["vector"]["lexical"] for p in points if p["vector"].get("lexical")]
+    total = len(docs)
+    presence: dict[int, int] = {}
+    for creux in docs:
+        for i in creux["indices"]:
+            presence[i] = presence.get(i, 0) + 1
+    return {i: math.log(1 + (total - n + 0.5) / (n + 0.5)) for i, n in presence.items()}
+
+
+def _bm25(requete: dict[str, Any], document: dict[str, Any] | None, idf: dict[int, float]) -> float:
+    """Σ q_i · d_i · idf_i sur les indices communs : l'IDF au serveur, comme Qdrant."""
+    if not document:
+        return 0.0
+    doc = dict(zip(document["indices"], document["values"], strict=True))
+    return sum(
+        valeur * doc[i] * idf.get(i, 0.0)
+        for i, valeur in zip(requete["indices"], requete["values"], strict=True)
+        if i in doc
+    )

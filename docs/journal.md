@@ -662,3 +662,35 @@ prend le verrou. Pas de tour 2. Non-régression complète rejouée sur
 `50e7533` : 601 tests, `evenements` identique à `98505d3`, `silver verifier`
 22/22, `make gold` sans bloquant et 25 concordantes, l'index du Mac
 conforme. Description de la PR, puis revue finale de l'IeC.
+
+**Mission 08, la CI de la PR #8** (30/10). Les durées que le `pr.md` de la
+mission 07 laissait « à compléter après la publication », relevées sur la CI
+de la PR #8 : les deux `make index` avec l'encodeur de test en 66 s ; le cache
+du modèle absent au premier run, l'installation et la vérification du vrai
+modèle en 3 s, le vrai modèle sur un sous-ensemble en 62 s, la sauvegarde du
+cache en 4 s ; le job `integration` en 6 min 24 s, `verifier` en 5 min 23 s.
+
+**Mission 08, palier 1** (30/10). La recherche hybride et le jeu v1, sans
+aucun appel à l'API. `index/lexical.py` : un tokenizer déterministe
+(minuscules, accents dépliés, CIS et CIP13 entiers, unités de dose ramenées à
+une graphie, ni racinisation ni mots vides) et un vecteur creux BM25.
+L'indice d'un terme vient d'un `blake2b` sur 31 bits (0 collision sur les
+65 363 termes du jeu) ; la valeur est le terme « document » de BM25 (`K1 = 1,2`,
+`B = 0,75`, longueur moyenne **53,29** figée, mesurée une fois sur les 72 296
+fragments), l'IDF restant à Qdrant (`modifier: idf`), si bien que la valeur ne
+dépend que du texte. **Format 2** : chaque point porte un vecteur creux
+`lexical` à côté du `dense` ; la reconstruction relit les 72 296 vecteurs
+denses du cache (0 réencodé, 38 s). La fusion est un RRF **côté client**
+(`k = 60`, 50 candidats par voie, aucun réglage sur le jeu d'évaluation).
+`index evaluer` sort dense seul, creux seul et hybride ; `index verifier`
+compare aussi le vecteur creux au recalcul (indices, valeurs en `float32`).
+Rappel (bon CIS, hybride ≥ dense à 5 et 10, meilleur sur `identite`) : v0,
+dense @5/@10 20/20 → hybride 22/22 ; v1 (47 questions nommant un médicament),
+dense @5/@10 45/45 → hybride 47/47, rang réciproque de 0,680 à 0,747. Deux
+constructions depuis le jeu donnent le même instant `2026-10-27T00:17:12Z`.
+Jeu v1 (`evaluation/questions-reference-v1.toml`, 88 questions, ≥ 10 par
+catégorie), daté à l'instant de l'index, vérifié sans LLM depuis le bronze du
+jeu de démo et depuis le gold (55 conformes, 55 concordent) : `avis_has-005`
+devient une réponse avec réserve, `alternatives-004` est retirée, et s'ajoutent
+les pièges (nom proche, CIS hors référentiel, médicale déguisée, deux
+médicaments) et deux cas limites sans refus.

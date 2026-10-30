@@ -6,8 +6,10 @@ permet aux tests de simuler le serveur.
 
 Les fragments vivent dans une collection par (format, modèle, construction),
 désignée par l'alias ``pharmaflux-fragments`` : une construction remplit une
-collection neuve, puis bascule l'alias d'un coup. Le vecteur est **nommé**
-(``dense``), pour qu'un vecteur creux s'ajoute à côté à la mission 08.
+collection neuve, puis bascule l'alias d'un coup. Chaque point porte deux
+vecteurs **nommés** : ``dense`` (le modèle d'embeddings) et ``lexical`` (le
+vecteur creux BM25, format 2, mission 08), ce dernier avec le modificateur
+``idf`` pour que Qdrant apporte l'IDF du corpus à la requête (``index.lexical``).
 L'état de l'index (instant, modèle, format) est un point sans vecteur dans
 la collection ``pharmaflux-index-etat`` : un ``down -v`` efface l'index et
 son état ensemble.
@@ -28,6 +30,7 @@ ESPACE = "pharmaflux"  # les tests d'intégration prennent un espace à eux, jam
 ALIAS = f"{ESPACE}-fragments"
 COLLECTION_ETAT = f"{ESPACE}-index-etat"
 VECTEUR = "dense"
+VECTEUR_CREUX = "lexical"  # le vecteur creux BM25 (format 2) ; l'IDF est au serveur (modifier idf)
 CHAMPS_INDEXES = ("code_cis", "section")  # filtres de chercher, de la mise à jour, de l'état
 DELAI_S = 60.0
 # Points par page du parcours. Mesuré au palier 3 sur l'index du jeu, vecteurs compris : 82 Mo
@@ -46,6 +49,7 @@ class Point:
     identifiant: str
     vecteur: Sequence[float]
     charge: dict[str, object]
+    creux: dict[str, object] | None = None  # vecteur creux {indices, values} (format 2)
 
 
 class Qdrant:
@@ -76,10 +80,13 @@ class Qdrant:
         return sorted(c["name"] for c in resultat["collections"])
 
     def creer_collection(self, nom: str, dimension: int | None) -> None:
-        """Une collection au vecteur ``dense`` (cosinus) et ses index de charge ; sans vecteur si
-        ``dimension`` est None (l'état)."""
+        """Une collection aux vecteurs ``dense`` (cosinus) et ``lexical`` (creux, IDF au serveur)
+        et ses index de charge ; sans vecteur si ``dimension`` est None (l'état)."""
         vecteurs = {} if dimension is None else {VECTEUR: {"size": dimension, "distance": "Cosine"}}
-        self._appeler("PUT", f"/collections/{nom}", {"vectors": vecteurs})
+        corps: dict[str, object] = {"vectors": vecteurs}
+        if dimension is not None:
+            corps["sparse_vectors"] = {VECTEUR_CREUX: {"modifier": "idf"}}
+        self._appeler("PUT", f"/collections/{nom}", corps)
         if dimension is not None:
             for champ in CHAMPS_INDEXES:
                 self._appeler(
@@ -108,13 +115,15 @@ class Qdrant:
     def ecrire(self, collection: str, points: Sequence[Point]) -> None:
         if not points:
             return
-        corps = {
-            "points": [
-                {"id": p.identifiant, "vector": {VECTEUR: list(p.vecteur)}, "payload": p.charge}
-                for p in points
-            ]
-        }
+        corps = {"points": [self._point(p) for p in points]}
         self._appeler("PUT", f"/collections/{collection}/points?wait=true", corps)
+
+    @staticmethod
+    def _point(p: Point) -> dict[str, object]:
+        vecteur: dict[str, object] = {VECTEUR: list(p.vecteur)}
+        if p.creux is not None:
+            vecteur[VECTEUR_CREUX] = p.creux
+        return {"id": p.identifiant, "vector": vecteur, "payload": p.charge}
 
     def supprimer(self, collection: str, filtre: dict[str, object]) -> None:
         """Par filtre : seuls les tests d'intégration s'en servent (la mise à jour retire par
@@ -151,7 +160,7 @@ class Qdrant:
             corps: dict[str, object] = {
                 "limit": LOT_PARCOURS,
                 "with_payload": list(champs) if champs is not None else True,
-                "with_vector": [VECTEUR] if vecteurs else False,
+                "with_vector": [VECTEUR, VECTEUR_CREUX] if vecteurs else False,
             }
             if filtre is not None:
                 corps["filter"] = filtre
@@ -179,6 +188,26 @@ class Qdrant:
             # Exacte : sur le jeu, l'index HNSW par défaut ne rendait que 82 % des dix premiers
             # (91 % avec hnsw_ef 256), pour 3 ms ; l'exacte en prend 7 (mesuré au palier 2).
             "params": {"exact": True},
+        }
+        if filtre is not None:
+            corps["filter"] = filtre
+        resultat = self._appeler("POST", f"/collections/{collection}/points/query", corps)
+        points: list[dict[str, Any]] = resultat["points"]
+        return points
+
+    def chercher_creux(
+        self,
+        collection: str,
+        creux: dict[str, object],
+        k: int,
+        filtre: dict[str, object] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Les ``k`` points par score BM25 (vecteur creux ``lexical``, IDF appliquée au serveur)."""
+        corps: dict[str, object] = {
+            "query": creux,
+            "using": VECTEUR_CREUX,
+            "limit": k,
+            "with_payload": True,
         }
         if filtre is not None:
             corps["filter"] = filtre

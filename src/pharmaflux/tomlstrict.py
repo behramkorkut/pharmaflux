@@ -56,6 +56,14 @@ class TableStricte:
             raise self._refuser(cle, "un booléen")
         return valeur
 
+    def booleen_facultatif(self, cle: str, *, defaut: bool) -> bool:
+        valeur = self._prendre(cle, obligatoire=False)
+        if valeur is None:
+            return defaut
+        if not isinstance(valeur, bool):
+            raise self._refuser(cle, "un booléen")
+        return valeur
+
     def entier_facultatif(self, cle: str, *, minimum: int) -> int | None:
         valeur = self._prendre(cle, obligatoire=False)
         if valeur is None:

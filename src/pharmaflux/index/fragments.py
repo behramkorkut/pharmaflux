@@ -41,7 +41,10 @@ from decimal import Decimal
 from typing import Any
 
 # Change dès que, pour les mêmes fiches, un texte, un identifiant ou une métadonnée change.
-FORMAT = 1
+# Format 2 (mission 08) : le texte des fragments ne change pas, mais chaque point porte désormais
+# un vecteur creux BM25 à côté du dense (index.lexical, index.qdrant). Le bump force une
+# reconstruction unique ; les vecteurs denses sont relus du cache, le texte étant inchangé.
+FORMAT = 2
 BORNE_CARACTERES = 1200  # recalée au palier 2 : au pire 2,48 caractères par jeton e5, 512 au plus
 ESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://github.com/behramkorkut/pharmaflux/fragments")
 

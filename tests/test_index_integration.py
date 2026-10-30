@@ -70,7 +70,20 @@ def test_construire_chercher_et_reconstruire_sur_le_vrai_qdrant(
     cible = next(f for f in frags.lire() if f["section"] == "presentations")
     _, resultats = construction.chercher(qdrant, EncodeurTest(), cible["texte"], 3)
     assert resultats[0].charge == {k: v for k, v in cible.items() if k != "identifiant"}
-    assert resultats[0].score == pytest.approx(1, abs=1e-5), "cosinus du même vecteur"
+    # L'hybride (défaut) rend un score de fusion ; le dense seul rend le cosinus du même vecteur.
+    _, denses = construction.chercher(
+        qdrant, EncodeurTest(), cible["texte"], 3, mode=construction.MODE_DENSE
+    )
+    assert denses[0].score == pytest.approx(1, abs=1e-5), "cosinus du même vecteur"
+    # Format 2 : le vecteur creux est écrit à côté du dense, et le lexical le trouve par le mot.
+    point = next(
+        qdrant.parcourir(qdrant.alias_fragments, filtre_egal("code_cis", "60000002"), vecteurs=True)
+    )
+    assert "lexical" in point["vector"] and point["vector"]["lexical"]["indices"]
+    _, lex = construction.chercher(
+        qdrant, EncodeurTest(), "PARACETAMOL", 3, mode=construction.MODE_LEXICAL
+    )
+    assert lex and lex[0].charge["code_cis"] == "60000002", "60000002 est le seul PARACETAMOL"
     seconde = construction.construire(qdrant, EncodeurTest(), frags, cache)
     assert seconde.encodes == 0 and seconde.collection == premiere.collection + "-bis"
     assert premiere.collection not in qdrant.collections(), "l'ancienne est effacée"

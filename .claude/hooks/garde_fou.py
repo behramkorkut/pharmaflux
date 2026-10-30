@@ -113,7 +113,10 @@ TESTS_GARDE_FOUS = (
     ["python3", "infra/agents/test_garde_fou.py"],
 )
 # Commandes système interdites à tous les agents (beko installe).
-SYSTEME = {"launchctl", "crontab", "brew", "sudo", "su", "chmod", "chown"}
+SYSTEME = {"launchctl", "crontab", "brew", "sudo", "su", "chmod", "chown", "security"}
+# La clé de l'API Claude (mission 08) : dans le trousseau de beko, lue par avec-cle.sh, que
+# beko seul lance. Aucun agent ne la lit, même cachée derrière bash -c, xargs ou eval.
+CLE_BRUT = re.compile(r"\bsecurity\s+(find|dump|export)-|\bavec-cle\.sh\b")
 # make, pour tous les rôles (mission 04) : ses recettes échappent au garde-fou
 # (docker compris). Les agents l'appellent en simulation, qui affiche les
 # commandes sans les lancer ; make <cible> est à beko et à la CI.
@@ -540,6 +543,11 @@ def verifier_bash(role: str, commande: str) -> None:
 
     for mots, cibles in segments(nette):
         tete = Path(mots[0]).name
+        # La clé de l'API : lire le script se fait par l'outil Read ; le lancer est à beko.
+        if tete not in LECTURE and tete != "git" and CLE_BRUT.search(" ".join(mots)):
+            raise Refus(
+                "la clé de l'API Claude est à beko : aucun agent ne la lit ni ne s'en sert."
+            )
         # Filet : git caché derrière bash -c, xargs, eval…
         # Une commande de lecture est exemptée du filet, sauf si elle en lance une autre.
         lit_seulement = tete in LECTURE and not execute_par_option(mots)

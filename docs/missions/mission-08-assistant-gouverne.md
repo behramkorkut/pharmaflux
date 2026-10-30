@@ -6,7 +6,7 @@ annexe B · mission 07 (`pr.md`, `controle-iec-final.md`) · ADR 0003, 0004,
 0010 et 0011 · `evaluation/README.md` · `CLAUDE.md` ·
 `docs/agents/processus.md`
 **Statut :** ordre rédigé le 30/10/2026 — §0 rendu (`314bd46`), tranché
-par l'**addendum 1** (en fin de fichier) — **palier 1 ouvert**
+par les **addenda 1 et 2** (en fin de fichier) — **palier 2 ouvert**
 **Branche :** `mission-08-assistant-gouverne`, dans `pharmaflux-codeur/`
 (préparée par beko avec `preparer-mission.sh`). Trois paliers, chacun
 committé en local et contrôlé par l'IeC ; **aucun push** de ta part.
@@ -538,3 +538,25 @@ désactivable, `temperature`, `top_p` et `top_k` refusés depuis le
 ### La clôture
 
 Elle ne change pas.
+
+## Addendum 2 — la clé de l'API et le codeur du palier 2 (30/10/2026)
+
+Écrit au contrôle du palier 1 (`afe0c68`, accepté).
+
+- **La clé de l'API vit dans le trousseau macOS de beko** (service
+  `pharmaflux-anthropic`), jamais dans un fichier, ni dans
+  l'environnement d'une session. Le script `infra/agents/avec-cle.sh` la
+  donne au seul processus qu'il lance, et **beko seul** le lance, depuis
+  Terminal.app. Le garde-fou refuse à tous les rôles `security find-…` et
+  `avec-cle.sh`. Le code trouve la clé où le SDK la cherche
+  (`ANTHROPIC_API_KEY`), comme l'ordre le dit.
+- **La démonstration du palier 2 (décision 6) est lancée par beko** : le
+  codeur prépare les cinq commandes, beko les lance avec `avec-cle.sh`, et
+  le codeur cite la sortie, le coût réel et ce qui reste du plafond. Aucun
+  appel réel ne part d'une session d'agent dans cette mission. Il en va de
+  même pour l'évaluation complète du palier 3, déjà confiée à beko.
+- **À partir du palier 2, le codeur est Claude Opus 4.8** (choix de beko),
+  dans une session neuve qui lit l'ordre et ses addenda, `points-a-trancher.md`,
+  `palier-1.md` et `controle-palier-1.md`. Ses commits portent
+  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. Le modèle
+  **de l'assistant** ne change pas : Claude Opus 5.5.

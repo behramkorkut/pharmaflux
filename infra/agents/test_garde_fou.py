@@ -308,6 +308,27 @@ class GardeFou(unittest.TestCase):
             with self.subTest(commande=commande):
                 self.assertFalse(self.bash(self.codeur, commande))
 
+    def test_cle_de_l_api_a_beko_seul(self) -> None:
+        """Mission 08 : la clé est dans le trousseau de beko ; aucun rôle ne la lit."""
+        for commande in (
+            "security find-generic-password -s pharmaflux-anthropic -w",
+            "/usr/bin/security dump-keychain",
+            "sh infra/agents/avec-cle.sh uv run pharmaflux assistant depenses",
+            "bash -c 'security find-generic-password -s x -w'",
+            "X=$(security find-generic-password -s x -w) uv run pharmaflux",
+            "echo uv | xargs sh infra/agents/avec-cle.sh",
+        ):
+            with self.subTest(commande=commande):
+                self.assertFalse(self.bash(self.codeur, commande))
+                self.assertFalse(self.bash(self.relecteur, commande))
+                self.assertFalse(self.bash(self.principal, commande))
+        for commande in (
+            "grep -n security infra/agents/avec-cle.sh",
+            "git log -- infra/agents/avec-cle.sh",
+        ):
+            with self.subTest(commande=commande):
+                self.assertTrue(self.bash(self.codeur, commande))
+
     def test_make_en_simulation_seulement(self) -> None:
         """Mission 04 : les recettes d'un Makefile échappent au garde-fou, pour tous les rôles."""
         for dossier in (self.codeur, self.relecteur, self.principal):

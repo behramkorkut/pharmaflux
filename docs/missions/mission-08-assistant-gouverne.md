@@ -555,8 +555,14 @@ Elle ne change pas.
   le codeur cite la sortie, le coût réel et ce qui reste du plafond. Aucun
   appel réel ne part d'une session d'agent dans cette mission. Il en va de
   même pour l'évaluation complète du palier 3, déjà confiée à beko.
-- **À partir du palier 2, le codeur est Claude Opus 4.8** (choix de beko),
-  dans une session neuve qui lit l'ordre et ses addenda, `points-a-trancher.md`,
-  `palier-1.md` et `controle-palier-1.md`. Ses commits portent
-  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. Le modèle
+- **Le codeur, palier par palier** (choix de beko) :
+  - **palier 2 et premier commit du palier 3** (jusqu'à `4f827cb`) :
+    Claude Opus 4.8, dans la même session que le palier 1 ; seul son
+    modèle avait changé ;
+  - **reste du palier 3 et suite** : Claude Opus 5.5, dans une session
+    neuve qui reprend au sommet `4f827cb`.
+
+  Chaque commit porte le trailer du modèle qui l'a écrit
+  (`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` ou
+  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). Le modèle
   **de l'assistant** ne change pas : Claude Opus 5.5.

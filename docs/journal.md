@@ -725,8 +725,10 @@ technique journalisée (l'appel payé n'est jamais perdu), et une abstention
 technique n'entre pas au cache (une reprise retente l'appel). Démonstration de
 beko (3 appels réels, 0,0432 $, reste 19,9568 $) : l'abstention de la question 1
 était un faux positif du contrôle des nombres — « CIP13 3400933961688 » lu
-« 13 340 », le « 13 » du label collé au début du CIP —, corrigé par des
-frontières de mot dans le normaliseur (la réponse passe alors le contrôle,
-vérifié sans appel depuis le cache) ; le cache du prompt s'avère effectif
-(923 jetons écrits puis relus). 656 tests verts (intégration et modèle compris,
-0 réessai du registre).
+« 13 340 », le « 13 » du label collé au début du CIP —, corrigé dans le
+normaliseur : frontière de début « (?<!\w) » (pas de nombre au milieu d'un code)
+et de fin « (?!\d) » (un chiffre suivant est interdit, mais « 250mg » reste lu,
+pour qu'un nombre inventé collé à son unité ne passe pas inaperçu) ; la réponse
+passe alors le contrôle, vérifié sans appel depuis le cache. Le cache du prompt
+s'avère effectif (923 jetons écrits puis relus). 657 tests verts (intégration et
+modèle compris, 0 réessai du registre).

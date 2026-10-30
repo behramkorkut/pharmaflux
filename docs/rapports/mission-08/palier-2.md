@@ -136,12 +136,15 @@ Relu **sans aucun appel** : la réponse du modèle est dans `data/assistant/cach
 texte finit par « … une plaquette de 8 comprimés (CIP13 3400933961688) ». Le normaliseur des
 nombres (`controle._NOMBRE`) collait le « 13 » du **label** « CIP13 » à l'espace puis aux
 premiers chiffres du CIP (« 340… ») et lisait un faux « 13 340 » → `13340`, en coupant le CIP en
-« 933961688 ». **Cas (c) : un faux positif.** Correctif (ce commit) : des **frontières de mot**
-(`\b`) dans `_NOMBRE`, pour qu'un nombre ne commence pas au milieu d'un code alphanumérique
-(« CIP13 », « P01BC02 »). Vérifié sans appel : la recherche rejoue les dix mêmes fragments, et la
-réponse du modèle **passe** alors le contrôle (ses nombres — CIS 65999556, CIP 3400933961688,
-250, 8 — et ses dates sont tous dans les fragments cités [1] disponibilite et [2] presentations).
-Un test de régression fige le cas.
+« 933961688 ». **Cas (c) : un faux positif.** Correctif : dans `_NOMBRE`, une frontière de
+**début** (`(?<!\w)`) empêche de commencer au milieu d'un code alphanumérique (« CIP13 »,
+« P01BC02 »), et une frontière de **fin** (`(?!\d)`) interdit seulement un chiffre qui suit — une
+unité collée (« 250mg », « 5ml ») reste **lue**, pour qu'un nombre inventé et collé à son unité
+ne passe pas inaperçu (le contrôle ne doit jamais devenir plus permissif). Vérifié sans appel :
+la recherche rejoue les dix mêmes fragments, et la réponse du modèle **passe** alors le contrôle
+(ses nombres — CIS 65999556, CIP 3400933961688, 250, 8 — et ses dates sont tous dans les
+fragments cités [1] disponibilite et [2] presentations). Deux tests de régression figent le cas
+(CIP13 et ATC non coupés ; « 250mg » appuyé passe, « 500mg » inventé donne une abstention).
 
 ### B. La source « CIS_bdpm.txt (source non datée) » de la question 3 : voulu
 
@@ -178,7 +181,7 @@ Deux corrections avant la démonstration, sur le commit de ce rapport :
 |---|---|
 | `uv run ruff check .` / `ruff format --check .` | All checks passed / 281 fichiers déjà formatés |
 | `uv run mypy src` | Success: no issues found in 68 source files (76 avec les ajouts) |
-| `GITHUB_ACTIONS=true uv run pytest -q -rE` (unité + intégration + modèle, Qdrant et modèle présents) | **656 passed** (~5 min 45), session verte ; **0 réessai du registre** (sur 30 cycles ; la coupure ne s'est pas reproduite) |
+| `GITHUB_ACTIONS=true uv run pytest -q -rE` (unité + intégration + modèle, Qdrant et modèle présents) | **657 passed** (~6 min), session verte ; **0 réessai du registre** (sur 30 cycles ; la coupure ne s'est pas reproduite) |
 | `sh infra/git-hooks/test-crochets.sh` / `python3 infra/agents/test_garde_fou.py` | tout est conforme / OK (21 tests) |
 | `questions verifier` v1, `--racine demo/archive` | 88 : 55 conforme, 10 non calculable, 23 sans attendu |
 | idem `--entrepot data/demo/lakehouse` | 55 depuis le gold : 55 concordent |

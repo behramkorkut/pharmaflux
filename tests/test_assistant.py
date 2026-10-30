@@ -154,6 +154,15 @@ def test_controle_un_code_colle_a_un_label_nest_pas_un_faux_nombre() -> None:
     assert controle.controler(reponse, [frag], "LARIAM en rupture ?") is None
 
 
+def test_controle_nombre_colle_a_son_unite_est_vu() -> None:
+    """Un nombre collé à son unité (« 250mg », « 10mg ») doit être lu : sinon un chiffre
+    inventé et collé à son unité passerait le contrôle sans être vu (régression du palier 3)."""
+    assert controle.extraire("10mg")[0] == {"10"}
+    frag = "CIS 60000001 — DOLIPRANE 250mg, comprimé"
+    assert controle.controler("La dose est 250mg.", [frag], "q") is None  # appuyé → passe
+    assert controle.controler("La dose est 500mg.", [frag], "q") is not None  # inventé → abstention
+
+
 # --- budget ------------------------------------------------------------------------------------
 
 

@@ -206,7 +206,10 @@ démonstration. Après l'évaluation, la mission aura dépensé moins de 1 $ en 
 - le chemin complet, SDK importé, plafonne à 419 Mo, mesuré avec un faux client sans réseau ;
 - un seul processus suffit.
 
-**La séquence de clôture**, dans `pharmaflux-codeur/`, depuis Terminal.app :
+**La séquence de clôture**, dans `pharmaflux-codeur/`, depuis Terminal.app. `make rebatir`
+lance `docker compose -p pharmaflux down -v` : il **efface les volumes Qdrant et Redpanda du
+projet `pharmaflux`** (rien d'Alamel), comme l'ordre le veut, et garde `data/index` et
+`data/assistant`.
 
 ```bash
 make rebatir && make demo && make silver && make gold && make index
@@ -220,6 +223,23 @@ uv run pharmaflux assistant depenses
 me faut** : la sortie entière de `make evaluer`, et celle de `depenses`. Le détail, sous
 `data/assistant/evaluations/`, je le lis dans mon dossier. Si un indicateur appelle une
 explication, une nouvelle notation se rejoue sur le cache, sans dépense.
+
+## Le contrôle du palier 3 (accepté) : ce qui est fait avant la clôture
+
+1. **Le classement des colonnes est éprouvé contre le texte que rend vraiment
+   `fragments.py`** (`test_le_classement_des_colonnes_est_vrai`). Les fiches du gold du jeu de
+   démo, à l'instant de la v1, passent par `index.fragments`. Les **114 valeurs dues** des
+   **49 réponses attendues** se retrouvent toutes, par la comparaison de la notation, dans le
+   texte des fragments de leur CIS et de leur section. Aucune valeur hors texte des fiches
+   elles-mêmes n'y paraît : prix hors honoraires, honoraires, date de déclaration, agrément, rang
+   de tri, liens d'avis, liens ANSM. Le test compte ce qu'il examine, pour ne jamais passer à
+   vide. **Le classement est vrai** : aucune colonne ne change de table, et aucune nouvelle
+   notation n'est nécessaire.
+2. **La sortie de beko** sera citée ici, puis dans `pr.md`, une fois l'évaluation lancée : la
+   sortie entière de `make evaluer` et de `depenses`, les indicateurs du §2.2, les deux conditions
+   dures, les abstentions techniques, et la raison de chaque question fausse.
+
+Le fichier du contrôle est committé tel quel.
 
 ## `make -n` des cibles nouvelles ou modifiées
 
@@ -246,7 +266,7 @@ docker compose -p pharmaflux up -d --wait --pull never
 |---|---|
 | `uv run ruff check .` / `ruff format --check .` | All checks passed / tous les fichiers formatés |
 | `uv run mypy src` | Success: no issues found in 78 source files |
-| `GITHUB_ACTIONS=true uv run pytest -q -rE -rs` (Qdrant, Redpanda et modèle présents) | **705 passed** en 6 min 37 (657 au départ du palier, 703 sur `c4ddec8`), intégration et modèle compris, aucun saut ; session verte, **0 réessai du registre** |
+| `GITHUB_ACTIONS=true uv run pytest -q -rE -rs` (Qdrant, Redpanda et modèle présents) | **706 passed** en 6 min 31 (657 au départ du palier, 703 sur `c4ddec8`, 705 sur `f6b1d67`), intégration et modèle compris, aucun saut ; session verte |
 | `sh infra/git-hooks/test-crochets.sh` / `python3 infra/agents/test_garde_fou.py` | tout est conforme / OK (21 tests) |
 | `questions verifier` v1, `--racine demo/archive --entrepot data/demo/lakehouse` | 88 : 50 conformes, 10 non calculables, 28 sans attendu ; 50 depuis le gold : 50 concordent |
 | `questions verifier` v0, `--racine demo/archive --entrepot data/demo/lakehouse` | 40 : 25 conformes, 5 non calculables, 10 sans attendu ; 25 depuis le gold : 25 concordent |

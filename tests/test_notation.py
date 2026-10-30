@@ -10,6 +10,7 @@ import json
 import os
 import re
 import socket
+from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from datetime import date
@@ -525,3 +526,96 @@ def test_cli_evaluer_refuse_un_autre_instant(tmp_path: Path) -> None:
         ],
     )
     assert resultat.exit_code == 2 and "le jeu attend 2026-10-24T20:00:00Z" in resultat.output
+
+
+# --- le classement des colonnes, éprouvé contre le texte que rend fragments.py ------------------
+
+
+def test_le_classement_des_colonnes_est_vrai(demo_silver: tuple[Path, Path]) -> None:
+    """Contrôle du palier 3 : le classement « due » / « hors texte » est vrai, pas seulement
+    complet. Les fiches du gold du jeu de démo, à l'instant de la v1, passent par
+    ``index.fragments`` ; puis :
+
+    - chaque valeur **due** de chaque réponse attendue de la v1 se retrouve, par la comparaison de
+      la notation, dans le texte des fragments du CIS et de la section attendus (un CIS : un
+      fragment de ce CIS existe, son en-tête le rend) ;
+    - aucune valeur non vide d'une colonne **hors texte**, lue dans les fiches elles-mêmes, ne
+      paraît dans le texte de sa section. Un lien se cherche tel quel, un prix ou des honoraires
+      comme nombre, une date comme date ; le rang de tri et l'agrément (un petit entier, « oui » ou
+      « non », indiscernables d'un autre chiffre ou d'un « non renseigné ») par leur libellé.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    from pharmaflux.gold import vues as vues_gold
+    from pharmaflux.gold.sql import etats_types
+    from pharmaflux.index import lexical
+    from pharmaflux.index.fragments import fragments
+    from pharmaflux.silver import etat as etat_silver
+    from pharmaflux.silver.entrepot import Entrepot
+
+    jeu = charger_jeu(Path("evaluation/questions-reference-v1.toml"), charger_tous())
+    assert jeu.instant is not None
+    entrepot = Entrepot.ouvrir(demo_silver[1])
+    instant = etat_silver.lire_instant(jeu.instant)
+    vues = vues_gold.vues(
+        entrepot, charger_tous(), etats_types(entrepot, charger_tous(), instant), instant
+    )
+    reponses = [q for q in jeu.questions if q.comportement is Comportement.REPONSE and q.attendu]
+    voulus = {q.cis_attendu for q in reponses if q.cis_attendu} | {
+        v for q in reponses for _, v, nature in notation.valeurs_dues(q) if nature == notation.CIS
+    }
+    filtre = pc.is_in(vues.fiche["code_cis"], value_set=pa.array(sorted(voulus)))
+    fiches = vues.fiche.filter(filtre).to_pylist()
+    textes: dict[tuple[str, str], str] = {}
+    for fragment in (f for fiche in fiches for f in fragments(fiche)):
+        cle = (fragment.code_cis, fragment.section)
+        textes[cle] = textes.get(cle, "") + "\n" + fragment.texte
+    rendus = frozenset(cis for cis, _ in textes)
+
+    absentes = [
+        f"{q.id} : {colonne} = {valeur}"
+        for q in reponses
+        for colonne, valeur, nature in notation.valeurs_dues(q)
+        if not notation.presente(
+            valeur, nature, textes.get((str(q.cis_attendu), str(q.section_attendue)), ""), rendus
+        )
+    ]
+    assert len(reponses) == 49 and absentes == []
+    assert sum(len(notation.valeurs_dues(q)) for q in reponses) == 114  # rien de vide
+
+    visibles: list[str] = []
+    examinees: Counter[str] = Counter()
+    for fiche in fiches:
+        cis = fiche["code_cis"]
+        texte_pres = textes.get((cis, "presentations"), "")
+        for p in fiche["presentations"] or ():
+            examinees["presentations"] += 1
+            for colonne in ("prix_medicament", "honoraires_dispensation"):
+                if p[colonne] is not None and notation.presente(
+                    str(p[colonne]), notation.NOMBRE, texte_pres, frozenset()
+                ):
+                    visibles.append(f"{cis} {colonne} {p[colonne]}")
+            date_decl = p["date_declaration_commercialisation"]
+            if date_decl is not None and notation.presente(
+                date_decl.isoformat(), notation.DATE, texte_pres, frozenset()
+            ):
+                visibles.append(f"{cis} date_declaration_commercialisation {date_decl}")
+        if {"agrement", "agree", "collectivites"} & set(lexical.jetons(texte_pres)):
+            visibles.append(f"{cis} agrement_collectivites")
+        if {"tri", "numero"} & set(lexical.jetons(textes.get((cis, "identite"), ""))):
+            visibles.append(f"{cis} numero_tri")
+        texte_avis = textes.get((cis, "avis"), "")
+        for avis in [*(fiche["avis_smr"] or ()), *(fiche["avis_asmr"] or ())]:
+            examinees["liens_avis"] += len(avis["liens_avis"] or ())
+            visibles += [
+                f"{cis} lien_avis {lien}" for lien in avis["liens_avis"] or () if lien in texte_avis
+            ]
+        texte_dispo = textes.get((cis, "disponibilite"), "")
+        for signalement in fiche["disponibilite"] or ():
+            lien = signalement["lien_ansm"]
+            examinees["lien_ansm"] += bool(lien)
+            if lien and lien in texte_dispo:
+                visibles.append(f"{cis} lien_ansm {lien}")
+    assert visibles == []
+    assert min(examinees.values()) > 0 and len(examinees) == 3, examinees

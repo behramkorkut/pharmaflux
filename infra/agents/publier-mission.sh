@@ -26,7 +26,7 @@ git -C "$CODEUR" ls-files --error-unmatch "$CORPS" >/dev/null 2>&1 \
 
 TITRE=$(head -1 "$CODEUR/$CORPS" | sed 's/^# *//')
 echo "Commits à publier :"
-git -C "$CODEUR" log --oneline "main..$BRANCHE"
+git -C "$CODEUR" --no-pager log --oneline "main..$BRANCHE"  # sans pager : la question suit
 printf "Pousser %s et ouvrir la PR « %s » ? [o/N] " "$BRANCHE" "$TITRE"
 read -r reponse
 [ "$reponse" = "o" ] || { echo "Abandon."; exit 1; }

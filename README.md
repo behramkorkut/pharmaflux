@@ -12,7 +12,7 @@ et les met à la disposition d'un assistant qui cite ses sources et
 s'abstient quand il ne sait pas.
 
 Projet portfolio de Behram Korkut. Le cadrage complet est dans
-[`01_Specifications/`](01_Specifications/PRD_Plateforme_Medicaments_v0.8.md)
+[`01_Specifications/`](01_Specifications/PRD_Plateforme_Medicaments_v0.9.md)
 et le point d'entrée technique dans [`docs/CONTEXTE.md`](docs/CONTEXTE.md).
 
 ## État

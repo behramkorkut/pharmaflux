@@ -2,8 +2,8 @@
 
 **Projet :** Pharmaflux — projet portfolio
 **Client :** client fictif — **direction santé d'une mutuelle** de taille moyenne (personas §3). Aucune donnée client : uniquement des données publiques réelles.
-**Version :** 0.8 _(après la mission 06 : le Lot 2 est fait ; Lot 3 découpé, fragments et index précisés pour la mission 07)_
-**Date :** 29 octobre 2026 _(v0.1 : 23 octobre 2026 ; v0.2 à v0.4 : 26 octobre 2026 ; v0.5 : 27 octobre 2026 ; v0.6 : 28 octobre 2026 ; v0.7 : 29 octobre 2026)_
+**Version :** 0.9 _(après la mission 07 : l'index de l'assistant est fait ; Lot 3 redécoupé, assistant gouverné précisé pour la mission 08)_
+**Date :** 30 octobre 2026 _(v0.1 : 23 octobre 2026 ; v0.2 à v0.4 : 26 octobre 2026 ; v0.5 : 27 octobre 2026 ; v0.6 : 28 octobre 2026 ; v0.7 et v0.8 : 29 octobre 2026)_
 **Auteur :** Behram Korkut
 
 **Sources de données (publiques, réelles) :**
@@ -34,6 +34,7 @@
 | 6 | PRD v0.6 : Lot 1 fait sur le Mac, seul le VPS reste (§4) ; Lot 2 découpé en deux missions (§4) ; silver précisé : tables Iceberg par entité, historisation sur la date d'observation, « état à une date », vérification contre l'archive, consommateur du bus idempotent (§6.5) ; silver reconstruit identique depuis le bus ou depuis les fichiers d'événements (§7.1) ; mémoire de la démo mesurée (§9) | Mission 04 (27/10/2026) : PR #5, ADR 0008, contrôles des paliers 1 à 3, relecture 1, contrôle final, premier passage de la CI ; ordre de la mission 05 |
 | 7 | PRD v0.7 : Lot 2, mission 05 faite (§4) ; gold précisé : colonnes typées par entité, vues métier, valeur illisible jamais devinée, gold calculé depuis le silver à un instant donné, contrôles de qualité (§6.5) ; jeu de questions recalculé depuis le gold (annexe B) ; mémoire du silver mesurée, le silver tourne sur le Mac en v1, seuil d'alerte de 512 Mo (§9) | Mission 05 (28-29/10/2026) : PR #6, ADR 0009, contrôles des paliers 1 à 3, relectures 1 et 2, contrôle final ; ordre de la mission 06 |
 | 8 | PRD v0.8 : **Lot 2 fait** (§4) ; Lot 3 découpé en trois missions (§4) ; limite de la détection : une valeur brute illisible égale à la forme canonique de la précédente ne produit aucun événement (§6.3, §9) ; fragments et index précisés : texte déterministe depuis le gold, état courant seulement, mise à jour incrémentale, index égal à sa reconstruction complète (§6.7) ; mémoire du gold mesurée (§9) ; point 5 du §10.2 confié à la mission 07 | Mission 06 (29/10/2026) : PR #7, ADR 0010, contrôles des paliers 1 à 3, relecture 1, contrôle final ; ordre de la mission 07 |
+| 9 | PRD v0.9 : mission 07 faite (§4) ; Lot 3 redécoupé, l'assistant avant le corpus HAS (§4) ; index précisé : instant rendu avec chaque résultat, recherche exacte, deux processus sous 512 Mo (§6.7) ; assistant gouverné précisé pour la mission 08 : recherche hybride, chiffres tirés du gold, abstention et refus décidés hors du LLM quand c'est possible, budget (§6.8, §7.5) ; mémoire de l'index mesurée (§9) ; point 5 du §10.2 tranché (Qdrant, ADR 0011) ; jeu de questions v1 précisé (annexe B) | Mission 07 (29-30/10/2026) : PR #8, ADR 0011, contrôles des paliers 1 à 3, relecture 1, contrôle final ; ordre de la mission 08 |
 
 ---
 
@@ -174,12 +175,14 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - Retrieval hybride (repris de `governed-omop-rag`), réponses sourcées et datées, porte d'abstention, refus du conseil médical.
 - API (FastAPI) et interface (Streamlit).
 - Évaluation automatique sur le jeu de référence à chaque PR ; test de fraîcheur de bout en bout.
-- _Découpage (29/10/2026), sur le Mac comme le Lot 2 :_
-  - _**mission 07** : les fragments de la fiche médicament, l'index vectoriel et sa mise à jour incrémentale depuis le bus, sans LLM (§6.7). Elle commence par fiabiliser l'intégration continue ;_
-  - _**mission 08** : le corpus des avis HAS (ADR 0004), le retrieval hybride, les réponses sourcées et datées, l'abstention, le refus médical, le jeu de questions v1 ;_
-  - _**mission 09** : l'API, l'interface, l'évaluation dans la CI et le test de fraîcheur de bout en bout._
+- _Découpage (revu le 30/10/2026), sur le Mac comme le Lot 2 :_
+  - _**mission 07** (faite) : les fragments de la fiche médicament, l'index vectoriel et sa mise à jour incrémentale depuis le silver, sans LLM (§6.7). Elle a commencé par fiabiliser l'intégration continue ;_
+  - _**mission 08** : l'assistant gouverné sur l'index de la BDPM : recherche hybride, réponses sourcées et datées, abstention, refus médical, jeu de questions v1 et son évaluation ;_
+  - _**mission 09** : le corpus des avis HAS (ADR 0004), sa collecte et son indexation ;_
+  - _**mission 10** : l'API, l'interface, l'évaluation dans la CI et le test de fraîcheur de bout en bout._
 
-  _Le découpage des missions 08 et 09 se revoit à la fin de la mission 07._
+  _L'assistant passe avant le corpus HAS : il se construit et se mesure sur l'index déjà vérifié, et la collecte vers `has-sante.fr`, une requête réseau vers un service public, demande une mission à elle._
+- _Avancement : la mission 07 (fusionnée le 30/10/2026) a livré l'index. La fiche du gold devient 72 296 fragments datés et prudents, encodés par multilingual-e5-small (int8, ONNX, tokenizer SentencePiece d'origine) dans Qdrant. Une mise à jour par incréments depuis le silver reste égale à la reconstruction complète, ce que `index verifier` contrôle. `make index` le montre après `make gold`, et la CI le lance du premier coup (ADR 0011)._
 
 ### Lot 4 — Volet assurance : dépense et exposition
 
@@ -296,6 +299,11 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
   - **Mise à jour incrémentale** : seuls les médicaments touchés par les changements depuis l'instant de l'index sont recalculés, depuis le gold, et leurs fragments remplacés ou retirés. L'index n'est jamais en avance sur le silver qu'il lit. Il est idempotent et reprend après une coupure, comme le consommateur du silver. La mission 07 tranche d'où viennent les changements : les événements du bus (§5, étape 5), ou les versions du silver ouvertes ou fermées depuis l'instant de l'index.
   - **Vérification** : l'index mis à jour pas à pas est égal à l'index reconstruit en entier à partir du gold au même instant. Aucun fragment orphelin, aucun manquant, aucun texte différent.
   - **Embeddings calculés localement**, par un modèle épinglé, sans API payante. Un fragment dont le texte ne change pas n'est pas recalculé (§7.5).
+- _Fait par la mission 07 (ADR 0011) :_
+  - **l'instant de l'index** n'est pas dans le texte des fragments : il est tenu une fois, dans l'état de l'index, et **rendu avec chaque résultat**. Une réponse de l'assistant le cite ;
+  - **la recherche est exacte** : l'approchée (HNSW) ne retrouvait que 82 % des dix premiers sur les questions du jeu. On y reviendra quand le volume la rendra nécessaire ;
+  - **deux processus**, chacun sous 512 Mo : le calcul des fragments depuis le gold, et l'encodage ;
+  - **le score dense est serré** : 0,905 en médiane dans le périmètre, contre 0,873 hors périmètre (au plus 0,897). Il ne suffit pas à décider une abstention.
 
 ### 6.8 Assistant gouverné
 
@@ -304,6 +312,12 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 - Abstention si l'information n'est pas dans le corpus ou est trop ancienne par rapport à la fraîcheur attendue.
 - **Refus systématique du conseil médical** (posologie, substitution pour un patient, interactions) avec renvoi vers un professionnel de santé.
 - Les chiffres viennent de la couche sémantique, jamais du LLM.
+- _Précisé pour la mission 08 :_
+  - **Recherche hybride** : le dense de l'index et une recherche lexicale, fusionnées. Un nom de médicament, un CIS ou un code se trouvent par les mots, pas seulement par le sens.
+  - **Les faits viennent de l'index et du gold, jamais du LLM.** Un prix, un taux, une date, un statut sont lus dans un fragment ou dans le gold. Le LLM rédige à partir d'eux et ne doit rien ajouter. Avant le Lot 4, la « couche sémantique » des chiffres de dépense n'existe pas : une question de dépense s'abstient.
+  - **Chaque réponse cite** le fichier, la date de la source et l'instant de l'index. Une citation renvoie à un fragment réellement donné au LLM, ce qui se vérifie par la machine.
+  - **L'abstention et le refus médical se décident d'abord hors du LLM**, par des règles écrites et testées, quand c'est possible ; le LLM ne fait que ce que les règles ne savent pas faire, et la décision est journalisée avec son motif.
+  - **La prudence du gold passe dans la réponse** : « aucun signalement » n'est jamais « disponible » ; un arrêt annoncé n'est pas un arrêt ; un CIS absent du référentiel se dit (réponse avec réserve, annexe B).
 
 ### 6.9 Indicateurs assurance
 
@@ -351,6 +365,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 ### 7.5 Coût
 
 - Budget LLM plafonné et mesuré ; cache des réponses pour les questions répétées.
+- _Lot 3 : 100 $ de crédits de l'API Claude, dont **20 $ au plus pour la mission 08**. Chaque appel est compté (jetons et coût) dans un journal local ; une commande refuse de partir si elle dépasserait le plafond. Les tests n'appellent jamais l'API._
 - Embeddings recalculés seulement pour les fragments modifiés.
 
 ### 7.6 Qualité du code
@@ -381,7 +396,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 |---|---|---|---|
 | **Format d'un fichier source modifié sans préavis** | Élevé | Moyenne | Contrats de schéma ; collecte qui s'arrête proprement et alerte ; incident documenté |
 | **Fichier servi vide ou tronqué par la source**, sans erreur HTTP (observé le 26/10/2026) | Élevé | Faible | Archivé tel quel ; garde-fou de volume avant toute comparaison (§6.3) ; jamais d'événement `supprimee` en masse |
-| **Mémoire de pointe au-dessus du plafond du VPS** : 474 Mo au rejeu complet, contre 256 Mo pour l'unité systemd (mission 02) | Élevé | **Levé pour la chaîne** par la mission 03 : 118 à 149 Mo en flux ; `verifier-bus` monte à 190-230 Mo, sans cible. Mission 04 : `demo rejouer` (rejeu et publication du jeu de démo) 145 Mo résidents ; `evenements` de 0,7 à 35,8 Mo par entité sous `tracemalloc` | Plafond de l'unité gardé, au service de la pré-production voisine ; mesure à refaire sur le VPS, avec le bus, avant d'y lancer autre chose que la collecte. Le silver (mission 05) apporte PyArrow, PyIceberg et DuckDB. Leurs imports pèsent déjà 102 Mo résidents. Les commandes du silver mesurent de 123 à 424 Mo sur le jeu de démo : `consommer` 357, `construire` 272, `verifier` 310, `comparer` 424. **En v1, le silver et le gold tournent sur le Mac**, là où est le bus, avec un seuil d'alerte de 512 Mo par commande ; le VPS ne fait que collecter. Le gold (mission 06) monte de 312 à 470 Mo selon la commande ; la plus lourde, `questions verifier --entrepot`, laisse une quarantaine de mégaoctets de marge. L'index du Lot 3 ajoute un modèle d'embeddings : sa mémoire se mesure avant tout choix |
+| **Mémoire de pointe au-dessus du plafond du VPS** : 474 Mo au rejeu complet, contre 256 Mo pour l'unité systemd (mission 02) | Élevé | **Levé pour la chaîne** par la mission 03 : 118 à 149 Mo en flux ; `verifier-bus` monte à 190-230 Mo, sans cible. Mission 04 : `demo rejouer` (rejeu et publication du jeu de démo) 145 Mo résidents ; `evenements` de 0,7 à 35,8 Mo par entité sous `tracemalloc` | Plafond de l'unité gardé, au service de la pré-production voisine ; mesure à refaire sur le VPS, avec le bus, avant d'y lancer autre chose que la collecte. Le silver (mission 05) apporte PyArrow, PyIceberg et DuckDB. Leurs imports pèsent déjà 102 Mo résidents. Les commandes du silver mesurent de 123 à 424 Mo sur le jeu de démo : `consommer` 357, `construire` 272, `verifier` 310, `comparer` 424. **En v1, le silver et le gold tournent sur le Mac**, là où est le bus, avec un seuil d'alerte de 512 Mo par commande ; le VPS ne fait que collecter. Le gold (mission 06) monte de 312 à 470 Mo selon la commande ; la plus lourde, `questions verifier --entrepot`, laisse une quarantaine de mégaoctets de marge. L'index (mission 07) tient en deux processus : 411 à 424 Mo pour la construction, la mise à jour et la vérification, 446 Mo pour `chercher`, 470 Mo pour `evaluer`. Le tokenizer de la bibliothèque `tokenizers` et des lots de forme libre l'avaient fait monter à 2 185 Mo ; le fichier SentencePiece d'origine et quatre formes de lot fixes l'ont ramené sous le seuil. Une première construction à 624 Mo reste inexpliquée, et chaque construction affiche désormais son résident |
 | **Changement de lisibilité invisible à la détection** : une brute illisible égale à la forme canonique de la valeur précédente ne produit aucun événement (§6.3) | Moyen | Faible (aucun cas observé) | Limite écrite dans l'ADR 0010 ; mission sur la détection, qui compare aussi les anomalies d'une ligne |
 | **Intégration continue intermittente** : le registre de schémas a coupé ses connexions pendant les tests d'intégration, dans la CI de `main` après la fusion de la mission 06, puis sur le Mac (1 passage sur 15), juste après la suppression des topics du test précédent ; la relance est passée | Faible | Moyenne | Correction au premier palier de la mission 07 : nettoyage des tests en fin de session, réessai borné quand le registre ne répond pas, diagnostic complet en CI ; une relance n'est pas une correction |
 | **Rythme réel de mise à jour faible** (peu d'événements à montrer) : en 45 heures (24-26/10/2026), en dehors de l'état initial, un seul fichier a changé, deux fois, plus un fichier servi vide | Élevé | **Avérée** | Archivage dès le Lot 0 ; mode rejeu accéléré (mission 04 : 67 h 35 min observées rejouées en 4 min 03 s) ; la démo montre ce rythme et l'incident tels quels ; mesure honnête publiée ; l'historique s'allonge chaque heure |
@@ -415,7 +430,7 @@ Chaque lot est livrable et démontrable seul, dans l'ordre indiqué.
 | 2 | Intervalle de collecte, requêtes conditionnelles | **Tranché** : toutes les heures à `:17` ; pas de requête conditionnelle, le serveur ne les permet pas (§6.1). **ADR 0001** |
 | 3 | Colonnes et valeurs de `CIS_CIP_Dispo_Spec.txt` et `CIS_MITM.txt`, sens d'une ligne qui disparaît | Colonnes et statuts **profilés** (`docs/donnees/`) ; MITM est un drapeau par CIS. Sens d'une disparition : **ADR 0003, proposé**, revue au plus tard le 07/12/2026 |
 | 4 | Lieu de l'archivage | **Tranché** : VPS-1, §10.1 point 6. **ADR 0001** |
-| 5 | Qdrant ou pgvector | **Reporté au Lot 3**, qui l'utilise ; tranché par la mission 07 (§0), avec un ADR |
+| 5 | Qdrant ou pgvector | **Tranché** par la mission 07 : Qdrant, dans le compose du projet. **ADR 0011** |
 | 6 | Stockage des traces : ClickHouse ou DuckDB | **Reporté au Lot 5**, qui l'utilise |
 | 7 | Corpus HAS : pages web ou PDF, volume, licence | **Tranché** : pages d'avis HTML d'abord, PDF en second, par étapes depuis 2024 ; réutilisation libre avec source et date. **ADR 0004** ; mesure du besoin en PDF au Lot 3 |
 | 8 | Démo publique hébergée ou locale | **Reporté au Lot 6** |
@@ -470,6 +485,8 @@ Chaque question porte :
 **Réponse avec réserve.** Un CIS absent de `CIS_bdpm.txt` n'appelle pas toujours une abstention : si l'information demandée existe dans un autre fichier (un avis SMR, par exemple), la réponse la donne, avec sa source et sa date, **et** dit que le référentiel des spécialités ne connaît pas ce médicament. L'abstention reste la règle quand rien ne répond à la question.
 
 **Prévu pour la v1** (nouveau fichier, la v0 reste rejouable) : `alternatives-004` retirée et remplacée par une question sur le groupe générique, sous un nouvel identifiant ; `avis_has-005` devient une réponse avec réserve ; questions sur le texte des avis HAS avec le corpus du Lot 3.
+
+**Version 1** (mission 08) : les questions de la v0 qui restent justes, celles prévues ci-dessus, et de nouvelles questions par catégorie, avec des questions pièges (un nom proche d'un autre, un CIS hors référentiel, une question médicale déguisée en question de disponibilité). Les questions sur le texte des avis HAS viennent avec le corpus (mission 09). La v1 sert à noter l'assistant : bonne réponse, citation juste, abstention ou refus quand il le faut (§2.2).
 
 ## Annexe C — Méthode de travail (reprise d'Alamel, adaptée)
 

@@ -8,7 +8,11 @@ proprement (« clé absente », code 2), sans réseau.
 
 from __future__ import annotations
 
+import gzip
+import os
+import random
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -32,12 +36,17 @@ from pharmaflux.assistant.cache import CacheReponses
 from pharmaflux.assistant.cache import cle as cle_cache
 from pharmaflux.assistant.client import (
     SCHEMA,
+    ClientClaude,
     DoubleClient,
+    ErreurAPI,
     ReponseLLM,
     cle_presente,
     interpreter_reponse,
 )
 from pharmaflux.cli import application
+from pharmaflux.contrats.chargeur import charger_tous
+from pharmaflux.evaluation.questions import Jeu
+from pharmaflux.evaluation.questions import charger as charger_jeu
 from pharmaflux.index import construction
 from pharmaflux.index.construction import Cache
 from pharmaflux.index.encodeur import EncodeurTest
@@ -453,8 +462,274 @@ def test_cli_demander_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 def test_cli_cle_absente_sans_double(monkeypatch: pytest.MonkeyPatch) -> None:
     """Addendum 1 J : sans double et sans clé, arrêt propre « clé absente », code 2, sans réseau."""
     monkeypatch.setattr(cli, "fabriquer_client_llm", lambda: None)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    for nom in [n for n in os.environ if n.startswith("ANTHROPIC_")]:
+        monkeypatch.delenv(nom)
     assert not cle_presente()
     resultat = CliRunner().invoke(application, ["assistant", "demander", "test ?"])
     assert resultat.exit_code == 2
     assert "clé absente" in resultat.output
+
+
+# --- la v1 entière contre les règles et le repérage (addendum 1 D2, palier 3) -------------------
+
+JEU_V1 = Path("evaluation/questions-reference-v1.toml")
+CIS_BDPM_DEMO = Path(
+    "demo/archive/bronze/bdpm/CIS_bdpm.txt/2026-10-24/20261024T194143Z__332b95926f76.txt.gz"
+)
+CIS_GENER_DEMO = Path(
+    "demo/archive/bronze/bdpm/CIS_GENER_bdpm.txt/2026-10-24/20261024T194157Z__04ea92fb3d2e.txt.gz"
+)
+
+
+def _lignes_bdpm(chemin: Path) -> list[list[str]]:
+    lignes = gzip.decompress(chemin.read_bytes()).decode("cp1252").splitlines()
+    return [ligne.split("\t") for ligne in lignes if ligne.strip()]
+
+
+@pytest.fixture(scope="module")
+def jeu_v1() -> Jeu:
+    return charger_jeu(JEU_V1, charger_tous())
+
+
+def test_v1_chaque_question_medical_est_refusee_par_les_regles(jeu_v1: Jeu) -> None:
+    medicales = [q for q in jeu_v1.questions if q.categorie == "medical"]
+    assert len(medicales) >= 10
+    oublis = [q.id for q in medicales if regles.refus_medical(q.question) is None]
+    assert oublis == []
+
+
+def test_v1_aucune_autre_question_n_est_refusee(jeu_v1: Jeu) -> None:
+    """Un faux refus est un défaut, au même titre qu'un oubli (addendum 1 D2) : disponibilite-011
+    (« mon traitement », aucune décision) et hors_perimetre-006 (effets indésirables) passent."""
+    faux = [
+        q.id
+        for q in jeu_v1.questions
+        if q.categorie != "medical" and regles.refus_medical(q.question) is not None
+    ]
+    assert faux == []
+
+
+@pytest.fixture(scope="module")
+def dictionnaire_demo() -> repere.Dictionnaire:
+    """Le dictionnaire du repérage tiré des 15 883 dénominations réelles du jeu de démo
+    (``CIS_bdpm.txt``) et de ses groupes génériques (``CIS_GENER_bdpm.txt``, rendus comme le
+    texte d'un fragment ``identite``), dans le dépôt, sans index ni réseau."""
+    groupes: dict[str, list[str]] = {}
+    for champs in _lignes_bdpm(CIS_GENER_DEMO):
+        groupes.setdefault(champs[2], []).append(f"  - groupe {champs[0]} ({champs[1]}), type 0")
+    identite = [
+        {"code_cis": c[0], "denomination": c[1], "texte": "\n".join(groupes.get(c[0], []))}
+        for c in _lignes_bdpm(CIS_BDPM_DEMO)
+    ]
+    return repere.construire_dictionnaire(identite)
+
+
+def test_v1_deux_medicaments_seulement_sur_le_piege(
+    jeu_v1: Jeu, dictionnaire_demo: repere.Dictionnaire
+) -> None:
+    """Régression du palier 3 : sur les dénominations réelles, « deux médicaments » ne se
+    déclenche que sur le piège disponibilite-010. Avant le correctif, « B O P, comprimé enrobé »
+    faisait de « comprime » un nom de médicament, et 18 réponses attendues s'abstenaient."""
+    declenchees = [
+        q.id
+        for q in jeu_v1.questions
+        if regles.refus_medical(q.question) is None
+        and regles.abstention(q.question) is None
+        and repere.medicaments_nommes(
+            repere.reperer(q.question, dictionnaire_demo), q.question, dictionnaire_demo
+        )
+        >= 2
+    ]
+    assert declenchees == ["disponibilite-010"]
+
+
+def test_v0_deux_medicaments_jamais(dictionnaire_demo: repere.Dictionnaire) -> None:
+    """La v0 (non-régression) : aucune question qui passe les règles ne déclenche « deux
+    médicaments » (medical-002 en nomme deux, mais le refus médical la prend avant)."""
+    jeu_v0 = charger_jeu(Path("evaluation/questions-reference-v0.toml"), charger_tous())
+    declenchees = [
+        q.id
+        for q in jeu_v0.questions
+        if regles.refus_medical(q.question) is None
+        and regles.abstention(q.question) is None
+        and repere.medicaments_nommes(
+            repere.reperer(q.question, dictionnaire_demo), q.question, dictionnaire_demo
+        )
+        >= 2
+    ]
+    assert declenchees == []
+
+
+def test_deux_medicaments_sur_200_tires_au_hasard(dictionnaire_demo: repere.Dictionnaire) -> None:
+    """Un test indépendant du jeu d'évaluation (contrôle du palier 3) : 200 médicaments tirés au
+    hasard parmi les dénominations du jeu de démo qui ont un mot significatif (15 816 sur
+    15 883 ; « B O P » n'en a pas), posés seuls (la règle ne se déclenche jamais, et le
+    médicament est repéré), puis deux par deux (elle se déclenche toujours)."""
+    dico = dictionnaire_demo
+    nommables = sorted(
+        cis
+        for cis, d in dico.denomination_par_cis.items()
+        if repere.premier_mot(d, dico.mots_de_forme)
+    )
+    tirage = random.Random(8).sample(nommables, 200)
+
+    def compte(question: str) -> int:
+        return repere.medicaments_nommes(repere.reperer(question, dico), question, dico)
+
+    seuls = [f"{dico.denomination_par_cis[c]} est-il en rupture de stock ?" for c in tirage]
+    assert [q for q in seuls if compte(q) != 1] == []
+    assert all(c in repere.reperer(q, dico).vises for c, q in zip(tirage, seuls, strict=True))
+    paires = [
+        f"{dico.denomination_par_cis[a]} et {dico.denomination_par_cis[b]} sont-ils en rupture ?"
+        for a, b in zip(tirage[::2], tirage[1::2], strict=True)
+    ]
+    assert [q for q in paires if compte(q) < 2] == []
+
+
+def test_mots_de_forme_ne_nomment_pas_un_medicament() -> None:
+    dico = _dico(
+        ("60443192", "B O P, comprimé enrobé"),
+        ("68486929", "MICROVAL, comprimé enrobé"),
+        (
+            "60000009",
+            "AMOXICILLINE/ACIDE CLAVULANIQUE BIOGARAN 500 mg/62,5 mg, comprimé pelliculé"
+            " (rapport amoxicilline/acide clavulanique : 8/1)",
+        ),
+        ("60000010", "AMOXICILLINE BIOGARAN 500 mg, gélule"),
+    )
+    assert {"comprime", "enrobe", "pellicule", "gelule"} <= dico.mots_de_forme
+    assert "amoxicilline" not in dico.mots_de_forme  # les parenthèses ne sont pas la forme
+    question = "MICROVAL, comprimé enrobé est-il en tension d'approvisionnement ?"
+    repere_ = repere.reperer(question, dico)
+    assert repere_.vises == {"68486929"}
+    assert repere.medicaments_nommes(repere_, question, dico) == 1
+    assert repere.premier_mot("AMOXICILLINE BIOGARAN 500 mg, gélule", dico.mots_de_forme) == (
+        "amoxicilline"
+    )
+
+
+def test_deux_medicaments_nom_contenu_et_groupe_borne() -> None:
+    """Un nom contenu dans un autre ne compte pas à part ; l'exception « groupe » ne vaut que
+    pour des noms qui tiennent dans le libellé d'un même groupe générique de l'index."""
+    groupe_793 = "  - groupe 793 (EZETIMIBE 10 mg - EZETROL 10 mg, comprimé), type 0"
+    dico = repere.construire_dictionnaire(
+        [
+            {"code_cis": cis, "denomination": nom, "texte": texte}
+            for cis, nom, texte in (
+                ("65381862", "SUNITINIB EG 12,5 mg, gélule", ""),
+                ("62934770", "SUNITINIB BIOGARAN 37,5 mg, gélule", ""),
+                ("62934771", "SUNITINIB ZENTIVA 37,5 mg, gélule", ""),
+                ("63996942", "NEBIVOLOL/HYDROCHLOROTHIAZIDE BIOGARAN 5 mg/ 25 mg, comprimé", ""),
+                ("63996900", "NEBIVOLOL BIOGARAN 5 mg, comprimé", ""),
+                ("60981780", "EZETIMIBE EG 10 mg, comprimé", groupe_793),
+                ("60981789", "EZETROL 10 mg, comprimé", groupe_793),
+                ("60234100", "DOLIPRANE 1000 mg, comprimé", ""),
+            )
+        ]
+    )
+    cas = (
+        ("SUNITINIB BIOGARAN 37,5 mg, gélule est-il en tension ?", 1),
+        ("SUNITINIB BIOGARAN et SUNITINIB ZENTIVA sont-ils en tension ?", 2),
+        ("NEBIVOLOL/HYDROCHLOROTHIAZIDE BIOGARAN est-il remboursé ?", 1),
+        ("NEBIVOLOL BIOGARAN et NEBIVOLOL/HYDROCHLOROTHIAZIDE BIOGARAN ?", 1),
+        ("Le princeps du groupe générique « EZETIMIBE 10 mg » (EZETROL) ?", 1),
+        ("EZETIMIBE EG et EZETROL sont-ils remboursés ?", 2),  # sans « groupe »
+        ("EZETROL et DOLIPRANE sont-ils du même groupe générique ?", 2),  # hors d'un libellé
+        ("DOLIPRANE 1000 mg (CIS 60234100) est-il remboursé ?", 1),  # le nom et son CIS
+    )
+    for question, attendu in cas:
+        repere_ = repere.reperer(question, dico)
+        assert repere.medicaments_nommes(repere_, question, dico) == attendu, question
+
+
+# --- le contrôle des dates : avant 2000, année seule, mois sans jour (palier 3) -----------------
+
+
+def test_controle_dates_anciennes_annee_et_mois() -> None:
+    frag = "Autorisation active depuis le 1985-05-17 ; Rupture de stock depuis le 2026-06-25"
+    assert controle.extraire("AMM du 02/06/1980")[1] == {(1980, 6, 2)}
+    for texte in ("AMM du 17 mai 1985.", "AMM en 1985.", "En rupture depuis juin 2026."):
+        assert controle.controler(texte, [frag], "q") is None, texte
+    assert controle.controler("AMM du 17/05/1958.", [frag], "q") is not None
+    assert controle.controler("En rupture depuis juillet 2026.", [frag], "q") is not None
+    assert controle.extraire("CIS 65999556")[1] == frozenset()  # un CIS n'est jamais une date
+
+
+# --- les remarques du contrôle du palier 2 ------------------------------------------------------
+
+
+def test_abstention_du_llm_controlee_comme_une_reponse(index: Qdrant, tmp_path: Path) -> None:
+    """Un fait sans appui ne passe pas par le texte d'une abstention : le code remplace le texte,
+    le motif et l'orientation par les siens."""
+    inventee = _llm(
+        "abstention",
+        "Ce médicament a été retiré le 03/03/2021.",
+        (),
+        motif="retiré en 2021",
+        orientation="voir l'ANSM",
+    )
+    reponse = _demander(
+        index, "PARACETAMOL TEST est-il disponible ?", DoubleClient(fixe=inventee), tmp_path
+    )
+    assert reponse.comportement == "abstention" and reponse.texte == ""
+    assert reponse.motif == chemin.MOTIF_ABSTENTION_LLM and reponse.orientation is None
+    sobre = _llm("abstention", "Les fragments ne répondent pas.", (), motif="rien sur ce point")
+    reponse = _demander(
+        index, "PARACETAMOL TEST est-il cher ?", DoubleClient(fixe=sobre), tmp_path / "b"
+    )
+    assert (
+        reponse.texte == "Les fragments ne répondent pas." and reponse.motif == "rien sur ce point"
+    )
+
+
+def test_refus_du_llm_prend_la_forme_du_code(index: Qdrant, tmp_path: Path) -> None:
+    refus = _llm("refus_medical", "Prenez plutôt 2 comprimés.", (1,), motif="dose de 2 comprimés")
+    reponse = _demander(index, "PARACETAMOL TEST convient-il ?", DoubleClient(fixe=refus), tmp_path)
+    assert reponse.comportement == "refus_medical" and reponse.decision == "llm"
+    assert reponse.texte == chemin.TEXTE_REFUS and reponse.citations == ()
+    assert reponse.orientation == regles.ORIENTATION_MEDICALE
+    assert reponse.motif == chemin.MOTIF_REFUS_LLM  # « 2 » sans appui : motif du code
+
+
+def test_client_claude_traduit_une_erreur_de_l_api() -> None:
+    """Une erreur de l'API (ici une coupure réseau simulée, sans réseau) devient ErreurAPI, que
+    les commandes rendent en code 2 avec une ligne lisible (contrôle du palier 2)."""
+    import anthropic
+    import httpx
+
+    class SdkEnPanne:
+        class messages:  # noqa: N801 (mime l'attribut du SDK)
+            @staticmethod
+            def create(**_: object) -> object:
+                requete = httpx.Request("POST", "https://api.anthropic.test/v1/messages")
+                raise anthropic.APIConnectionError(request=requete)
+
+    client = ClientClaude(sdk=SdkEnPanne())
+    with pytest.raises(ErreurAPI, match="APIConnectionError"):
+        client.repondre("s", "c", effort="low", max_tokens=10)
+
+
+@dataclass
+class DoubleEnPanne:
+    def repondre(self, *_: object, **__: object) -> ReponseLLM:
+        raise ErreurAPI("l'API Claude n'a rendu aucune réponse (OverloadedError, statut 529)")
+
+
+@pytest.mark.usefixtures("cli_index")
+def test_cli_demander_erreur_api_code_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "fabriquer_client_llm", DoubleEnPanne)
+    resultat = CliRunner().invoke(
+        application,
+        [
+            "assistant",
+            "demander",
+            "PARACETAMOL TEST disponible ?",
+            "--modele",
+            "test",
+            "--donnees",
+            str(tmp_path / "a"),
+        ],
+    )
+    assert resultat.exit_code == 2
+    assert "assistant refusé : l'API Claude n'a rendu aucune réponse" in resultat.output
+    assert Journal(tmp_path / "a" / "depenses.jsonl").total() == 0.0  # rien de payé, rien d'écrit

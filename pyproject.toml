@@ -100,12 +100,6 @@ pretty = true
 module = ["onnxruntime"]
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-# anthropic n'est importé que par le vrai client (assistant/client.py), jamais aux tests, et
-# peut manquer tant que beko n'a pas verrouillé le uv.lock (il s'ajoute au palier 2).
-module = ["anthropic"]
-ignore_missing_imports = true
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers -rs"

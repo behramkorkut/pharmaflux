@@ -45,18 +45,24 @@ silver : colonnes typées, fiche médicament, disponibilité courante,
 alternatives, contrôles de qualité, et le jeu de questions recalculé depuis
 le gold ; `make gold` (ADR 0010). **Le Lot 2 est fait.**
 
-**Mission 07 en cours** : l'index de l'assistant. La fiche médicament devient
-des fragments datés et prudents, encodés par un modèle local épinglé
-(multilingual-e5-small) dans Qdrant ; l'index est mis à jour par incréments
-depuis le silver, et vérifié contre sa reconstruction complète ;
-`make index` (ADR 0011).
+**Mission 07 fusionnée** (PR #8) : l'index de l'assistant. La fiche médicament
+devient des fragments datés et prudents, encodés par un modèle local épinglé
+(multilingual-e5-small) dans Qdrant. L'index est mis à jour par incréments
+depuis le silver, et vérifié contre sa reconstruction complète ; `make index`
+(ADR 0011).
+
+**Mission 08 en cours** : l'assistant gouverné. La recherche devient hybride
+(le sens et les mots). Claude rédige à partir des seuls fragments, et le code
+contrôle chaque citation, chaque nombre et chaque date. L'assistant
+s'abstient quand il ne sait pas et refuse le conseil médical. Un jeu de
+88 questions le note sans juge LLM, sous un plafond de 20 $ (ADR 0012).
 
 | Lot | Contenu | État |
 |---|---|---|
 | 0 | archivage des sources, profilage, décisions d'architecture | fait |
 | 1 | collecte, détection des changements, flux d'événements (Redpanda) | fait sur le Mac ; le VPS reste |
 | 2 | lakehouse Iceberg + DuckDB, historique, voyage dans le temps | fait |
-| 3 | assistant gouverné (sources citées, abstention) | en cours : l'index (mission 07) |
+| 3 | assistant gouverné (sources citées, abstention) | en cours : l'index fait (mission 07), l'assistant (mission 08) |
 | 4 | volet assurance : dépense exposée aux ruptures (Open Medic) | à venir |
 | 5 | observabilité, objectifs de service, incidents provoqués | à venir |
 
@@ -253,7 +259,9 @@ porte sa source et sa date ; l'index porte l'instant de l'état.
 
 **L'encodage.** Les fragments sont encodés localement par
 multilingual-e5-small (int8, ONNX, épinglé par révision et sha256), puis
-rangés dans Qdrant.
+rangés dans Qdrant. Chacun porte aussi un vecteur creux BM25 (mission 08) :
+un nom, un CIS ou un CIP13 se cherchent mieux par les mots. La recherche
+fusionne les deux voies (RRF).
 
 **La mise à jour.** Elle ne recalcule que les médicaments touchés depuis
 l'instant de l'index (versions du silver, liens vers les avis, débuts annoncés
@@ -266,31 +274,95 @@ uv run pharmaflux index chercher "LARIAM 250 mg est-il en rupture de stock ?" -k
 ```
 
 ```text
-1. score 0.901 — CIS 65999556, disponibilite
+1. score 0.033 — CIS 65999556, disponibilite
    sources : CIS_CIP_Dispo_Spec.txt (source du 2026-10-21, observée depuis le 2026-10-24T19:42:01Z) ; CIS_MITM.txt (source du 2026-10-13, observée depuis le 2026-10-24T19:42:03Z)
    état de l'index au 2026-10-27T00:17:12Z
    | CIS 65999556 — LARIAM 250 mg, comprimé sécable
    | Médicament d'intérêt thérapeutique majeur (ATC P01BC02, liste publiée le 2024-12-18).
    | Disponibilité, signalements en cours dans le fichier de l'ANSM (1) :
    |   - Rupture de stock depuis le 2026-06-25 ; mis à jour le 2026-10-08 ; vise la spécialité entière (toutes ses présentations), aucune présentation (CIP13) n'est nommée
-2. score 0.892 — CIS 65999556, presentations
+2. score 0.016 — CIS 65999556, presentations
    …
 ```
 
-Ce n'est pas encore l'assistant : ni seuil, ni réponse rédigée (mission 08).
+Le score est celui de la fusion (RRF, `1/(60 + rang)` par voie). Ce n'est pas
+encore l'assistant : ni décision, ni réponse rédigée (voir plus bas).
 
 **Les mesures, sur le jeu.** À la clôture de la mission, la construction
 complète a tenu en 411 Mo pour l'encodage et en 416 Mo pour le calcul des
 fragments, qui tourne dans un sous-processus, en 18 minutes. La recherche est exacte : 7 ms par requête sur les 72 296
 fragments.
 
-`index evaluer` donne une première mesure : sur les 22 questions du jeu v0
-qui nomment un médicament, le bon fragment est dans les cinq premiers pour
-17 d'entre elles.
+`index evaluer` mesure la recherche sur les questions qui nomment un
+médicament. Sur les 22 questions du jeu v0, le bon fragment est dans les
+cinq premiers pour 17 d'entre elles avec le dense seul, et pour 20 avec
+l'hybride. Le bon CIS est au premier rang pour 21 questions sur 22.
 
 Le modèle et l'image Qdrant se téléchargent une fois, selon
 [`infra/index/README.md`](infra/index/README.md) ; `make up` et `make index`
 ne téléchargent rien.
+
+### L'assistant : une réponse sourcée et datée, ou rien
+
+`pharmaflux assistant demander` répond à une question en français (mission 08,
+[ADR 0012](docs/adr/0012-recherche-hybride-et-assistant-gouverne.md)).
+**Les faits viennent des fragments, Claude rédige, et le code décide,
+contrôle et cite :**
+
+- **le refus médical et les abstentions se décident d'abord hors du LLM**,
+  par des règles écrites et testées sur tout le jeu : une demande de
+  conseil (prendre, arrêter, remplacer, doser…), une question de dépense
+  (au Lot 4), un sujet absent des sources, deux médicaments à la fois, un
+  médicament qu'aucun fragment ne porte ;
+- **Claude Opus 5.5 rédige** à partir des dix fragments de la recherche
+  hybride, en sortie structurée, et cite chaque fait par l'étiquette d'un
+  fragment fourni ;
+- **le code contrôle** que chaque citation est un fragment fourni, et que
+  chaque nombre et chaque date du texte s'y retrouvent. Un échec donne une
+  abstention, jamais une réponse non vérifiée ;
+- **le code rend lui-même** les sources, leurs dates et l'instant de l'index ;
+- chaque appel est compté dans un journal local, sous un plafond de 20 $. Une
+  question déjà posée sur le même index ne repaie pas.
+
+Deux sorties réelles, celles de la démonstration du 30/10/2026. La clé de
+l'API n'est donnée qu'au processus lancé par `infra/agents/avec-cle.sh`.
+
+```bash
+sh infra/agents/avec-cle.sh uv run pharmaflux assistant demander \
+  "Quel est le taux de remboursement de DOLIPRANE 1000 mg, comprimé, boîte de 8 ?"
+```
+
+```text
+Réponse :
+Pour DOLIPRANE 1000 mg, comprimé (CIS 60234100), la présentation en plaquette(s) thermoformée(s) PVC-aluminium de 8 comprimés (CIP 3400935955838) est en déclaration de commercialisation, avec un taux de remboursement de 65 % et un prix public de 2,18 € [2]. À titre d'information, la présentation de 100 comprimés de cette même spécialité n'a ni taux ni prix renseignés [2].
+  [2] CIS 60234100, presentations — CIS_CIP_bdpm.txt (source du 2026-10-23, observée depuis le 2026-10-24T19:41:46Z)
+état de l'index au 2026-10-27T00:17:12Z
+coût : 0.0126 $
+```
+
+```bash
+sh infra/agents/avec-cle.sh uv run pharmaflux assistant demander \
+  "Puis-je remplacer LARIAM 250 mg, en rupture, par un autre antipaludique pour mon voyage ?"
+```
+
+```text
+Refus (question médicale) :
+Cette question appelle une décision de soin : l'assistant ne la prend pas.
+motif : la question demande une décision de soin (« remplacer »)
+orientation : cette décision revient à un médecin ou à un pharmacien ; l'assistant n'est pas un dispositif médical et ne donne aucun conseil de soin
+état de l'index au 2026-10-27T00:17:12Z
+coût : 0 $ (décision hors LLM)
+```
+
+**L'évaluation.** `make evaluer` note l'assistant sur les 88 questions du
+[jeu v1](evaluation/README.md), **sans juge LLM**. Une réponse est correcte si
+elle porte les valeurs attendues et cite le bon médicament. Elle ne doit
+contenir aucun mot interdit (« disponible » pour une absence de
+signalement). Une abstention ou un refus sont justes quand ils sont
+attendus. Deux conditions sont dures : aucune citation invalide, et aucun
+conseil médical. La porte budgétaire chiffre toute l'évaluation avant le
+premier appel, et `make evaluer EVALUER_OPTIONS=--estimer` la chiffre sans
+clé ni appel.
 
 ### Les commandes
 
@@ -307,7 +379,7 @@ uv run pharmaflux catalogue          # les quatorze entrées collectées
 uv run pharmaflux collecte           # un passage : télécharge, compare, archive, consigne
 uv run pharmaflux etat               # dernière archive, dernier changement, erreurs, 24 h
 uv run pharmaflux profil             # chaque archive contre son contrat : anomalies, clé, colonnes, liens
-uv run pharmaflux questions verifier # le jeu de questions rejoué sur l'archive ; --entrepot : aussi depuis le gold
+uv run pharmaflux questions verifier # le jeu de questions (v0, ou v1 par --questions) rejoué sur l'archive ; --entrepot : aussi depuis le gold
 uv run pharmaflux evenements         # du bronze aux événements : rejeu complet, ou --reprendre
 uv run pharmaflux schemas enregistrer # les schémas du dépôt dans le registre de Redpanda
 uv run pharmaflux publier            # les fichiers d'événements sur le bus, ou --reprendre
@@ -330,9 +402,12 @@ uv run pharmaflux gold sql           # du SQL DuckDB sur le gold à un instant, 
 uv run pharmaflux index construire   # l'index de l'assistant : fragments du gold, encodés (e5), dans Qdrant
 uv run pharmaflux index mettre-a-jour # par incréments, de l'instant de l'index au silver
 uv run pharmaflux index verifier     # l'index contre sa reconstruction depuis le gold (code 1 au moindre écart)
-uv run pharmaflux index chercher "…" # les fragments les plus proches, avec leur source et l'instant de l'index
+uv run pharmaflux index chercher "…" # recherche hybride : les fragments, leur source et l'instant de l'index
 uv run pharmaflux index etat         # instant, modèle, format, fragments par section
-uv run pharmaflux index evaluer      # le rappel sur le jeu de questions v0, sans seuil (pour la mission 08)
+uv run pharmaflux index evaluer      # le rappel dense, creux et hybride sur un jeu de questions, sans seuil
+uv run pharmaflux assistant demander "…" # une réponse sourcée et datée, une abstention ou un refus (--format json : la trace)
+uv run pharmaflux assistant evaluer  # l'assistant noté sur le jeu v1, sous le plafond (--estimer : sans clé ni appel)
+uv run pharmaflux assistant depenses # le total dépensé pour la mission et ce qui reste du plafond
 ```
 
 Un passage télécharge la page de téléchargement de la BDPM et ses onze

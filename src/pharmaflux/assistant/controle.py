@@ -7,7 +7,13 @@ Deux garanties, après l'appel :
 - **chaque nombre et chaque date** du texte se retrouve, après normalisation, dans le texte
   ou les dates des sources d'un fragment **cité**, ou dans la question. Un « 65 % » et un
   « 65% », un « 1 000 » et un « 1000 », une date « 09/09/2026 », « 9 septembre 2026 »,
-  « 2026-09-09 » et « 20260909 » se ramènent à une même forme.
+  « 2026-09-09 » et « 20260909 » se ramènent à une même forme. Une date d'appui appuie aussi
+  son année seule (« en 2026 ») et son mois (« juin 2026 ») ; un mois écrit sans jour se
+  vérifie contre les mois des dates d'appui.
+
+Les dates se lisent de 1900 à 2099 (les AMM anciennes : 1978, 1985) ; un CIS (8 chiffres, qui
+commencent par 6) n'est jamais lu comme une date. La notation de l'évaluation se sert du même
+normaliseur pour chercher une valeur attendue dans le texte.
 
 Un échec ne se corrige pas : la réponse devient une **abstention** journalisée (« réponse non
 vérifiable »). L'instant de l'index n'est pas dans le texte du LLM — le code le rend —, donc
@@ -40,10 +46,10 @@ _MOIS = {
 _ISO = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _JMA = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
 _COMPACT = re.compile(r"\b(\d{4})(\d{2})(\d{2})\b")
-_EN_LETTRES = re.compile(
-    r"\b(\d{1,2})\s+(" + "|".join(sorted(_MOIS, key=len, reverse=True)) + r")\s+(\d{4})\b",
-    re.IGNORECASE,
-)
+_NOMS_MOIS = "|".join(sorted(_MOIS, key=len, reverse=True))
+_EN_LETTRES = re.compile(r"\b(\d{1,2})\s+(" + _NOMS_MOIS + r")\s+(\d{4})\b", re.IGNORECASE)
+# Un mois sans jour (« juin 2026 »), cherché après les dates entières, qui sont déjà blanchies.
+_MOIS_ANNEE = re.compile(r"\b(" + _NOMS_MOIS + r")\s+(\d{4})\b", re.IGNORECASE)
 # Un nombre : des milliers séparés par une espace (fine, insécable ou ordinaire) ou non, suivis
 # d'une éventuelle part décimale (virgule ou point). La virgule décimale ne porte pas d'espace
 # (« 12,50 »), à la différence d'une virgule de liste (« 65, 73 »), qui sépare deux nombres.
@@ -55,11 +61,12 @@ _NOMBRE = re.compile(r"(?<!\w)(?:\d{1,3}(?:[^\S\r\n]\d{3})+(?:[.,]\d+)?|\d+(?:[.
 
 
 def _jour_valide(annee: int, mois: int, jour: int) -> bool:
-    return 1 <= mois <= 12 and 1 <= jour <= 31 and 2000 <= annee <= 2099
+    return 1 <= mois <= 12 and 1 <= jour <= 31 and 1900 <= annee <= 2099
 
 
-def _dates(texte: str) -> tuple[frozenset[tuple[int, int, int]], str]:
-    """Les dates du texte (année, mois, jour), et le texte avec leurs empans blanchis."""
+def _dates(texte: str) -> tuple[frozenset[tuple[int, int, int]], frozenset[tuple[int, int]], str]:
+    """Les dates du texte (année, mois, jour), les mois sans jour (année, mois), et le texte
+    avec leurs empans blanchis."""
     trouvees: set[tuple[int, int, int]] = set()
     reste = texte
     for motif, ordre in (
@@ -80,7 +87,17 @@ def _dates(texte: str) -> tuple[frozenset[tuple[int, int, int]], str]:
             fin = trouve.end()
         morceaux.append(reste[fin:])
         reste = "".join(morceaux)
-    return frozenset(trouvees), reste
+    mois_seuls: set[tuple[int, int]] = set()
+    for trouve in _MOIS_ANNEE.finditer(reste):
+        annee = int(trouve[2])
+        if 1900 <= annee <= 2099:
+            mois_seuls.add((annee, _MOIS[trouve[1].lower()]))
+            reste = (
+                reste[: trouve.start()]
+                + " " * (trouve.end() - trouve.start())
+                + reste[trouve.end() :]
+            )
+    return frozenset(trouvees), frozenset(mois_seuls), reste
 
 
 def _lire_date(trouve: re.Match[str], ordre: str) -> tuple[int, int, int] | None:
@@ -114,10 +131,19 @@ def _nombres(texte: str) -> frozenset[str]:
     return frozenset(n for n in canon if n is not None)
 
 
+def elements(
+    texte: str,
+) -> tuple[frozenset[str], frozenset[tuple[int, int, int]], frozenset[tuple[int, int]]]:
+    """Les nombres (canoniques), les dates (année, mois, jour) et les mois sans jour (année,
+    mois) d'un texte."""
+    dates, mois_seuls, reste = _dates(texte)
+    return _nombres(reste), dates, mois_seuls
+
+
 def extraire(texte: str) -> tuple[frozenset[str], frozenset[tuple[int, int, int]]]:
     """Les nombres (canoniques) et les dates (année, mois, jour) d'un texte."""
-    dates, reste = _dates(texte)
-    return _nombres(reste), dates
+    nombres, dates, _ = elements(texte)
+    return nombres, dates
 
 
 def controler(texte: str, appuis: Sequence[str], question: str) -> str | None:
@@ -125,11 +151,16 @@ def controler(texte: str, appuis: Sequence[str], question: str) -> str | None:
     question ; sinon le premier élément non vérifié (le motif de l'abstention technique)."""
     nombres_appui: set[str] = set()
     dates_appui: set[tuple[int, int, int]] = set()
+    mois_appui: set[tuple[int, int]] = set()
     for source in (question, *appuis):
-        nombres, dates = extraire(source)
+        nombres, dates, mois_seuls = elements(source)
         nombres_appui |= nombres
         dates_appui |= dates
-    nombres_texte, dates_texte = extraire(texte)
+        mois_appui |= mois_seuls
+    # Une date d'appui appuie aussi son mois et son année écrits seuls.
+    mois_appui |= {(annee, mois) for annee, mois, _ in dates_appui}
+    nombres_appui |= {str(annee) for annee, _ in mois_appui}
+    nombres_texte, dates_texte, mois_texte = elements(texte)
     for nombre in sorted(nombres_texte):
         if nombre not in nombres_appui:
             return f"le nombre « {nombre} » du texte n'est dans aucun fragment cité ni la question"
@@ -138,5 +169,10 @@ def controler(texte: str, appuis: Sequence[str], question: str) -> str | None:
             return (
                 f"la date {jour:02d}/{mois:02d}/{annee} du texte n'est dans aucun fragment cité"
                 " ni la question"
+            )
+    for annee, mois in sorted(mois_texte):
+        if (annee, mois) not in mois_appui:
+            return (
+                f"le mois {mois:02d}/{annee} du texte n'est dans aucun fragment cité ni la question"
             )
     return None

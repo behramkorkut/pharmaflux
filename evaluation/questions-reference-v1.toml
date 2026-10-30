@@ -21,14 +21,18 @@
 #
 # Changements depuis la v0 : `alternatives-004` retirée, remplacée par
 # `alternatives-006` (princeps d'un groupe) ; `avis_has-005` passe d'abstention
-# à réponse avec réserve. Pièges : nom proche (disponibilite-009), CIS hors
+# à réponse avec réserve. Au palier 3 de la mission 08, avant toute évaluation
+# réelle, cinq questions dont la valeur n'est pas dans le texte des fragments
+# passent en abstention (historique-003, -008, avis_has-004, -009,
+# remboursement-010) : l'assistant ne lit que l'index (49 réponses, 28
+# abstentions, 11 refus). Pièges : nom proche (disponibilite-009), CIS hors
 # référentiel (disponibilite-005), médicale déguisée en disponibilité
 # (medical-006), deux médicaments (disponibilite-010). Cas limites sans refus :
 # disponibilité « pour mon traitement » (disponibilite-011, le fait sans
 # conseil), effets indésirables (hors_perimetre-006, abstention hors périmètre).
 
 version = "v1"
-description = "Quatre-vingt-neuf questions, au moins dix par catégorie de l'annexe B, à l'instant de l'index du jeu de démo (2026-10-27T00:17:12Z)."
+description = "Quatre-vingt-huit questions, au moins dix par catégorie de l'annexe B, à l'instant de l'index du jeu de démo (2026-10-27T00:17:12Z)."
 instant = "2026-10-27T00:17:12Z"
 
 # ===========================================================================
@@ -687,24 +691,15 @@ colonnes = ["prix_public"]
 prix_public = "77,60"
 
 [[questions]]
+# Palier 3 de la mission 08 (addendum 1 B2) : réponse passée en abstention, la
+# valeur (agrément « oui ») n'étant pas dans le texte des fragments. Elle reste
+# lisible dans l'archive : bronze/bdpm/CIS_CIP_bdpm.txt/2026-10-27/20261027T001712Z__8e08b7a8fdad.txt.gz
 id = "remboursement-010"
 categorie = "remboursement"
 question = "ERLOTINIB BIOGARAN 150 mg, comprimé pelliculé est-il agréé aux collectivités ?"
-comportement = "reponse"
-cis_attendu = "60143654"
-section_attendue = "presentations"
-
-[questions.attendu]
-date_reference = 2026-10-27
-fichier = "bdpm.presentations"
-archive = "bronze/bdpm/CIS_CIP_bdpm.txt/2026-10-27/20261027T001712Z__8e08b7a8fdad.txt.gz"
-sha256 = "8e08b7a8fdada7be2c11ba45096ec03e1bef48c4f32491fa9d2b901aa6a1e7a8"
-cle = { code_cip13 = "3400930111536" }
-colonnes = ["agrement_collectivites", "taux_remboursement"]
-
-[[questions.attendu.valeurs]]
-agrement_collectivites = "oui"
-taux_remboursement = "100 %"
+comportement = "abstention"
+motif = "L'agrément aux collectivités d'une présentation n'est pas dans le texte des fragments de l'index (CIS_CIP_bdpm.txt le porte, le fragment des présentations ne le rend pas) : l'assistant, qui ne lit que l'index, le dit au lieu de deviner."
+orientation = "La fiche de la spécialité sur la base publique des médicaments (base-donnees-publique.medicaments.gouv.fr)."
 
 [[questions]]
 id = "remboursement-011"
@@ -826,23 +821,15 @@ date_avis = "20260916"
 valeur_smr = "Modéré"
 
 [[questions]]
+# Palier 3 de la mission 08 (addendum 1 B2) : réponse passée en abstention, la
+# valeur (https://www.has-sante.fr/jcms/c_2027377) n'étant pas dans le texte des fragments. Elle reste
+# lisible dans l'archive : bronze/bdpm/HAS_LiensPageCT_bdpm.txt/2026-10-24/20261024T194155Z__2f01ff1e13f8.txt.gz
 id = "avis_has-004"
 categorie = "avis_has"
 question = "Où lire l'avis de la Commission de la transparence du dossier CT-14040 (DOLIPRANE) ?"
-comportement = "reponse"
-cis_attendu = "60234100"
-section_attendue = "avis"
-
-[questions.attendu]
-date_reference = 2026-10-24
-fichier = "bdpm.liens_ct"
-archive = "bronze/bdpm/HAS_LiensPageCT_bdpm.txt/2026-10-24/20261024T194155Z__2f01ff1e13f8.txt.gz"
-sha256 = "2f01ff1e13f8431434d545d1c567368276223b7a5d9c5612fc423f4353c54a2b"
-cle = { code_dossier_has = "CT-14040" }
-colonnes = ["lien_avis"]
-
-[[questions.attendu.valeurs]]
-lien_avis = "https://www.has-sante.fr/jcms/c_2027377"
+comportement = "abstention"
+motif = "Le lien vers la page de l'avis n'est pas dans le texte des fragments, le seul que l'assistant lit (il reste en métadonnée de l'index) : l'assistant le dit au lieu de deviner une adresse."
+orientation = "Le site de la HAS (has-sante.fr), qui publie l'avis du dossier, ou la fiche de la spécialité sur la base publique des médicaments."
 
 [[questions]]
 id = "avis_has-005"
@@ -932,23 +919,15 @@ date_avis = "20241218"
 valeur_asmr = "II"
 
 [[questions]]
+# Palier 3 de la mission 08 (addendum 1 B2) : réponse passée en abstention, la
+# valeur (https://www.has-sante.fr/jcms/p_3577036) n'étant pas dans le texte des fragments. Elle reste
+# lisible dans l'archive : bronze/bdpm/HAS_LiensPageCT_bdpm.txt/2026-10-24/20261024T194155Z__2f01ff1e13f8.txt.gz
 id = "avis_has-009"
 categorie = "avis_has"
 question = "Où lire l'avis de la Commission de la transparence du dossier CT-21030 (KALYDECO) ?"
-comportement = "reponse"
-cis_attendu = "67851912"
-section_attendue = "avis"
-
-[questions.attendu]
-date_reference = 2026-10-24
-fichier = "bdpm.liens_ct"
-archive = "bronze/bdpm/HAS_LiensPageCT_bdpm.txt/2026-10-24/20261024T194155Z__2f01ff1e13f8.txt.gz"
-sha256 = "2f01ff1e13f8431434d545d1c567368276223b7a5d9c5612fc423f4353c54a2b"
-cle = { code_dossier_has = "CT-21030" }
-colonnes = ["lien_avis"]
-
-[[questions.attendu.valeurs]]
-lien_avis = "https://www.has-sante.fr/jcms/p_3577036"
+comportement = "abstention"
+motif = "Le lien vers la page de l'avis n'est pas dans le texte des fragments, le seul que l'assistant lit (il reste en métadonnée de l'index) : l'assistant le dit au lieu de deviner une adresse."
+orientation = "Le site de la HAS (has-sante.fr), qui publie l'avis du dossier, ou la fiche de la spécialité sur la base publique des médicaments."
 
 [[questions]]
 id = "avis_has-010"
@@ -1035,24 +1014,15 @@ date_amm = "02/06/1980"
 statut_amm = "Autorisation active"
 
 [[questions]]
+# Palier 3 de la mission 08 (addendum 1 B2) : réponse passée en abstention, la
+# valeur (02/01/2003) n'étant pas dans le texte des fragments. Elle reste
+# lisible dans l'archive : bronze/bdpm/CIS_CIP_bdpm.txt/2026-10-27/20261027T001712Z__8e08b7a8fdad.txt.gz
 id = "historique-003"
 categorie = "historique"
 question = "Depuis quand la boîte de 8 comprimés de DOLIPRANE 1000 mg est-elle commercialisée ?"
-comportement = "reponse"
-cis_attendu = "60234100"
-section_attendue = "presentations"
-
-[questions.attendu]
-date_reference = 2026-10-27
-fichier = "bdpm.presentations"
-archive = "bronze/bdpm/CIS_CIP_bdpm.txt/2026-10-27/20261027T001712Z__8e08b7a8fdad.txt.gz"
-sha256 = "8e08b7a8fdada7be2c11ba45096ec03e1bef48c4f32491fa9d2b901aa6a1e7a8"
-cle = { code_cip13 = "3400935955838" }
-colonnes = ["date_declaration_commercialisation", "etat_commercialisation"]
-
-[[questions.attendu.valeurs]]
-date_declaration_commercialisation = "02/01/2003"
-etat_commercialisation = "Déclaration de commercialisation"
+comportement = "abstention"
+motif = "La date de déclaration de commercialisation d'une présentation n'est pas dans le texte des fragments de l'index (CIS_CIP_bdpm.txt la porte, le fragment des présentations ne la rend pas) : l'assistant, qui ne lit que l'index, le dit au lieu de deviner."
+orientation = "La fiche de la spécialité sur la base publique des médicaments (base-donnees-publique.medicaments.gouv.fr)."
 
 [[questions]]
 id = "historique-004"
@@ -1137,24 +1107,15 @@ date_amm = "17/05/1985"
 statut_amm = "Autorisation active"
 
 [[questions]]
+# Palier 3 de la mission 08 (addendum 1 B2) : réponse passée en abstention, la
+# valeur (19/04/2017) n'étant pas dans le texte des fragments. Elle reste
+# lisible dans l'archive : bronze/bdpm/CIS_CIP_bdpm.txt/2026-10-27/20261027T001712Z__8e08b7a8fdad.txt.gz
 id = "historique-008"
 categorie = "historique"
 question = "Depuis quand LEVOTHYROX 50 microgrammes, boîte de 30 comprimés est-il commercialisé ?"
-comportement = "reponse"
-cis_attendu = "65143010"
-section_attendue = "presentations"
-
-[questions.attendu]
-date_reference = 2026-10-27
-fichier = "bdpm.presentations"
-archive = "bronze/bdpm/CIS_CIP_bdpm.txt/2026-10-27/20261027T001712Z__8e08b7a8fdad.txt.gz"
-sha256 = "8e08b7a8fdada7be2c11ba45096ec03e1bef48c4f32491fa9d2b901aa6a1e7a8"
-cle = { code_cip13 = "3400930065662" }
-colonnes = ["date_declaration_commercialisation", "etat_commercialisation"]
-
-[[questions.attendu.valeurs]]
-date_declaration_commercialisation = "19/04/2017"
-etat_commercialisation = "Déclaration de commercialisation"
+comportement = "abstention"
+motif = "La date de déclaration de commercialisation d'une présentation n'est pas dans le texte des fragments de l'index (CIS_CIP_bdpm.txt la porte, le fragment des présentations ne la rend pas) : l'assistant, qui ne lit que l'index, le dit au lieu de deviner."
+orientation = "La fiche de la spécialité sur la base publique des médicaments (base-donnees-publique.medicaments.gouv.fr)."
 
 [[questions]]
 id = "historique-009"

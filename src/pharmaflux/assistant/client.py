@@ -104,6 +104,13 @@ class CleAbsente(Exception):  # noqa: N818 (nom français voulu)
     """Aucune clé d'API dans l'environnement : l'assistant s'arrête (code 2), sans réseau."""
 
 
+class ErreurAPI(Exception):  # noqa: N818 (nom français voulu)
+    """L'API n'a rendu aucune réponse (surcharge, délai, réseau, statut 4xx ou 5xx), après les
+    réessais du SDK : rien à journaliser, la commande s'arrête en code 2 avec une ligne lisible
+    (contrôle du palier 2). Les réponses déjà obtenues sont au cache : une reprise ne les repaie
+    pas."""
+
+
 def cle_presente() -> bool:
     """La clé d'API est-elle dans l'environnement ? (sans importer ``anthropic``, sans réseau)."""
     return bool(os.environ.get("ANTHROPIC_API_KEY"))
@@ -152,26 +159,41 @@ def interpreter_reponse(reponse: Any) -> ReponseLLM:
 
 
 class ClientClaude:
-    """Le client réel. ``anthropic`` n'est importé qu'ici, à la construction (jamais aux tests)."""
+    """Le client réel. ``anthropic`` n'est importé qu'ici, à la construction (jamais aux tests).
 
-    def __init__(self) -> None:
-        if not cle_presente():
+    ``sdk`` : un objet qui mime ``anthropic.Anthropic`` (le test de ``ErreurAPI``, sans réseau) ;
+    absent, le vrai client du SDK, construit seulement si la clé est là.
+    """
+
+    def __init__(self, sdk: Any = None) -> None:
+        if sdk is None and not cle_presente():
             raise CleAbsente("clé absente : ANTHROPIC_API_KEY n'est pas dans l'environnement")
-        import anthropic  # importé seulement avec une clé, jamais à l'import du module
+        import anthropic  # importé seulement à la construction, jamais à l'import du module
 
+        self._erreur_api = anthropic.APIError
         # Typé ``Any`` : l'appel ``messages.create`` passe des littéraux dict nus (system,
         # output_config) que les TypedDict du SDK n'acceptent pas sous mypy strict, et ce client
-        # thin n'est exercé que par la démonstration de beko (jamais aux tests, via le double).
-        self._client: Any = anthropic.Anthropic()
+        # thin n'est exercé que par les commandes de beko (jamais aux tests, via le double).
+        self._client: Any = sdk if sdk is not None else anthropic.Anthropic()
 
     def repondre(self, systeme: str, contenu: str, *, effort: str, max_tokens: int) -> ReponseLLM:
-        reponse = self._client.messages.create(
-            model=MODELE,
-            max_tokens=max_tokens,
-            system=[{"type": "text", "text": systeme, "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": contenu}],
-            output_config={"effort": effort, "format": {"type": "json_schema", "schema": SCHEMA}},
-        )
+        try:
+            reponse = self._client.messages.create(
+                model=MODELE,
+                max_tokens=max_tokens,
+                system=[{"type": "text", "text": systeme, "cache_control": {"type": "ephemeral"}}],
+                messages=[{"role": "user", "content": contenu}],
+                output_config={
+                    "effort": effort,
+                    "format": {"type": "json_schema", "schema": SCHEMA},
+                },
+            )
+        except self._erreur_api as exc:
+            statut = getattr(exc, "status_code", None)
+            precision = f", statut {statut}" if statut is not None else ""
+            raise ErreurAPI(
+                f"l'API Claude n'a rendu aucune réponse ({type(exc).__name__}{precision})"
+            ) from exc
         return interpreter_reponse(reponse)
 
 

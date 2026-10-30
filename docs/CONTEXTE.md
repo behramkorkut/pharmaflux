@@ -224,7 +224,7 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 | Quoi | Où |
 |---|---|
 | Spécifications (PRD) | `01_Specifications/` |
-| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `suivi.py`, `schemas/` ; `demo/` : `jeu.py`, `rejeu_accelere.py` ; `silver/` : `entrepot.py`, `schema.py`, `expressions.py`, `application.py`, `construction.py`, `consommation.py`, `etat.py`, `sql.py`, `comparaison.py`, `verification.py` ; `gold/` : `typage.py`, `qualite.py`, `vues.py`, `questions.py`, `rendu.py`, `sql.py` |
+| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `suivi.py`, `schemas/` ; `demo/` : `jeu.py`, `rejeu_accelere.py` ; `silver/` : `entrepot.py`, `schema.py`, `expressions.py`, `application.py`, `construction.py`, `consommation.py`, `etat.py`, `sql.py`, `comparaison.py`, `verification.py` ; `gold/` : `typage.py`, `qualite.py`, `vues.py`, `questions.py`, `rendu.py`, `sql.py` ; `index/` : `fragments.py`, `lexical.py`, `construction.py`, `changements.py`, `encodeur.py`, `modeles.py`, `qdrant.py`, `evaluation.py` ; `assistant/` : `chemin.py`, `regles.py`, `repere.py`, `client.py`, `controle.py`, `budget.py`, `cache.py`, `notation.py`, `evaluation.py` |
 | Tests et fixtures | `tests/`, `tests/fixtures/` |
 | Démo : jeu figé, Makefile, prérequis | `demo/` (archive et `README.md`), `Makefile`, `infra/demo/prerequis.sh` |
 | Planification de la collecte (systemd, rapatriement) | `infra/planification/` |
@@ -240,7 +240,8 @@ Python 3.12 géré par `uv` (`.python-version`), `httpx`, `typer`,
 `confluent-kafka` (mission 03), `pyiceberg[sql-sqlite]`, `pyarrow` et `duckdb`
 (mission 05, avec `sqlalchemy` pour le catalogue ; `jsonschema` et
 `pyarrow-stubs` en dev ; un paquet ajouté a au moins deux semaines, par
-`constraint-dependencies`) ; `ruff` (lint et format), `mypy --strict` sur
+`constraint-dependencies`) ; le SDK `anthropic` (mission 08), importé par le
+seul client réel de l'assistant ; `ruff` (lint et format), `mypy --strict` sur
 `src/`, `pytest` (marqueur `integration`). Redpanda et sa console viennent
 de `docker-compose.yml`. La CI (`.github/workflows/ci.yml`) a deux jobs :
 `verifier` rejoue les mêmes commandes plus les tests des garde-fous du
@@ -326,7 +327,9 @@ la demande. Aucun appel réseau vers les sources.
 - **Fragments** (`index/fragments.py`, Python pur, ADR 0011) : une fonction de
   la fiche du gold, cinq au plus par fiche (`identite`, `presentations`,
   `avis`, `disponibilite`, `informations`), découpés par élément sous 1 200
-  caractères. Identifiant `uuid5("f1/<cis>/<section>/<partie>")`.
+  caractères. Identifiant `uuid5("f<FORMAT>/<cis>/<section>/<partie>")` (format 2
+  depuis la mission 08 : le texte ne change pas, le point porte un vecteur
+  creux de plus).
   - Ni instant, ni lien, ni citation dans le texte : l'instant est dans
     l'état de l'index, liens et sources sont en métadonnée.
   - « Aucun signalement » n'est jamais « disponible ».
@@ -343,7 +346,8 @@ la demande. Aucun appel réseau vers les sources.
     construction) ;
   - état dans `pharmaflux-index-etat`, un point sans vecteur ; un alias que
     l'état ne décrit pas fait refuser la lecture (code 2) ;
-  - vecteur nommé `dense`, recherche **exacte** ;
+  - vecteur nommé `dense`, recherche **exacte** ; vecteur creux `lexical`
+    (BM25, IDF par Qdrant) depuis la mission 08 ;
   - parcours par pages de 100 (446 Mo par pages de 1 000).
 - **Modèle** (`index/encodeur.py`, `index/modeles/*.toml`) :
   - e5-small-int8, révision et sha256 épinglés, fichiers sous
@@ -382,3 +386,55 @@ la demande. Aucun appel réseau vers les sources.
     les fragments ;
   - `chercher` 446 Mo, `verifier` 422 Mo, `evaluer` 470 Mo ;
   - rappel à 5 de 17/22.
+
+## L'assistant : recherche hybride, chemin gouverné, notation (mission 08)
+
+- **Recherche hybride** (`index/lexical.py`, ADR 0012) : tokenizer déterministe
+  (minuscules, accents dépliés, CIS et CIP13 entiers, unités ramenées à une
+  graphie, ni racinisation ni mots vides) ; vecteur creux BM25 aux constantes
+  figées (`K1 = 1,2`, `B = 0,75`, `avgdl = 53,29`), indices `blake2b` sur
+  31 bits, IDF par Qdrant. **RRF côté client**, `k = 60`, 50 candidats par
+  voie. `index evaluer` sort le dense, le creux et l'hybride côte à côte.
+- **Le chemin** (`assistant/chemin.py`) en deux temps : `preparer` (refus
+  médical, abstentions dures, repérage, deux médicaments, recherche, porte
+  structurelle ; sans LLM ni dépense) puis `conclure` (cache, porte
+  budgétaire, appel, journal, contrôle). Les règles sont dans `regles.py`, le
+  repérage dans `repere.py` : les mots de forme, tirés des dénominations, ne
+  nomment jamais un médicament ; un médicament est nommé quand tous les mots
+  de son nom sont dans la question ; seuls les noms maximaux comptent ;
+  l'exception « groupe » est bornée par les libellés des groupes de l'index.
+- **Le LLM** (`assistant/client.py`) : Claude Opus 5.5 par le SDK `anthropic`,
+  sortie structurée, effort `low`, `max_tokens` 4 000, pas de repli. Citations
+  par étiquettes 1..10. Une abstention technique (refus du modèle, tronquée,
+  illisible) est journalisée et n'entre pas au cache ; une erreur de l'API
+  donne le code 2 (`ErreurAPI`).
+- **Le contrôle** (`assistant/controle.py`) : citations parmi les fournies ;
+  nombres et dates du texte retrouvés dans un fragment cité ou la question,
+  après normalisation (dates de 1900 à 2099, année seule et mois sans jour
+  appuyés par les dates d'appui). Un échec donne une abstention ; une
+  abstention ou un refus rendus par le LLM passent le même contrôle. Les
+  sources, leurs dates et l'instant de l'index sont rendus par le code.
+- **Budget** (`assistant/budget.py`) : grille datée dans le code, plafond
+  20 $, porte par estimation locale (`max_tokens` entier en sortie), journal
+  `data/assistant/depenses.jsonl` ; cache des réponses
+  `data/assistant/cache-reponses.sqlite`. `make rebatir` n'efface jamais
+  `data/assistant`.
+- **La clé** : trousseau de beko, donnée par `infra/agents/avec-cle.sh` au seul
+  processus lancé ; aucun agent ne la lit. Les tests passent tous par un double
+  du client (`fabriquer_client_llm` dans `cli.py`).
+- **Notation** (`assistant/notation.py`, `assistant/evaluation.py`) :
+  déterministe, sans juge LLM ; valeurs dues (colonnes que le texte des
+  fragments rend) comparées par nature ; deux conditions dures (aucune
+  citation invalide, aucun `medical` sans refus), seules à donner le code 1.
+  `assistant evaluer --estimer` chiffre la porte sans clé ni appel ;
+  `make evaluer` est lancée par beko seul, jamais dans la CI.
+- **Tests** : `test_assistant.py` (chemin ; règles et repérage sur la v1 et
+  la v0 entières, et sur 200 médicaments tirés au hasard des dénominations du
+  jeu de démo, seuls puis deux par deux), `test_notation.py`,
+  `test_makefile.py`, `test_lexical.py`.
+- **Mesures** (30/10/2026) :
+  - `evaluer --estimer` sur les 88 questions en 11 s et 439 Mo : 62 appels,
+    5,40 $ au pire, environ 0,89 $ au coût moyen constaté ;
+  - le chemin complet, SDK importé, plafonne à 419 Mo (faux client, sans
+    réseau) ;
+  - la démonstration du palier 2 : trois appels pour 0,0432 $.

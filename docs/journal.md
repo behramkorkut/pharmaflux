@@ -732,3 +732,57 @@ pour qu'un nombre inventé collé à son unité ne passe pas inaperçu) ; la ré
 passe alors le contrôle, vérifié sans appel depuis le cache. Le cache du prompt
 s'avère effectif (923 jetons écrits puis relus). 657 tests verts (intégration et
 modèle compris, 0 réessai du registre).
+
+**Mission 08, palier 3** (30/10, Claude Opus 5.5, session neuve depuis `4f827cb`).
+La notation de l'assistant, entièrement déterministe (`assistant/notation.py`).
+Une réponse attendue est correcte si cinq conditions tiennent : le bon
+comportement ; toutes les valeurs dues présentes dans le texte ; une citation
+valide du CIS et de la section attendus ; aucun mot interdit ; la réserve dite
+quand elle est attendue. Les valeurs dues sont celles des colonnes que le texte
+des fragments rend (les liens, le numéro de tri, les honoraires… ne le sont
+jamais, le LLM ne les voit pas). Elles se comparent par nature : date sous
+toute graphie, nombre canonique, libellé en mots entiers. Deux conditions sont
+dures (aucune citation invalide, aucun `medical` sans refus) et donnent seules
+le code 1. `assistant evaluer` prépare toutes les questions sans LLM, chiffre la
+porte budgétaire avant le premier appel, puis appelle, contrôle et note.
+`--estimer` le chiffre sans clé ni appel. Le chemin est découpé en `preparer`
+et `conclure` pour cela.
+
+`--estimer` sur le vrai index a révélé un défaut du palier 2 : la règle « deux
+médicaments » s'abstenait à tort sur 18 des 54 réponses attendues. Trois causes :
+- « B O P, comprimé enrobé » faisait de « comprime » un nom ;
+- « SUNITINIB EG » s'ajoutait à « SUNITINIB BIOGARAN » ;
+- les questions de groupe nomment par construction la DCI et le princeps.
+
+Correctif, éprouvé hors du jeu d'évaluation (200 médicaments tirés au hasard,
+seuls puis deux par deux, à la demande de l'IeC) :
+- les mots de forme, tirés des dénominations, ne nomment jamais un médicament ;
+- un médicament est nommé quand tous les mots de son nom sont dans la question,
+  et seuls les noms maximaux comptent ;
+- l'exception « groupe » ne vaut que si les noms tiennent dans le libellé d'un
+  même groupe de l'index.
+
+Les décisions de l'IeC, par message :
+- cinq questions de la v1, dont la valeur n'est pas dans le texte des
+  fragments, passent en abstention (49 réponses, 28 abstentions, 11 refus) ;
+- le contrôle lit les dates de 1900 à 2099, et une année ou un mois seuls
+  s'appuient sur les dates citées.
+
+Les remarques du contrôle du palier 2 :
+- une abstention ou un refus rendus par le LLM passent le même contrôle (un
+  refus prend la forme du code) ;
+- une erreur de l'API donne le code 2 et une ligne lisible ;
+- l'override mypy d'`anthropic` est retiré (le SDK porte ses types).
+
+Le reste du palier :
+- les deux tests de l'addendum D2 sur la v1 entière, qui manquaient, sont
+  écrits ;
+- `make evaluer` est ajoutée ;
+- `make rebatir` épargne `data/assistant` (test du `Makefile`) ;
+- le prompt système demande « aucun signalement à cette date », jamais
+  « disponible », et les valeurs telles que les fragments les donnent ;
+- l'ADR 0012 est écrite ;
+- README, `evaluation/README.md` et CONTEXTE sont mis à jour.
+
+L'évaluation complète, chiffrée sans appel : 62 appels, 5,40 $ au pire, environ
+0,89 $ probable, 439 Mo, 11 s. Elle est à lancer par beko.

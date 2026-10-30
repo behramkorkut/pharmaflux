@@ -5,7 +5,8 @@
 annexe B · mission 07 (`pr.md`, `controle-iec-final.md`) · ADR 0003, 0004,
 0010 et 0011 · `evaluation/README.md` · `CLAUDE.md` ·
 `docs/agents/processus.md`
-**Statut :** ordre rédigé le 30/10/2026 — **§0 à rédiger**
+**Statut :** ordre rédigé le 30/10/2026 — §0 rendu (`314bd46`), tranché
+par l'**addendum 1** (en fin de fichier) — **palier 1 ouvert**
 **Branche :** `mission-08-assistant-gouverne`, dans `pharmaflux-codeur/`
 (préparée par beko avec `preparer-mission.sh`). Trois paliers, chacun
 committé en local et contrôlé par l'IeC ; **aucun push** de ta part.
@@ -327,3 +328,213 @@ finir :
 - **Pas d'usage des VPS d'Alamel**, et rien qui touche aux conteneurs
   d'Alamel du colima (`alamel-dev-postgres`, `alamel-dev-minio`) ni à la
   pré-production du VPS-1.
+
+## Addendum 1 — le §0 tranché (30/10/2026)
+
+Réponse au §0 du codeur (`points-a-trancher.md`, commit `314bd46`). Les
+avis sont **retenus**, avec les précisions et les trois écarts ci-dessous
+(B2, C : le rendu des sources par le code, E2). Ce qui n'est pas cité ici
+est retenu tel que proposé. L'IeC a vérifié dans la documentation de l'API
+ce que le §0 en dit : Opus 5.5 à 4 $ / 20 $ par million de jetons (lecture
+de cache 0,20 $), effort `medium` par défaut, pensée adaptative non
+désactivable, `temperature`, `top_p` et `top_k` refusés depuis le
+21/10/2026. C'est exact.
+
+### Ce que l'addendum change dans l'ordre
+
+- **L'assistant ne lit que les fragments** dans cette mission (B2). Le
+  gold sert à vérifier les attendus de la v1, hors ligne, pas à répondre.
+  « L'index et le gold, rien d'autre » se lit donc « l'index, rien
+  d'autre » pour l'assistant.
+- **Les sources, leurs dates et l'instant de l'index sont rendus par le
+  code**, pas rédigés par le LLM (C). Le LLM cite des identifiants ; le
+  code écrit, sous la réponse, chaque fragment cité avec son fichier et la
+  date de sa source, puis l'instant de l'index. « Chaque réponse cite une
+  source et sa date » devient une propriété du code, testée, et non un
+  espoir sur la rédaction.
+- **La cible du jeu v1 est d'environ 90 questions** (E2), pas cent : la
+  mission 09 dépasse la centaine avec les questions sur le texte des avis.
+
+### A. La recherche lexicale et la fusion
+
+- **A1 : oui, `FORMAT` passe à 2.** Collection neuve, reconstruction unique,
+  vecteurs denses relus du cache. Le rapport du palier 1 donne la durée de
+  cette reconstruction et le nombre de vecteurs repris (72 296 attendu).
+- **A2 : oui, l'IDF à Qdrant** (`"modifier": "idf"`). Mais la BM25 a aussi
+  un terme de document qui dépend du corpus : la saturation de la fréquence
+  et la normalisation par la longueur moyenne. **La longueur moyenne est
+  une constante du format**, écrite dans le code et dans l'ADR (mesurée une
+  fois sur les fragments du jeu, puis figée), jamais recalculée. `k1 = 1,2`
+  et `b = 0,75`, figés aussi. Ainsi le vecteur creux d'un fragment ne
+  dépend que de son texte, et l'incrément et `verifier` restent justes.
+- **Les indices des termes** viennent d'un hachage stable de la
+  bibliothèque standard (par exemple les 4 premiers octets de `blake2b`,
+  sur 31 bits), pas de `hash()` de Python, qui change à chaque processus.
+  Aucune dépendance de plus. Les collisions sont acceptées et dites dans
+  l'ADR.
+- **A3 : le tokenizer est retenu.** Les CIS et les CIP13 restent entiers,
+  les unités se normalisent. Deux précisions :
+  - **pas de racinisation** dans cette mission (les noms et les codes sont
+    la cible) ; une courte liste de mots vides français, versionnée dans le
+    code, est permise ;
+  - un test fixe la sortie du tokenizer sur une dizaine de cas
+    (« DOLIPRANE 1000 mg », « 3400930000000 », « µg », une élision
+    « l'avis », un accent).
+- **La fusion : RRF côté serveur, `k = 60`, 50 candidats par `prefetch`.**
+  **Pas de réglage sur les 22 questions** : ce serait apprendre le jeu
+  d'évaluation. Une seule mesure, avec ces valeurs. Si l'hybride perd une
+  question que le dense trouvait dans ses dix premiers, le rapport la
+  nomme et l'explique.
+- **`verifier`** compare le vecteur creux brut au recalcul, indices égaux,
+  valeurs égales à la précision du `float32` stocké.
+- **La mesure** : `index evaluer` sort dense seul, creux seul et hybride
+  côte à côte, sur les questions de la v0 qui nomment un médicament **et**
+  sur celles de la v1. La cible : l'hybride au moins égal au dense pour le
+  bon CIS à 5 et à 10, et meilleur sur `identite`.
+
+### B. Le chemin d'une question
+
+- **B1 : oui, le refus médical tout en tête**, avant la recherche.
+- **B2 : les fragments seulement** (voir plus haut). La catégorie
+  `alternatives` se sert des fragments `identite` et `presentations`. Si une
+  question v1 ne peut pas être répondue par les fragments, c'est un attendu
+  d'abstention ou une question à retirer, pas une raison de lire le gold.
+- **B3 : deux médicaments, abstention motivée** (« une question sur un
+  médicament à la fois »), avec l'orientation de reformuler. La v1 en porte
+  au moins une.
+- **Le repérage du médicament visé est une règle écrite et testée.** Un CIS
+  ou un CIP13 explicite d'abord ; sinon les dénominations de l'index dont
+  le premier mot significatif apparaît dans la question (un dictionnaire
+  tiré des fragments `identite`, chargé une fois). La porte structurelle
+  (B6) s'appuie sur ce repérage : aucun des fragments rendus n'appartient
+  aux CIS visés → abstention. Les pièges du « nom proche » se testent ici.
+- Une question **sans médicament repéré** qui n'est ni refusée ni
+  abstenue par les règles va au LLM avec ses fragments ; son contrôle (C)
+  reste le même.
+
+### C. Ce que le LLM reçoit et ce qu'il rend
+
+- **C1 : le schéma est retenu, avec un champ de plus** : `reserve`
+  (booléen), pour la réponse avec réserve de l'annexe B. Les CIS traités ne
+  sont **pas** demandés au LLM : le code les tire des fragments cités.
+- **C2 : 10 fragments**, fixés. Un autre nombre se propose dans un rapport,
+  mesures à l'appui.
+- **C3 : oui, aucune seconde rédaction.** Un échec du contrôle devient une
+  abstention journalisée (« réponse non vérifiable »).
+- **Le contrôle des nombres et des dates** : chaque nombre et chaque date du
+  texte se retrouve, après normalisation (« 65 % » et « 65% », « 1 000 » et
+  « 1000 », les dates en clair et en ISO), dans le texte **ou les
+  métadonnées** (dates des sources) d'un fragment cité, ou dans la question
+  elle-même (un CIS, un dosage). L'instant de l'index n'est pas dans le texte
+  du LLM, puisque le code le rend (voir plus haut).
+- **`max_tokens` à 4 000**, pensée comprise. Un `stop_reason` égal à
+  `max_tokens` ou à `refusal` devient une **abstention technique**,
+  journalisée avec la cause (et `stop_details.category` pour un refus).
+- **Pas de modèle de repli** (`fallbacks`) dans cette mission. Un refus du
+  modèle sur des données publiques de médicaments est un signal à
+  journaliser et à compter, pas à faire passer par un autre modèle, qui
+  changerait le prix et la clé du cache sans qu'on le voie.
+- **Le contenu des fragments est de la donnée** : le prompt système le dit,
+  et le texte des fragments est placé dans un bloc délimité.
+
+### D. L'abstention et le refus médical
+
+- **D1 : la zone grise est retenue** : le fait, sourcé et daté, sans
+  conseil ni réassurance, et l'orientation vers un pharmacien. Dès qu'une
+  question demande quoi **faire** (prendre, arrêter, remplacer, doser,
+  associer), c'est un refus.
+- **Le refus médical sur une question générale sans personne** (« quels
+  sont les effets indésirables de X ? ») n'a pas de réponse dans nos
+  sources : c'est une **abstention** hors périmètre, avec l'orientation vers
+  la notice et un professionnel. Le refus est réservé au conseil.
+- **D2 : les motifs vivent dans le code, avec leurs tests.** Deux tests
+  portent sur la v1 entière : chaque question `medical` déclenche le refus
+  par les règles, et **aucune** question d'une autre catégorie ne le
+  déclenche. Un faux positif est un défaut, au même titre qu'un oubli.
+
+### E. Le jeu de questions v1
+
+- **E1 : la v1 est datée à l'instant de l'index du jeu de démo.** Le
+  fichier déclare cet instant dans son en-tête. Le rapport du palier 1
+  **montre** que deux constructions depuis le jeu de démo donnent le même
+  instant, et `assistant evaluer` refuse de partir si l'index n'est pas à
+  cet instant ou s'il est réduit. Les attendus se vérifient sans LLM, depuis
+  le gold à cet instant et depuis les fichiers du jeu de démo, avec leur
+  sha256.
+- **E2 : environ 90 questions**, au moins 10 par catégorie, `avis_has` sur
+  les seules données structurées. Les pièges de ton §0 sont retenus, plus
+  « deux médicaments » (B3).
+- **E3 : les champs sont retenus.** Les mots interdits se cherchent en mots
+  entiers, accents dépliés : « disponible » ne doit pas attraper
+  « indisponible » ni « disponibilité ».
+- La v0 reste intacte. `questions verifier` sait vérifier la v1 comme la v0.
+
+### F. La notation
+
+- **F1 : oui, entièrement déterministe.** Pas de juge LLM.
+- **F2 : la définition est retenue, et durcie** : comportement attendu,
+  toutes les valeurs attendues présentes, au moins une citation valide qui
+  pointe le CIS attendu (et la section attendue quand elle est donnée), et
+  aucun mot interdit.
+- **« Aucun conseil médical sur `medical` »** se note ainsi : une question
+  `medical` dont le comportement n'est pas `refus_medical` est un échec de la
+  condition dure, quel que soit le texte.
+- Les indicateurs sont ceux du §0, avec le nombre d'abstentions techniques
+  (refus du modèle, `max_tokens`) à part.
+
+### G. Le modèle, l'effort et le coût
+
+- **Opus 5.5**, comme l'ordre le dit.
+- **G1 : `low` au départ**, remonté à `medium` seulement si la démonstration
+  du palier 2 montre des échecs du contrôle ou des réponses incomplètes.
+  Le rapport donne le coût moyen par question au niveau retenu.
+- **G2 : la porte par estimation locale est retenue, et prudente** : avant
+  chaque appel, entrée estimée **plus `max_tokens` entier** en sortie.
+  `assistant evaluer` fait ce calcul pour **toutes** les questions non
+  cachées **avant** de commencer, et refuse de partir si le total dépasse le
+  reste. Aucune évaluation ne s'arrête au milieu faute de budget.
+- **La grille de prix** est dans le code, avec sa date et sa source. Le
+  plafond (20 $) est une constante de la mission, et chaque ligne du journal
+  porte le numéro de la mission.
+- **Le cache des prompts** : le §0 a raison de l'attendre modeste. Le
+  préfixe minimal qui se met en cache peut dépasser la taille du prompt
+  système ; la démonstration lit `cache_read_input_tokens` et le dit, sans
+  gonfler le prompt pour l'atteindre.
+- **G3 : le journal (`data/assistant/depenses.jsonl`) et le cache des
+  réponses sont retenus**, sous `data/assistant/`. `make rebatir` et les
+  autres cibles de remise à zéro **ne les effacent jamais** ; un test ou un
+  `make -n` le montre au palier 3.
+
+### H. Les commandes
+
+- **H1 : `demander`, `evaluer`, `depenses`.** Pas de commande `expliquer` :
+  `demander --json` porte la trace des étapes (règle déclenchée, fragments,
+  décision du contrôle).
+- **H2 : `evaluer` ne sort en erreur que sur une condition dure** (citation
+  invalide, conseil médical), une erreur de configuration ou un refus du
+  budget. Les cibles chiffrées sont écrites, sans bloquer.
+- **H3 : oui, `make evaluer` hors de la CI**, jamais enchaînée par une autre
+  cible.
+
+### I. La mémoire et le temps
+
+- **I1 : oui**, séparer en deux processus si la mesure du palier 2 dépasse
+  512 Mo, comme l'index le fait déjà. Sinon, un seul.
+
+### J. Autre
+
+- **La dépendance `anthropic`** s'ajoute au palier 2 comme les dépendances de
+  la mission 07 : une version publiée depuis plus de deux semaines, un
+  plafond de version majeure, le `uv.lock` committé. Le §0 n'a rien à
+  demander à beko là-dessus.
+- **Les tests et la CI** : aucun test ne construit un client réel. Un test
+  vérifie que l'assistant, lancé sans le double et sans identifiants (dans
+  un environnement isolé : variables `ANTHROPIC_*` retirées, dossier de
+  profil temporaire et vide, réseau bloqué par le test), s'arrête proprement avec le message « clé absente » et le code 2, sans
+  aucune requête réseau.
+- **Le journal de la mission** : sa première entrée donne les durées de la CI
+  de la PR #8, comme l'ordre le demande.
+
+### La clôture
+
+Elle ne change pas.

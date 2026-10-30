@@ -143,8 +143,10 @@ def test_deux_medicaments_meme_dci_marques_differentes() -> None:
 
 
 def test_controle_dates_trois_formes_et_nombres() -> None:
+    """Le fragment rend la date en ISO (« 2026-09-09 : Important », CIS 67026956) ; la forme
+    brute « 20260909 » de la BDPM n'est que dans le jeu (notation, ``compacte``)."""
     frag = (
-        "CIS 67026956 — Avis SMR 20260909. Taux 65 % prix public 12,50 €. Remboursé 1 000 unités."
+        "CIS 67026956 — Avis SMR 2026-09-09. Taux 65 % prix public 12,50 €. Remboursé 1 000 unités."
     )
     for texte in ("Avis du 9 septembre 2026.", "Avis du 09/09/2026.", "Avis du 2026-09-09."):
         assert controle.controler(texte, [frag], "question") is None
@@ -564,7 +566,10 @@ def test_deux_medicaments_sur_200_tires_au_hasard(dictionnaire_demo: repere.Dict
     """Un test indépendant du jeu d'évaluation (contrôle du palier 3) : 200 médicaments tirés au
     hasard parmi les dénominations du jeu de démo qui ont un mot significatif (15 816 sur
     15 883 ; « B O P » n'en a pas), posés seuls (la règle ne se déclenche jamais, et le
-    médicament est repéré), puis deux par deux (elle se déclenche toujours)."""
+    médicament est repéré), puis chacun avec son voisin dans le tirage, « <A> ou <B> : lequel
+    est remboursé ? » (elle se déclenche toujours). Les deux taux vont au rapport du palier 3 :
+    0 sur 200 seuls, 200 sur 200 deux par deux. La règle à deux mots du palier 2 se trompait sur
+    31 des 200 posés seuls."""
     dico = dictionnaire_demo
     nommables = sorted(
         cis
@@ -580,10 +585,10 @@ def test_deux_medicaments_sur_200_tires_au_hasard(dictionnaire_demo: repere.Dict
     assert [q for q in seuls if compte(q) != 1] == []
     assert all(c in repere.reperer(q, dico).vises for c, q in zip(tirage, seuls, strict=True))
     paires = [
-        f"{dico.denomination_par_cis[a]} et {dico.denomination_par_cis[b]} sont-ils en rupture ?"
-        for a, b in zip(tirage[::2], tirage[1::2], strict=True)
+        f"{dico.denomination_par_cis[a]} ou {dico.denomination_par_cis[b]} : lequel est remboursé ?"
+        for a, b in zip(tirage, tirage[1:] + tirage[:1], strict=True)
     ]
-    assert [q for q in paires if compte(q) < 2] == []
+    assert len(paires) == 200 and [q for q in paires if compte(q) < 2] == []
 
 
 def test_mots_de_forme_ne_nomment_pas_un_medicament() -> None:
@@ -612,6 +617,7 @@ def test_deux_medicaments_nom_contenu_et_groupe_borne() -> None:
     """Un nom contenu dans un autre ne compte pas à part ; l'exception « groupe » ne vaut que
     pour des noms qui tiennent dans le libellé d'un même groupe générique de l'index."""
     groupe_793 = "  - groupe 793 (EZETIMIBE 10 mg - EZETROL 10 mg, comprimé), type 0"
+    groupe_12 = "  - groupe 12 (IBUPROFENE 200 mg - ADVIL 200 mg, comprimé enrobé), type 1"
     dico = repere.construire_dictionnaire(
         [
             {"code_cis": cis, "denomination": nom, "texte": texte}
@@ -623,6 +629,8 @@ def test_deux_medicaments_nom_contenu_et_groupe_borne() -> None:
                 ("63996900", "NEBIVOLOL BIOGARAN 5 mg, comprimé", ""),
                 ("60981780", "EZETIMIBE EG 10 mg, comprimé", groupe_793),
                 ("60981789", "EZETROL 10 mg, comprimé", groupe_793),
+                ("64440001", "IBUPROFENE EG 200 mg, comprimé", groupe_12),
+                ("64440002", "ADVIL 200 mg, comprimé enrobé", groupe_12),
                 ("60234100", "DOLIPRANE 1000 mg, comprimé", ""),
             )
         ]
@@ -635,6 +643,9 @@ def test_deux_medicaments_nom_contenu_et_groupe_borne() -> None:
         ("Le princeps du groupe générique « EZETIMIBE 10 mg » (EZETROL) ?", 1),
         ("EZETIMIBE EG et EZETROL sont-ils remboursés ?", 2),  # sans « groupe »
         ("EZETROL et DOLIPRANE sont-ils du même groupe générique ?", 2),  # hors d'un libellé
+        ("Le groupe générique « IBUPROFENE 200 mg » (ADVIL) ?", 1),
+        ("Les groupes « EZETIMIBE 10 mg » et « IBUPROFENE 200 mg » ?", 2),  # deux groupes
+        ("Groupe « EZETIMIBE 10 mg » (EZETROL) ou groupe « IBUPROFENE 200 mg » (ADVIL) ?", 4),
         ("DOLIPRANE 1000 mg (CIS 60234100) est-il remboursé ?", 1),  # le nom et son CIS
     )
     for question, attendu in cas:
@@ -653,6 +664,28 @@ def test_controle_dates_anciennes_annee_et_mois() -> None:
     assert controle.controler("AMM du 17/05/1958.", [frag], "q") is not None
     assert controle.controler("En rupture depuis juillet 2026.", [frag], "q") is not None
     assert controle.extraire("CIS 65999556")[1] == frozenset()  # un CIS n'est jamais une date
+
+
+def test_controle_ni_cis_ni_cip13_ni_montant_ne_sont_des_dates() -> None:
+    """Un CIS (6…), un CIP13 et un montant à huit chiffres ne sont jamais des dates pour le
+    contrôle ; « 20101010 » le serait sous la forme compacte, que seule une valeur attendue lit."""
+    texte = "CIS 65999556, CIP13 3400935955838, montant de 20101010 € et de 19500101 €"
+    nombres, dates = controle.extraire(texte)
+    assert dates == frozenset()
+    assert {"65999556", "3400935955838", "20101010", "19500101"} <= nombres
+    assert controle.elements("20260909", compacte=True)[1] == {(2026, 9, 9)}  # valeur attendue
+    frag = "Le chiffre d'affaires est de 20101010 €."
+    assert controle.controler("Il s'élève à 20101010 €.", [frag], "q") is None
+    assert controle.controler("Il s'élève à 20101011 €.", [frag], "q") is not None
+
+
+def test_controle_jour_et_mois_sans_annee_ne_sont_pas_appuyes() -> None:
+    """L'année d'une date d'appui devient un nombre appuyé ; son jour et son mois, seuls, non."""
+    frag = "Rupture de stock depuis le 2026-06-25"
+    assert controle.controler("Depuis 2026.", [frag], "q") is None  # l'année : appuyée
+    assert controle.controler("Depuis le 25.", [frag], "q") is not None  # le jour seul
+    assert controle.controler("Depuis le 25 juin.", [frag], "q") is not None  # sans année
+    assert controle.controler("Au mois 6.", [frag], "q") is not None  # le mois seul
 
 
 # --- les remarques du contrôle du palier 2 ------------------------------------------------------

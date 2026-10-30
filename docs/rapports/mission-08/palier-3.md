@@ -8,8 +8,10 @@ harnais, y est posée, et `cle_presente()` reste faux. Tout passe par le double,
 `--estimer`, qui n'appelle rien. Le garde-fou a refusé une seule commande, `awk` sur le PRD
 (chemin réservé) : je l'ai relu par `grep` et `sed -n`, qu'il autorise. J'ai posé trois
 questions à l'IeC par message (la notation, les cinq questions sans réponse possible, les
-dates). Il les a acceptées, et il a posé des conditions sur le correctif « deux médicaments »
-(point 6).
+dates). Il les a acceptées avec des conditions, et en a posé d'autres sur le correctif « deux
+médicaments » (point 6). **Deux commits** : `c4ddec8` porte le palier ; le commit de ce
+rapport porte les conditions de l'IeC, reçues après (dates, raisons des colonnes, comptes par
+catégorie, tests aléatoires et bornes). Je ne réécris pas l'historique.
 
 ## Fait
 
@@ -26,9 +28,25 @@ dates). Il les a acceptées, et il a posé des conditions sur le correctif « de
    question `medical` sans refus. Elles seules donnent le code 1.
 
    Les valeurs dues sont celles des colonnes que **le texte des fragments rend**. Deux tables du
-   code classent chaque colonne, avec sa raison, et la seule raison admise pour « non due » est
-   l'absence du texte des fragments (décision de l'IeC, Q1). Une colonne non classée arrête la
-   notation, et un test exige que toutes les colonnes des attendus v1 soient classées.
+   code classent chaque colonne et disent en une ligne pourquoi : où le texte la rend, ou pourquoi
+   il ne la rend pas. La seule raison admise pour « non due » est l'absence du texte des
+   fragments ; une valeur mal rendue par le LLM n'en est jamais une, et aucune colonne ne change
+   de classe après une mesure (décision de l'IeC, Q1). Une colonne non classée arrête la notation,
+   et un test exige que toutes les colonnes des attendus v1 soient classées.
+
+   **Les valeurs dues de la v1, par catégorie** : 114 sur les 49 réponses attendues.
+
+   | catégorie | réponses attendues | valeurs dues |
+   |---|---|---|
+   | disponibilite | 10 | 24 |
+   | alternatives | 10 | 20 |
+   | remboursement | 11 | 17 |
+   | avis_has | 9 | 34 |
+   | historique | 9 | 19 |
+
+   Le nombre de valeurs **retrouvées** dépend des réponses du LLM. `assistant evaluer`
+   l'écrit, par catégorie, à la ligne « valeurs dues retrouvées » : il viendra de l'évaluation
+   de beko.
 
    La comparaison dépend de la nature de la valeur :
    - une date, sous toute graphie, par le normaliseur du contrôle ;
@@ -40,7 +58,12 @@ dates). Il les a acceptées, et il a posé des conditions sur le correctif « de
    manque. Les indicateurs sont ceux du PRD §2.2 :
    - les réponses correctes ;
    - les questions traitées justement ;
-   - les réponses à source datée ;
+   - les réponses qui citent une source et sa date. C'est l'indicateur officiel de l'addendum.
+     Un second chiffre l'éclaire : les réponses qui citent au moins une source, l'instant de
+     l'index étant toujours rendu. **Dit en clair** : le fragment « aucun signalement » de
+     `disponibilite-004` n'a qu'une source **non datée** (`CIS_CIP_Dispo_Spec.txt`, par
+     construction de l'index : une absence de ligne n'a pas de date de fichier). Même juste,
+     cette réponse manque donc l'indicateur officiel, qui ne peut pas atteindre 100 % sur la v1 ;
    - l'abstention hors périmètre et sur les questions médicales ;
    - les abstentions et refus justes, et les faux refus ;
    - les abstentions techniques, comptées à part ;
@@ -56,8 +79,11 @@ dates). Il les a acceptées, et il a posé des conditions sur le correctif « de
    - **Les appels et la notation** : chaque question est ensuite appelée, contrôlée et notée. La
      commande écrit une ligne par question au fil de l'eau, puis les indicateurs. Le détail va en
      JSON Lines sous `data/assistant/evaluations/`.
-   - **Sans clé** : `--estimer` s'arrête après la porte, sans clé ni appel. Une évaluation toute en
-     cache ne demande pas la clé : on peut donc **re-noter sans dépense** après le passage de beko.
+   - **Sans clé** : `--estimer` s'arrête après la porte, sans clé ni appel, et sans
+     `count_tokens`. Un test le garantit : aucune variable `ANTHROPIC_*`, toute connexion réseau
+     refusée, le client réel interdit de construction, et aucune ligne au journal. Une évaluation
+     toute en cache ne demande pas la clé : on peut donc **re-noter sans dépense** après le
+     passage de beko.
 
    Le chemin est découpé en `preparer` puis `conclure` (`demander` enchaîne les deux), et une
    `Citation` porte désormais `source_datee`.
@@ -95,24 +121,40 @@ dates). Il les a acceptées, et il a posé des conditions sur le correctif « de
      question. Un nom contenu dans un autre nom nommé ne compte pas à part.
    - **L'exception « groupe »** ne vaut que si les noms nommés tiennent dans le libellé d'un
      même groupe générique de l'index. Les libellés sont lus dans le texte des fragments
-     `identite`. La borne est testée : sans « groupe », ou hors d'un libellé, il y a bien deux
-     médicaments.
+     `identite`. La borne est testée : sans « groupe », « groupe » avec deux spécialités sans
+     lien, deux groupes génériques distincts, ou deux groupes et leurs princeps donnent bien deux
+     médicaments ou plus.
    - **Un CIS explicite** qui désigne un médicament déjà nommé ne compte plus deux fois.
 
    Les tests qu'a demandés l'IeC sont faits :
-   - **200 médicaments tirés au hasard** (graine fixe) parmi les 15 816 dénominations du jeu de
-     démo qui ont un mot significatif. Posés seuls, aucun ne déclenche la règle et tous sont
-     repérés ; posés deux par deux, la règle se déclenche toujours. La règle à deux mots du
-     palier 2 se déclenchait à tort sur 31 des 200.
+   - **200 médicaments tirés au hasard** (graine fixe, `demo/archive`, sans réseau) parmi les
+     15 816 dénominations du jeu de démo qui ont un mot significatif. Pour chacun :
+     - seul (« <dénomination> est-il en rupture de stock ? ») : **0 déclenchement sur 200**
+       (0 %), et les 200 sont repérés ;
+     - avec son voisin dans le tirage (« <A> ou <B> : lequel est remboursé ? ») :
+       **200 déclenchements sur 200** (100 %).
+
+     La règle à deux mots du palier 2 se déclenchait à tort sur 31 des 200 posés seuls.
    - **La v1** ne déclenche la règle que sur le piège `disponibilite-010`, et **la v0** jamais.
      Le vrai index donne la même chose.
 7. **Le contrôle des dates** (décision de l'IeC, Q3) :
    - il lit les dates de 1900 à 2099, puisque les AMM remontent à 1978 ;
-   - une année seule ou un mois sans jour (« juin 2026 ») s'appuient sur les dates d'appui ;
-   - un mois faux échoue, et une date d'AMM fausse aussi ;
-   - un CIS n'est toujours jamais lu comme une date.
+   - l'année d'une date d'appui devient un nombre appuyé, et un mois sans jour (« juin 2026 »)
+     se vérifie contre les couples (année, mois) des dates d'appui. Un mois faux échoue, et une
+     date d'AMM fausse aussi ;
+   - **le jour et le mois sans année ne sont jamais appuyés** (« le 25 », « le 25 juin ») ;
+   - **la forme compacte « AAAAMMJJ » ne se lit plus que dans une valeur attendue** (la
+     notation, `compacte=True`). Dans un texte, elle se confond avec un montant à huit chiffres
+     (« 20101010 » se lirait 10/10/2010). Le texte des fragments rend ses dates en ISO : le vrai
+     fragment du CIS 67026956 dit « 2026-09-09 : Important », jamais « 20260909 », qui n'est que
+     la forme brute de la v1. Le test du palier 2 qui posait un fragment « 20260909 » est aligné
+     sur le vrai texte. La remarque du palier 1 (relier « 9 septembre 2026 » à la forme du
+     fragment cité) reste tenue, et testée ;
+   - un test vérifie qu'un CIS en 6…, un CIP13 et un montant à huit chiffres ne sont jamais lus
+     comme une date par le contrôle.
 
-   Ces cas sont testés dans les deux sens.
+   Chaque règle est testée dans les deux sens : appuyé, donc accepté ; non appuyé, donc
+   abstention.
 8. **Le jeu v1** (décision de l'IeC, Q2). Cinq questions dont la valeur n'est pas dans le texte
    des fragments passent en **abstention**, sous le même identifiant et avant toute évaluation
    réelle, avec leur motif et leur orientation :
@@ -159,7 +201,8 @@ démonstration. Après l'évaluation, la mission aura dépensé moins de 1 $ en 
 14 abstentions des règles et le piège « deux médicaments ».
 
 **La mémoire et le temps** (I) :
-- `--estimer` tient en 439 Mo et 11 s (`/usr/bin/time -l`) ;
+- `--estimer` tient en 439 Mo, puis 462 Mo sur une seconde mesure, et 11 s
+  (`/usr/bin/time -l`). L'écart entre deux mesures est de l'ordre de celui de l'ADR 0011 ;
 - le chemin complet, SDK importé, plafonne à 419 Mo, mesuré avec un faux client sans réseau ;
 - un seul processus suffit.
 
@@ -203,12 +246,12 @@ docker compose -p pharmaflux up -d --wait --pull never
 |---|---|
 | `uv run ruff check .` / `ruff format --check .` | All checks passed / tous les fichiers formatés |
 | `uv run mypy src` | Success: no issues found in 78 source files |
-| `GITHUB_ACTIONS=true uv run pytest -q -rE -rs` (Qdrant, Redpanda et modèle présents) | **703 passed** en 6 min 43 (657 au départ du palier), intégration et modèle compris, aucun saut ; session verte, **0 réessai du registre** (sur 30 cycles) |
+| `GITHUB_ACTIONS=true uv run pytest -q -rE -rs` (Qdrant, Redpanda et modèle présents) | **705 passed** en 6 min 37 (657 au départ du palier, 703 sur `c4ddec8`), intégration et modèle compris, aucun saut ; session verte, **0 réessai du registre** |
 | `sh infra/git-hooks/test-crochets.sh` / `python3 infra/agents/test_garde_fou.py` | tout est conforme / OK (21 tests) |
 | `questions verifier` v1, `--racine demo/archive --entrepot data/demo/lakehouse` | 88 : 50 conformes, 10 non calculables, 28 sans attendu ; 50 depuis le gold : 50 concordent |
 | `questions verifier` v0, `--racine demo/archive --entrepot data/demo/lakehouse` | 40 : 25 conformes, 5 non calculables, 10 sans attendu ; 25 depuis le gold : 25 concordent |
 | `demo verifier` / `gold qualite` sur le jeu | conforme / 14 contrôles à 2026-10-27T00:17:12Z, aucun bloquant ne tombe |
-| `assistant evaluer --estimer` (vrai index, sans clé) | 62 appels, 5,3985 $ prudent, 0,8919 $ probable ; 439 Mo, 11 s |
+| `assistant evaluer --estimer` (vrai index, sans clé), avant et après les conditions de l'IeC | 62 appels, 0 en cache, 5,3985 $ prudent, 0,8919 $ probable ; 439 puis 462 Mo, 11 s |
 | `pharmaflux assistant depenses` | mission 8 : 3 appel(s), 0,0432 $ ; reste 19,9568 $ |
 
 L'index, le gold, le silver, les événements et le bus n'ont pas changé depuis le palier 1 (ni
@@ -217,13 +260,19 @@ ne sont pas rejoués ici.
 
 ## Écarts à l'ordre
 
-- **Le correctif « deux médicaments »** (point 6) corrige le palier 2, accepté. Il a été
-  **trouvé en faisant tourner le jeu d'évaluation** (par `--estimer`), ce qui risquait d'ajuster
-  la règle sur ce jeu. D'où la preuve hors du jeu, sur 200 médicaments tirés au hasard. La règle
-  du palier 2 s'y trompait 31 fois, la nouvelle jamais. L'exception « groupe », la seule tirée
-  d'un mot des questions, est bornée par les libellés de groupe de l'index, et testée.
-- **Cinq questions de la v1 passent en abstention** (point 8), sur décision de l'IeC et avant
-  toute évaluation réelle.
+- **Le correctif « deux médicaments »** (point 6) corrige le palier 2, accepté. C'est un
+  **correctif trouvé en passant la v1 sans LLM** (`--estimer`) : une mesure de développement. Le
+  « 0 faux positif sur la v1 » ne prouve donc rien seul. La preuve est hors du jeu, sur
+  200 médicaments tirés au hasard : 0 % de déclenchements seuls, 100 % deux par deux. La règle
+  du palier 2 s'y trompait 31 fois. L'exception « groupe », la seule tirée d'un mot des
+  questions, est bornée par les libellés de groupe de l'index, et testée. La v0 est vérifiée en
+  non-régression.
+- **Cinq questions de la v1 passent en abstention** (point 8), sur décision de l'IeC. Le
+  changement est **tiré de la structure des fragments** (ce que leur texte rend ou ne rend pas),
+  **avant toute évaluation réelle** : aucun résultat du LLM n'a guidé ce choix. `questions
+  verifier` v1 et v0 restent verts.
+- **La forme compacte des dates** ne se lit plus que dans une valeur attendue (point 7). Le test
+  du palier 2 qui posait un fragment « 20260909 » est aligné sur le vrai texte des fragments.
 - **Le prompt système change** (point 10) : deux consignes générales, et trois réponses en cache
   à repayer.
 - **L'override mypy d'`anthropic` est retiré** au lieu d'être raccourci (point 5).

@@ -45,39 +45,42 @@ from pharmaflux.index import lexical
 
 DATE, NOMBRE, LIBELLE, CIS = "date", "nombre", "libellé", "cis"
 
-# Les colonnes que le texte des fragments rend (index/fragments.py) et la nature de leur valeur.
-COLONNES_DUES: dict[str, str] = {
-    "code_cis": CIS,  # l'en-tête de chaque fragment
-    "denomination": LIBELLE,
-    "statut_amm": LIBELLE,  # identite
-    "date_amm": DATE,
-    "etat_commercialisation": LIBELLE,  # identite et presentations
-    "identifiant_groupe": NOMBRE,  # identite, « groupe 49 (…), type 1 »
-    "libelle_groupe": LIBELLE,
-    "type_generique": NOMBRE,
-    "taux_remboursement": NOMBRE,  # presentations
-    "prix_public": NOMBRE,
-    "libelle_statut": LIBELLE,  # disponibilite
-    "date_debut": DATE,
-    "date_mise_a_jour": DATE,
-    "date_remise_a_disposition": DATE,
-    "date_avis": DATE,  # avis
-    "valeur_smr": LIBELLE,
-    "valeur_asmr": LIBELLE,
-    "motif_evaluation": LIBELLE,
-    "code_dossier_has": LIBELLE,
+# Les colonnes que le texte des fragments rend (index/fragments.py) : la nature de leur valeur, et
+# où le texte la rend. Une colonne ne passe jamais de « due » à « non due » après une mesure.
+COLONNES_DUES: dict[str, tuple[str, str]] = {
+    "code_cis": (CIS, "l'en-tête « CIS … — dénomination » de chaque fragment"),
+    "denomination": (LIBELLE, "l'en-tête « CIS … — dénomination » de chaque fragment"),
+    "statut_amm": (LIBELLE, "identite : « Spécialité : … ; Autorisation active depuis le … »"),
+    "date_amm": (DATE, "identite : « … depuis le AAAA-MM-JJ » du statut d'AMM"),
+    "etat_commercialisation": (LIBELLE, "identite et presentations, après la forme ou le libellé"),
+    "identifiant_groupe": (NOMBRE, "identite : « groupe 49 (libellé), type 1 »"),
+    "libelle_groupe": (LIBELLE, "identite : « groupe 49 (libellé), type 1 »"),
+    "type_generique": (NOMBRE, "identite : « groupe 49 (libellé), type 1 »"),
+    "taux_remboursement": (NOMBRE, "presentations : « taux 65% »"),
+    "prix_public": (NOMBRE, "presentations : « prix public 2.18 € »"),
+    "libelle_statut": (LIBELLE, "disponibilite : « Rupture de stock depuis le … »"),
+    "date_debut": (DATE, "disponibilite : « … depuis le » ou « annoncé à partir du … »"),
+    "date_mise_a_jour": (DATE, "disponibilite : « mis à jour le … »"),
+    "date_remise_a_disposition": (DATE, "disponibilite : « remise à disposition le … »"),
+    "date_avis": (DATE, "avis : « AAAA-MM-JJ : valeur (motif, dossier) »"),
+    "valeur_smr": (LIBELLE, "avis : « AAAA-MM-JJ : valeur (motif, dossier) »"),
+    "valeur_asmr": (LIBELLE, "avis : « AAAA-MM-JJ : valeur (motif, dossier) »"),
+    "motif_evaluation": (LIBELLE, "avis : « AAAA-MM-JJ : valeur (motif, dossier) »"),
+    "code_dossier_has": (LIBELLE, "avis : « AAAA-MM-JJ : valeur (motif, dossier) »"),
 }
 
-# Les colonnes que le texte des fragments ne rend pas : le LLM ne les reçoit jamais.
+# Les colonnes que le texte des fragments ne rend pas : le LLM ne les reçoit jamais. C'est la seule
+# raison admise pour qu'une colonne ne soit pas due ; une valeur mal rendue par le LLM n'en est
+# jamais une.
 COLONNES_HORS_TEXTE: dict[str, str] = {
-    "lien_ansm": "dans les liens du fragment, pas dans son texte",
-    "lien_avis": "dans les liens du fragment, pas dans son texte",
-    "numero_tri": "ordre du groupe générique, que le fragment ne rend pas",
-    "honoraires_dispensation": "honoraires, que le fragment des présentations ne rend pas",
-    "prix_medicament": "prix hors honoraires, que le fragment des présentations ne rend pas",
-    "agrement_collectivites": "agrément, que le fragment des présentations ne rend pas",
+    "lien_ansm": "dans les liens du fragment disponibilite, pas dans son texte",
+    "lien_avis": "dans les liens du fragment avis, pas dans son texte",
+    "numero_tri": "le fragment identite rend le groupe, pas le rang de tri de ses membres",
+    "honoraires_dispensation": "le fragment presentations ne rend pas les honoraires",
+    "prix_medicament": "le fragment presentations ne rend que le prix public",
+    "agrement_collectivites": "le fragment presentations ne rend pas l'agrément",
     "date_declaration_commercialisation": (
-        "date de déclaration, que le fragment des présentations ne rend pas"
+        "le fragment presentations rend l'état de commercialisation, pas sa date"
     ),
 }
 
@@ -97,6 +100,7 @@ class Note:
     decision: str  # d'où vient la décision (règle, porte, llm, contrôle, technique)
     comportement_juste: bool
     correcte: bool | None  # une réponse attendue seulement (F2)
+    valeurs_dues: int  # le nombre de valeurs dues (une réponse attendue seulement)
     manques: tuple[str, ...]  # « colonne = valeur » dues et absentes du texte
     cis_cite: bool | None  # une citation valide pointe le CIS (et la section) attendus
     citations_valides: int
@@ -135,7 +139,7 @@ def valeurs_dues(question: Question) -> list[tuple[str, str, str]]:
         for colonne in question.attendu.colonnes:
             valeur = ligne[colonne].strip()
             if colonne in COLONNES_DUES and valeur:
-                dues.append((colonne, valeur, COLONNES_DUES[colonne]))
+                dues.append((colonne, valeur, COLONNES_DUES[colonne][0]))
     return dues
 
 
@@ -143,7 +147,7 @@ def presente(valeur: str, nature: str, texte: str, cis_cites: frozenset[str]) ->
     """La valeur attendue paraît-elle dans le texte rendu, selon sa nature ?"""
     nombres, dates, _ = controle.elements(texte)
     if nature == DATE:
-        voulues = controle.elements(valeur)[1]
+        voulues = controle.elements(valeur, compacte=True)[1]
         if voulues:
             return voulues <= dates
     elif nature == NOMBRE:
@@ -175,15 +179,17 @@ def noter(question: Question, reponse: Reponse) -> Note:
     attendu = question.comportement.value
     juste = reponse.comportement == attendu
     correcte: bool | None = None
+    dues: list[tuple[str, str, str]] = []
     manques: tuple[str, ...] = ()
     cis_cite: bool | None = None
     interdits: tuple[str, ...] = ()
     reserve_manquee = False
     if attendu == REPONSE:
         cis_cites = frozenset(c.code_cis for c in valides)
+        dues = valeurs_dues(question)
         manques = tuple(
             f"{colonne} = {valeur}"
-            for colonne, valeur, nature in valeurs_dues(question)
+            for colonne, valeur, nature in dues
             if not presente(valeur, nature, reponse.texte, cis_cites)
         )
         if question.cis_attendu is not None:
@@ -215,6 +221,7 @@ def noter(question: Question, reponse: Reponse) -> Note:
         decision=reponse.decision,
         comportement_juste=juste,
         correcte=correcte,
+        valeurs_dues=len(dues),
         manques=manques,
         cis_cite=cis_cite,
         citations_valides=len(valides),
@@ -257,6 +264,7 @@ class Indicateurs:
     appels_payes: int
     appels_en_cache: int
     cout_total: float
+    valeurs_par_categorie: dict[str, tuple[int, int]]  # catégorie → (dues, retrouvées)
 
     @property
     def conditions_dures_tenues(self) -> bool:
@@ -299,4 +307,18 @@ def indicateurs(notes: Sequence[Note]) -> Indicateurs:
         appels_payes=compte(lambda n: n.llm and not n.depuis_cache),
         appels_en_cache=compte(lambda n: n.depuis_cache),
         cout_total=sum(n.cout for n in notes),
+        valeurs_par_categorie=_valeurs_par_categorie(notes),
     )
+
+
+def _valeurs_par_categorie(notes: Sequence[Note]) -> dict[str, tuple[int, int]]:
+    """Par catégorie, les valeurs dues des réponses attendues et celles retrouvées dans le texte."""
+    comptes: dict[str, tuple[int, int]] = {}
+    for note in notes:
+        if note.valeurs_dues:
+            dues, retrouvees = comptes.get(note.categorie, (0, 0))
+            comptes[note.categorie] = (
+                dues + note.valeurs_dues,
+                retrouvees + note.valeurs_dues - len(note.manques),
+            )
+    return comptes

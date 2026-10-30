@@ -7,7 +7,9 @@ lue dans le contenu envoyé), sur le petit index du Qdrant simulé de ``test_ass
 from __future__ import annotations
 
 import json
+import os
 import re
+import socket
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from datetime import date
@@ -21,7 +23,7 @@ from pharmaflux import cli
 from pharmaflux.assistant import chemin, evaluation, notation
 from pharmaflux.assistant.budget import PLAFOND, BudgetDepasse, Journal, Ligne, Usage
 from pharmaflux.assistant.cache import CacheReponses
-from pharmaflux.assistant.client import ReponseLLM
+from pharmaflux.assistant.client import ClientClaude, ReponseLLM
 from pharmaflux.cli import application
 from pharmaflux.contrats.chargeur import charger_tous
 from pharmaflux.evaluation.questions import Attendu, Comportement, Jeu, Question
@@ -268,6 +270,7 @@ def test_indicateurs() -> None:
     assert ind.abstentions_techniques == 1 and ind.conditions_dures_tenues
     assert (ind.appels_payes, ind.appels_en_cache) == (2, 1)
     assert ind.cout_total == pytest.approx(0.024) and ind.cout_par_question == pytest.approx(0.006)
+    assert ind.valeurs_par_categorie == {"disponibilite": (4, 2)}  # (dues, retrouvées)
 
 
 # --- l'évaluation, bout en bout, avec le double ------------------------------------------------
@@ -439,14 +442,25 @@ def _evaluer(tmp_path: Path, *options: str) -> Any:
 
 @pytest.mark.usefixtures("cli_index")
 def test_cli_evaluer_estimer_sans_cle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--estimer`` n'exige jamais la clé et ne touche jamais l'API : aucune variable
+    ``ANTHROPIC_*``, aucune connexion réseau possible (le Qdrant est simulé en mémoire), et le
+    client réel ne se construit pas. Ni appel, ni ``count_tokens``."""
     monkeypatch.setattr(cli, "fabriquer_client_llm", lambda: None)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    for nom in [n for n in os.environ if n.startswith("ANTHROPIC_")]:
+        monkeypatch.delenv(nom)
+
+    def interdit(*_: object, **__: object) -> None:
+        raise AssertionError("--estimer ne doit ni construire le client ni ouvrir le réseau")
+
+    monkeypatch.setattr(ClientClaude, "__init__", interdit)
+    monkeypatch.setattr(socket.socket, "connect", interdit)
     resultat = _evaluer(tmp_path, "--estimer")
     assert resultat.exit_code == 0, resultat.output
     assert "porte budgétaire : 3 questions, 1 décidées hors LLM, 0 en cache, 2 appel(s)" in (
         resultat.output
     )
     assert "accordée" in resultat.output and "indicateurs" not in resultat.output
+    assert not (tmp_path / "a" / "depenses.jsonl").exists()  # rien de dépensé, rien d'écrit
     sans = _evaluer(tmp_path)  # des appels restent à faire, et pas de clé : code 2
     assert sans.exit_code == 2 and "clé absente" in sans.output
 

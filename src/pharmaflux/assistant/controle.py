@@ -6,14 +6,17 @@ Deux garanties, après l'appel :
   étiquettes) ;
 - **chaque nombre et chaque date** du texte se retrouve, après normalisation, dans le texte
   ou les dates des sources d'un fragment **cité**, ou dans la question. Un « 65 % » et un
-  « 65% », un « 1 000 » et un « 1000 », une date « 09/09/2026 », « 9 septembre 2026 »,
-  « 2026-09-09 » et « 20260909 » se ramènent à une même forme. Une date d'appui appuie aussi
-  son année seule (« en 2026 ») et son mois (« juin 2026 ») ; un mois écrit sans jour se
-  vérifie contre les mois des dates d'appui.
+  « 65% », un « 1 000 » et un « 1000 », une date « 09/09/2026 », « 9 septembre 2026 » et
+  « 2026-09-09 » se ramènent à une même forme. Une date d'appui appuie aussi son année seule
+  (« en 2026 ») et son mois (« juin 2026 ») ; un mois écrit sans jour se vérifie contre les mois
+  des dates d'appui. Le jour et le mois sans année ne sont jamais des nombres appuyés.
 
-Les dates se lisent de 1900 à 2099 (les AMM anciennes : 1978, 1985) ; un CIS (8 chiffres, qui
-commencent par 6) n'est jamais lu comme une date. La notation de l'évaluation se sert du même
-normaliseur pour chercher une valeur attendue dans le texte.
+Les dates se lisent de 1900 à 2099 (les AMM anciennes : 1978, 1985). La forme compacte
+« 20260909 », celle de la BDPM brute, ne se lit que dans une **valeur attendue** du jeu
+(``compacte=True``, la notation) : dans un texte, elle se confond avec un montant à huit chiffres
+(« 20101010 »), et le texte des fragments rend ses dates en ISO. Un CIS, un CIP13 ou un montant
+ne sont donc jamais lus comme une date par le contrôle. La notation de l'évaluation se sert du
+même normaliseur pour chercher une valeur attendue dans le texte.
 
 Un échec ne se corrige pas : la réponse devient une **abstention** journalisée (« réponse non
 vérifiable »). L'instant de l'index n'est pas dans le texte du LLM — le code le rend —, donc
@@ -64,17 +67,17 @@ def _jour_valide(annee: int, mois: int, jour: int) -> bool:
     return 1 <= mois <= 12 and 1 <= jour <= 31 and 1900 <= annee <= 2099
 
 
-def _dates(texte: str) -> tuple[frozenset[tuple[int, int, int]], frozenset[tuple[int, int]], str]:
+def _dates(
+    texte: str, compacte: bool = False
+) -> tuple[frozenset[tuple[int, int, int]], frozenset[tuple[int, int]], str]:
     """Les dates du texte (année, mois, jour), les mois sans jour (année, mois), et le texte
-    avec leurs empans blanchis."""
+    avec leurs empans blanchis. ``compacte`` : lire aussi « AAAAMMJJ » (une valeur attendue)."""
     trouvees: set[tuple[int, int, int]] = set()
     reste = texte
-    for motif, ordre in (
-        (_ISO, "amj"),
-        (_JMA, "jma"),
-        (_EN_LETTRES, "jMa"),
-        (_COMPACT, "amj"),
-    ):
+    motifs = [(_ISO, "amj"), (_JMA, "jma"), (_EN_LETTRES, "jMa")]
+    if compacte:
+        motifs.append((_COMPACT, "amj"))
+    for motif, ordre in motifs:
         morceaux = []
         fin = 0
         for trouve in motif.finditer(reste):
@@ -132,11 +135,11 @@ def _nombres(texte: str) -> frozenset[str]:
 
 
 def elements(
-    texte: str,
+    texte: str, *, compacte: bool = False
 ) -> tuple[frozenset[str], frozenset[tuple[int, int, int]], frozenset[tuple[int, int]]]:
     """Les nombres (canoniques), les dates (année, mois, jour) et les mois sans jour (année,
-    mois) d'un texte."""
-    dates, mois_seuls, reste = _dates(texte)
+    mois) d'un texte ; ``compacte`` pour une valeur attendue (« 20260909 »)."""
+    dates, mois_seuls, reste = _dates(texte, compacte)
     return _nombres(reste), dates, mois_seuls
 
 

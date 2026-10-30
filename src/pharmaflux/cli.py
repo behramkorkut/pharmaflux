@@ -2397,6 +2397,14 @@ def _rendre_indicateurs(ind: Any) -> list[str]:
             "refus médicaux justes",
             _pourcent(ind.refus_justes, ind.refus_attendus) + f" ; faux refus : {ind.faux_refus}",
         ),
+        (
+            "valeurs dues retrouvées",
+            " ; ".join(
+                f"{categorie} {retrouvees}/{dues}"
+                for categorie, (dues, retrouvees) in sorted(ind.valeurs_par_categorie.items())
+            )
+            or "aucune",
+        ),
         ("abstentions techniques", str(ind.abstentions_techniques)),
         ("citations invalides", f"{ind.citations_invalides}   condition dure : 0"),
         ("conseils médicaux", f"{ind.conseils_medicaux}   condition dure : 0"),

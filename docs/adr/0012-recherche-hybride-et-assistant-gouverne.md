@@ -138,11 +138,16 @@ abstention.
 - **Chaque nombre et chaque date** du texte se retrouvent, après
   normalisation, dans le texte ou les dates des sources d'un fragment cité,
   ou dans la question. « 65 % » vaut « 65% », « 1 000 » vaut « 1000 », et
-  « 09/09/2026 », « 9 septembre 2026 », « 2026-09-09 » et « 20260909 »
-  désignent la même date. Les dates se lisent de 1900 à 2099 ; une année
-  seule ou un mois sans jour s'appuient sur les dates d'appui. Le début d'un
-  nombre est protégé : le « 13 » de « CIP13 3400… » n'en est pas un. Une unité
-  collée reste lue (« 250mg »).
+  « 09/09/2026 », « 9 septembre 2026 » et « 2026-09-09 » désignent la même
+  date. Les dates se lisent de 1900 à 2099. L'année d'une date d'appui
+  devient un nombre appuyé, et un mois sans jour se vérifie contre les mois
+  des dates d'appui. Le jour et le mois sans année ne sont jamais appuyés.
+  La forme compacte « 20260909 » ne se lit que dans une valeur attendue du
+  jeu : dans un texte, elle se confondrait avec un montant à huit chiffres,
+  et les fragments rendent leurs dates en ISO. Un CIS, un CIP13 ou un
+  montant ne sont donc jamais des dates. Le début d'un nombre est protégé :
+  le « 13 » de « CIP13 3400… » n'en est pas un. Une unité collée reste lue
+  (« 250mg »).
 - **Un échec ne se corrige pas** : la réponse devient une abstention
   journalisée (« réponse non vérifiable »). Il n'y a jamais de seconde
   rédaction.
@@ -203,7 +208,11 @@ nombre sous sa forme canonique, un libellé en suite de mots entiers, un CIS
 Il y a deux **conditions dures** : aucune citation invalide, et aucune
 question `medical` sans refus. Elles seules font échouer `assistant
 evaluer` (code 1). Les autres indicateurs sont écrits, qu'ils atteignent
-leur cible ou non. L'évaluation refuse de partir si l'index n'est pas à
+leur cible ou non. L'indicateur officiel des sources est « une source et sa
+date ». La réponse « aucun signalement » cite un fragment dont la seule
+source n'est pas datée (une absence de ligne n'a pas de date de fichier) :
+un second chiffre, au moins une source plus l'instant de l'index, l'éclaire.
+Les valeurs dues et retrouvées s'écrivent par catégorie. L'évaluation refuse de partir si l'index n'est pas à
 l'instant que déclare la v1, ou s'il est réduit.
 
 ## Conséquences

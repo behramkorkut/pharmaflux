@@ -144,6 +144,16 @@ def test_controle_dates_trois_formes_et_nombres() -> None:
     assert controle.controler("Avis du 10/09/2026.", [frag], "q") is not None
 
 
+def test_controle_un_code_colle_a_un_label_nest_pas_un_faux_nombre() -> None:
+    """Régression (démo Q1) : « CIP13 3400933961688 » ne doit pas donner « 13 340 » (le « 13 »
+    du label collé au début du CIP) ni couper le CIP ; « P01BC02 » ne donne aucun nombre."""
+    nombres, _ = controle.extraire("présentation CIP13 3400933961688 (ATC P01BC02), boîte de 8")
+    assert nombres == {"3400933961688", "8"}
+    frag = "CIS 65999556 — plaquette de 8 comprimés (CIP13 3400933961688)"
+    reponse = "Sa seule présentation est la CIP13 3400933961688, une boîte de 8 comprimés."
+    assert controle.controler(reponse, [frag], "LARIAM en rupture ?") is None
+
+
 # --- budget ------------------------------------------------------------------------------------
 
 

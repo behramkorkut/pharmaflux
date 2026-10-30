@@ -102,15 +102,61 @@ LLM (coût réel), deux décisions sont prises hors LLM (coût nul).
 2. `"Quel est le taux de remboursement de DOLIPRANE 1000 mg, comprimé, boîte de 8 ?"` — réponse,
    un taux (contrôle des nombres).
 3. `"Quel est le SMR du médicament de code CIS 67026956 ?"` — **réponse avec réserve** (CIS hors
-   `CIS_bdpm.txt`), une date d'avis (contrôle « 20260909 » relié à une date rédigée).
+   `CIS_bdpm.txt`) ; visait aussi le contrôle de date (« 20260909 » relié à une forme rédigée),
+   mais le modèle n'a écrit aucune date (voir ci-dessous).
 4. `"Puis-je remplacer LARIAM 250 mg, en rupture, par un autre antipaludique pour mon voyage ?"`
    — **refus médical** (hors LLM, 0 $).
 5. `"Quels sont les effets indésirables de DOLIPRANE 1000 mg, comprimé ?"` — **abstention** hors
    périmètre (hors LLM, 0 $).
 
-**Sortie, coût réel et reste du plafond : à citer ici quand beko aura lancé les commandes** (et
-l'effort remonté à `medium` seulement si le contrôle échoue ou si une réponse est incomplète,
-G1). `pharmaflux assistant depenses` lit alors le total et le reste.
+**Sortie de beko** (recopiée) : 3 appels réels, **0,0432 $** au total, reste **19,9568 $**
+(`assistant depenses` : « mission 8 : 3 appel(s), 0.0432 $ ; reste 19.9568 $ »). Instant de
+l'index affiché : `2026-10-27T00:17:12Z`.
+
+1. **Abstention**, coût **0,0183 $**. Motif : « le nombre « 13340 » du texte n'est dans aucun
+   fragment cité ni la question ». **C'était un faux positif du contrôle** (A, ci-dessous),
+   corrigé sur ce commit ; la réponse du modèle, elle, était juste.
+2. **Réponse**, coût **0,0126 $**. Taux 65 %, prix public 2,18 €, CIP 3400935955838, et une
+   phrase sur la boîte de 100 sans taux ni prix ; cite [2] (CIS 60234100, presentations,
+   `CIS_CIP_bdpm.txt` source du 2026-10-23).
+3. **Réponse avec réserve**, coût **0,0122 $**. SMR « Important », avis CT-21978, ASMR V ; cite
+   [1] (avis) et [3] (identite, `CIS_bdpm.txt` source non datée, voir B). **Aucune date n'est
+   écrite en clair** : le cas « 20260909 » (relier une date rédigée à la forme brute) reste
+   couvert par les seuls tests.
+4. **Refus médical** (« remplacer »), **0 $**, hors LLM.
+5. **Abstention** (effets indésirables), **0 $**, hors LLM.
+
+L'effort reste à **`low`** : le seul contrôle en échec était un faux positif du normaliseur, non
+une réponse incomplète ou fausse du modèle (G1).
+
+### A. Le « 13340 » de la question 1 : faux positif du normaliseur, corrigé
+
+Relu **sans aucun appel** : la réponse du modèle est dans `data/assistant/cache-reponses.sqlite`
+(l'abstention venait du contrôle, pas d'une erreur technique, donc elle a été mise en cache). Le
+texte finit par « … une plaquette de 8 comprimés (CIP13 3400933961688) ». Le normaliseur des
+nombres (`controle._NOMBRE`) collait le « 13 » du **label** « CIP13 » à l'espace puis aux
+premiers chiffres du CIP (« 340… ») et lisait un faux « 13 340 » → `13340`, en coupant le CIP en
+« 933961688 ». **Cas (c) : un faux positif.** Correctif (ce commit) : des **frontières de mot**
+(`\b`) dans `_NOMBRE`, pour qu'un nombre ne commence pas au milieu d'un code alphanumérique
+(« CIP13 », « P01BC02 »). Vérifié sans appel : la recherche rejoue les dix mêmes fragments, et la
+réponse du modèle **passe** alors le contrôle (ses nombres — CIS 65999556, CIP 3400933961688,
+250, 8 — et ses dates sont tous dans les fragments cités [1] disponibilite et [2] presentations).
+Un test de régression fige le cas.
+
+### B. La source « CIS_bdpm.txt (source non datée) » de la question 3 : voulu
+
+Le fragment `identite` d'un CIS absent de `CIS_bdpm.txt` (ici 67026956) est une **fiche
+partielle** : `fragments._sources` ajoute `CIS_bdpm.txt` sans date pour **attester l'absence** du
+référentiel (la réserve de la réponse), à côté des fichiers qui, eux, citent le CIS (les avis,
+datés). C'est **voulu**, pas un défaut de `citer` : il n'y a pas de date pour une absence.
+
+### C. Les jetons de cache : non nuls
+
+Lus dans `depenses.jsonl` : le premier appel **écrit 923 jetons de cache** (`cache_creation`),
+les deux suivants en **lisent 923** (`cache_read`). Le cache du prompt système **est donc
+effectif** — contrairement à l'attente de la remarque 1 du contrôle (préfixe sous le minimum) :
+le préfixe stable atteint le minimum et se met en cache. Le gain reste modeste (923 jetons à
+0,20 $/million).
 
 ## Correctif (contrôle du palier 2)
 
@@ -132,13 +178,14 @@ Deux corrections avant la démonstration, sur le commit de ce rapport :
 |---|---|
 | `uv run ruff check .` / `ruff format --check .` | All checks passed / 281 fichiers déjà formatés |
 | `uv run mypy src` | Success: no issues found in 68 source files (76 avec les ajouts) |
-| `GITHUB_ACTIONS=true uv run pytest -q -rE` (unité + intégration + modèle, Qdrant et modèle présents) | **655 passed** en 5 min 45, session verte ; **0 réessai du registre** (sur 30 cycles ; la coupure ne s'est pas reproduite) |
+| `GITHUB_ACTIONS=true uv run pytest -q -rE` (unité + intégration + modèle, Qdrant et modèle présents) | **656 passed** (~5 min 45), session verte ; **0 réessai du registre** (sur 30 cycles ; la coupure ne s'est pas reproduite) |
 | `sh infra/git-hooks/test-crochets.sh` / `python3 infra/agents/test_garde_fou.py` | tout est conforme / OK (21 tests) |
 | `questions verifier` v1, `--racine demo/archive` | 88 : 55 conforme, 10 non calculable, 23 sans attendu |
 | idem `--entrepot data/demo/lakehouse` | 55 depuis le gold : 55 concordent |
 | `questions verifier` v0 (non-régression, + gold) | 25 depuis le gold : 25 concordent |
 | chemin de l'assistant contre le **vrai index** (double, sans clé) | refus, abstention (règle), porte structurelle : **0 appel** ; « LARIAM … en rupture ? » : réponse, 1 citation (CIS 65999556, disponibilite, source datée), coût estimé 0,0160 $ |
-| `pharmaflux assistant depenses` | mission 8 : 0 appel, 0 $, reste 20 $ (aucun appel réel de ma session) |
+| diagnostic de la démo, **sans appel** (A) : Q1 relue du cache, recherche rejouée | avec `_NOMBRE` corrigé, la réponse Q1 **passe** le contrôle ; le faux « 13340 » est levé |
+| `pharmaflux assistant depenses` (après la démo de beko) | mission 8 : 3 appel(s), 0,0432 $, reste 19,9568 $ |
 
 L'index n'a pas changé depuis le palier 1 (format 2) : la construction, `index verifier` et
 `index evaluer` restent ceux du palier 1, non rejoués ici. Le test « clé absente » (addendum J)

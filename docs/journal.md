@@ -722,5 +722,11 @@ porte structurelle sans appel ; « LARIAM en rupture ? » rend une réponse cita
 le CIS 65999556 daté. Correctif du contrôle du palier 2 : une sortie illisible
 du modèle (bloc absent, JSON invalide, clé manquante) devient une abstention
 technique journalisée (l'appel payé n'est jamais perdu), et une abstention
-technique n'entre pas au cache (une reprise retente l'appel). 655 tests verts
-(intégration et modèle compris, 0 réessai du registre).
+technique n'entre pas au cache (une reprise retente l'appel). Démonstration de
+beko (3 appels réels, 0,0432 $, reste 19,9568 $) : l'abstention de la question 1
+était un faux positif du contrôle des nombres — « CIP13 3400933961688 » lu
+« 13 340 », le « 13 » du label collé au début du CIP —, corrigé par des
+frontières de mot dans le normaliseur (la réponse passe alors le contrôle,
+vérifié sans appel depuis le cache) ; le cache du prompt s'avère effectif
+(923 jetons écrits puis relus). 656 tests verts (intégration et modèle compris,
+0 réessai du registre).

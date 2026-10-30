@@ -46,8 +46,10 @@ _EN_LETTRES = re.compile(
 )
 # Un nombre : des milliers séparés par une espace (fine, insécable ou ordinaire) ou non, suivis
 # d'une éventuelle part décimale (virgule ou point). La virgule décimale ne porte pas d'espace
-# (« 12,50 »), à la différence d'une virgule de liste (« 65, 73 »), qui sépare deux nombres.
-_NOMBRE = re.compile(r"\d{1,3}(?:[^\S\r\n]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?")
+# (« 12,50 »), à la différence d'une virgule de liste (« 65, 73 »), qui sépare deux nombres. Les
+# frontières de mot (« \b ») évitent qu'un nombre commence au milieu d'un code alphanumérique :
+# « CIP13 3400… » ne doit pas donner « 13 340 », ni « P01BC02 » donner « 1 » et « 2 ».
+_NOMBRE = re.compile(r"\b(?:\d{1,3}(?:[^\S\r\n]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)\b")
 
 
 def _jour_valide(annee: int, mois: int, jour: int) -> bool:

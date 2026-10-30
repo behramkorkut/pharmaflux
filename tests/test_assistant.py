@@ -766,3 +766,68 @@ def test_cli_demander_erreur_api_code_2(tmp_path: Path, monkeypatch: pytest.Monk
     assert resultat.exit_code == 2
     assert "assistant refusé : l'API Claude n'a rendu aucune réponse" in resultat.output
     assert Journal(tmp_path / "a" / "depenses.jsonl").total() == 0.0  # rien de payé, rien d'écrit
+
+
+# --- les étiquettes de citation écrites dans le texte (évaluation du palier 3) ------------------
+
+
+def test_etiquettes_declarees_ne_sont_pas_des_nombres() -> None:
+    """Régression de l'évaluation du palier 3 : le LLM écrit ses étiquettes dans le texte
+    (« … 2,18 € [2] ») ; une étiquette déclarée dans « citations » n'est pas un fait. Une étiquette
+    non déclarée reste, et son nombre doit s'appuyer."""
+    frag = "CIS 60234100 — taux 65% ; prix public 2.18 €"
+    texte = "Le taux est de 65 % et le prix public de 2,18 € [2]. Voir aussi [1, 2]."
+    assert controle.controler(texte, [frag], "q") is not None  # « 2 » et « 1 » sans appui
+    assert controle.sans_etiquettes(texte, (1, 2)).count("[") == 0
+    assert controle.controler(controle.sans_etiquettes(texte, (1, 2)), [frag], "q") is None
+    assert controle.controler(controle.sans_etiquettes(texte, (2,)), [frag], "q") is not None
+    assert (
+        controle.sans_etiquettes("un taux [65 %]", (65,)) == "un taux [65 %]"
+    )  # pas une étiquette
+
+
+def test_reponse_avec_etiquettes_dans_le_texte_passe_le_controle(
+    index: Qdrant, tmp_path: Path
+) -> None:
+    texte = "Un signalement de disponibilité est en cours pour ce médicament [1]."
+    reponse = _demander(
+        index,
+        "PARACETAMOL TEST est-il disponible ?",
+        DoubleClient(fixe=_llm(texte=texte, citations=(1,))),
+        tmp_path,
+    )
+    assert reponse.comportement == "reponse" and reponse.texte == texte  # le texte rendu les garde
+    non_declaree = "Un signalement de disponibilité est en cours pour ce médicament [3]."
+    reponse = _demander(
+        index,
+        "PARACETAMOL TEST est-il disponible ?",
+        DoubleClient(fixe=_llm(texte=non_declaree, citations=(1,))),
+        tmp_path / "b",
+    )
+    assert reponse.comportement == "abstention" and reponse.decision == "controle"
+
+
+@pytest.mark.parametrize(
+    ("texte", "declarees", "reste"),
+    [
+        # retirées : déclarées, seules ou groupées, collées à un nombre ou non
+        ("taux 65 % [1][2].", (1, 2), "taux 65 % ."),
+        ("taux 65 % [1, 2].", (1, 2), "taux 65 % ."),
+        ("taux 65 % [1,2].", (1, 2), "taux 65 % ."),
+        ("taux 65 % [ 1 ; 2 ].", (1, 2), "taux 65 % ."),
+        ("prix public 2,18 €[2].", (2,), "prix public 2,18 € ."),
+        ("prix public 2,18[2].", (2,), "prix public 2,18 ."),
+        # gardées : non déclarée, déclarée en partie, plage ou forme libre (leurs nombres doivent
+        # alors s'appuyer : sans appui, la réponse devient une abstention, le sens prudent)
+        ("taux 65 % [3].", (1, 2), "taux 65 % [3]."),
+        ("taux 65 % [1, 5].", (1,), "taux 65 % [1, 5]."),
+        ("taux 65 % [1-3].", (1, 2, 3), "taux 65 % [1-3]."),
+        ("taux 65 % [1 et 2].", (1, 2), "taux 65 % [1 et 2]."),
+    ],
+)
+def test_formes_des_etiquettes(texte: str, declarees: tuple[int, ...], reste: str) -> None:
+    """Contrôle de clôture du palier 3 : ce qui est retiré et ce qui ne l'est pas."""
+    assert " ".join(controle.sans_etiquettes(texte, declarees).split()) == reste
+    frag = "taux 65% ; prix public 2.18 €"
+    appuye = controle.controler(controle.sans_etiquettes(texte, declarees), [frag], "q")
+    assert (appuye is None) == ("[" not in reste)

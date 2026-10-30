@@ -234,6 +234,14 @@ def test_mots_interdits_en_mots_entiers() -> None:
         assert notation.noter(question, _reponse(texte=texte)).mots_interdits == attendu
 
 
+def test_une_etiquette_n_est_pas_une_valeur() -> None:
+    """Le « [1] » d'une citation ne vaut pas le « type 1 » d'un groupe, ni un autre nombre dû."""
+    attendu = _attendu(("type_generique",), {"type_generique": "1"})
+    question = _question(attendu=attendu, cis_attendu="60000002")
+    assert not notation.noter(question, _reponse(texte="Il est du groupe 49 [1].")).correcte
+    assert notation.noter(question, _reponse(texte="Il est du groupe 49, type 1 [1].")).correcte
+
+
 def test_reserve_attendue() -> None:
     question = replace(_REPONSE_ATTENDUE, reserve=True)
     assert notation.noter(question, _reponse()).reserve_manquee

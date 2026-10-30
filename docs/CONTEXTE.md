@@ -413,7 +413,9 @@ la demande. Aucun appel réseau vers les sources.
   après normalisation (dates de 1900 à 2099, année seule et mois sans jour
   appuyés par les dates d'appui, jamais le jour ni le mois seuls ; la forme
   compacte « AAAAMMJJ » lue dans une valeur attendue seulement, jamais dans un
-  texte, où elle se confondrait avec un montant). Un échec donne une abstention ; une
+  texte, où elle se confondrait avec un montant ; les étiquettes « [k] » que le
+  LLM a déclarées sont retirées du texte avant le contrôle et la notation,
+  `controle.sans_etiquettes`). Un échec donne une abstention ; une
   abstention ou un refus rendus par le LLM passent le même contrôle. Les
   sources, leurs dates et l'instant de l'index sont rendus par le code.
 - **Budget** (`assistant/budget.py`) : grille datée dans le code, plafond

@@ -409,7 +409,7 @@ def _apres_llm(
         # Un refus rendu par le LLM (les règles ne l'avaient pas vu) prend la forme du code : le
         # texte et l'orientation du refus des règles ; le motif du LLM n'est gardé que s'il passe
         # le contrôle des nombres et des dates (contrôle du palier 2).
-        libre = llm.motif or ""
+        libre = controle.sans_etiquettes(llm.motif or "", llm.citations)
         echec = controle.controler(libre, _appuis(cites), question)
         trace["decision_controle"] = "refus du LLM" + (f", motif retiré : {echec}" if echec else "")
         motif = llm.motif if llm.motif and echec is None else MOTIF_REFUS_LLM
@@ -422,6 +422,7 @@ def _apres_llm(
         # remplace par son propre motif (contrôle du palier 2) : aucun fait non appuyé ne passe
         # par ce chemin.
         libre = " ".join(x for x in (llm.texte, llm.motif, llm.orientation) if x)
+        libre = controle.sans_etiquettes(libre, llm.citations)
         echec = controle.controler(libre, _appuis(cites), question)
         if echec is not None:
             trace["decision_controle"] = f"abstention du LLM, texte retiré : {echec}"
@@ -439,7 +440,9 @@ def _apres_llm(
             (),
             "controle",
         )
-    echec = controle.controler(llm.texte, _appuis(cites), question)
+    echec = controle.controler(
+        controle.sans_etiquettes(llm.texte, llm.citations), _appuis(cites), question
+    )
     if echec is not None:
         trace["decision_controle"] = f"non vérifiable : {echec}"
         return fini(

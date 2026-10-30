@@ -185,12 +185,15 @@ def noter(question: Question, reponse: Reponse) -> Note:
     interdits: tuple[str, ...] = ()
     reserve_manquee = False
     if attendu == REPONSE:
+        # Les étiquettes « [k] » du texte renvoient aux citations rendues par le code : elles ne
+        # comptent ni comme valeur (un « [1] » n'est pas le « type 1 » d'un groupe) ni comme mot.
+        texte = controle.sans_etiquettes(reponse.texte, {c.etiquette for c in reponse.citations})
         cis_cites = frozenset(c.code_cis for c in valides)
         dues = valeurs_dues(question)
         manques = tuple(
             f"{colonne} = {valeur}"
             for colonne, valeur, nature in dues
-            if not presente(valeur, nature, reponse.texte, cis_cites)
+            if not presente(valeur, nature, texte, cis_cites)
         )
         if question.cis_attendu is not None:
             cis_cite = any(
@@ -200,7 +203,7 @@ def noter(question: Question, reponse: Reponse) -> Note:
             )
         else:
             cis_cite = bool(valides)
-        jetons = lexical.jetons(reponse.texte)
+        jetons = lexical.jetons(texte)
         interdits = tuple(
             m for m in question.mots_interdits if _contient(jetons, lexical.jetons(m))
         )

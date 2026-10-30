@@ -148,6 +148,15 @@ abstention.
   montant ne sont donc jamais des dates. Le début d'un nombre est protégé :
   le « 13 » de « CIP13 3400… » n'en est pas un. Une unité collée reste lue
   (« 250mg »).
+- **Les étiquettes de citation** que le LLM écrit dans son texte (« … 2,18 €
+  [2] ») ne sont pas des faits. Celles qu'il a déclarées dans « citations »
+  sont retirées avant le contrôle et la notation : seules, groupées
+  (« [1][2] », « [1, 2] ») ou collées à un nombre. Une étiquette non
+  déclarée, une plage (« [1-3] ») ou une forme libre restent, et leurs
+  nombres doivent s'appuyer : à défaut, c'est une abstention, le sens
+  prudent. Ce défaut, latent depuis le palier 2, a été trouvé par
+  l'évaluation réelle : douze réponses justes y étaient devenues « non
+  vérifiables ».
 - **Un échec ne se corrige pas** : la réponse devient une abstention
   journalisée (« réponse non vérifiable »). Il n'y a jamais de seconde
   rédaction.

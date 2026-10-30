@@ -18,6 +18,12 @@ Les dates se lisent de 1900 à 2099 (les AMM anciennes : 1978, 1985). La forme c
 ne sont donc jamais lus comme une date par le contrôle. La notation de l'évaluation se sert du
 même normaliseur pour chercher une valeur attendue dans le texte.
 
+Les **étiquettes de citation** que le LLM écrit dans son texte (« … 2,18 € [2] ») ne sont pas des
+faits : celles qu'il a déclarées dans « citations » sont retirées avant le contrôle
+(``sans_etiquettes``). Une étiquette non déclarée reste, et son nombre doit s'appuyer comme un
+autre. Sans cela, le « 2 » de « [2] » rendait non vérifiable une réponse juste (douze sur
+quarante-neuf à l'évaluation du palier 3 de la mission 08).
+
 Un échec ne se corrige pas : la réponse devient une **abstention** journalisée (« réponse non
 vérifiable »). L'instant de l'index n'est pas dans le texte du LLM — le code le rend —, donc
 il n'entre pas dans le contrôle.
@@ -26,7 +32,7 @@ il n'entre pas dans le contrôle.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from decimal import Decimal, InvalidOperation
 
 _MOIS = {
@@ -147,6 +153,22 @@ def extraire(texte: str) -> tuple[frozenset[str], frozenset[tuple[int, int, int]
     """Les nombres (canoniques) et les dates (année, mois, jour) d'un texte."""
     nombres, dates, _ = elements(texte)
     return nombres, dates
+
+
+# Une étiquette de citation dans le texte : « [2] », « [1, 3] », « [1; 3] ».
+_ETIQUETTES = re.compile(r"\[\s*(\d+(?:\s*[,;]\s*\d+)*)\s*\]")
+
+
+def sans_etiquettes(texte: str, declarees: Collection[int]) -> str:
+    """Le texte sans les étiquettes de citation que le LLM a déclarées : ce sont des renvois vers
+    les fragments, que le code rend lui-même, pas des nombres à appuyer. Une étiquette dont un
+    nombre n'est pas déclaré reste telle quelle."""
+
+    def blanchir(trouve: re.Match[str]) -> str:
+        nombres = {int(n) for n in re.findall(r"\d+", trouve[1])}
+        return " " if nombres <= set(declarees) else trouve[0]
+
+    return _ETIQUETTES.sub(blanchir, texte)
 
 
 def controler(texte: str, appuis: Sequence[str], question: str) -> str | None:

@@ -364,6 +364,19 @@ conseil médical. La porte budgétaire chiffre toute l'évaluation avant le
 premier appel, et `make evaluer EVALUER_OPTIONS=--estimer` la chiffre sans
 clé ni appel.
 
+**Mesuré le 30/10/2026** sur la v1, avec Claude Opus 5.5 à l'effort `low` :
+- 62 appels, pour **0,99 $** ;
+- **aucune citation invalide, aucun conseil médical** ;
+- 100 % d'abstention hors périmètre et sur les questions médicales ;
+- **44 réponses correctes sur 49 (89,8 %)**, 48 sur 49 citant une source datée.
+
+Le premier passage donnait 34 sur 49. Le contrôle lisait comme des nombres les
+renvois « [2] » que le modèle écrit dans son texte, et rejetait ainsi douze
+réponses justes. Ce défaut est corrigé, puis l'évaluation est renotée sur les
+mêmes réponses, en cache, sans nouvel appel. Les cinq échecs qui restent sont
+réels : un fragment d'avis que la recherche n'a pas ramené, et quatre dates
+omises.
+
 ### Les commandes
 
 Prérequis : [`uv`](https://docs.astral.sh/uv/). Python 3.12 est installé

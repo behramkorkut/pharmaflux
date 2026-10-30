@@ -786,3 +786,29 @@ Le reste du palier :
 
 L'évaluation complète, chiffrée sans appel : 62 appels, 5,40 $ au pire, environ
 0,89 $ probable, 439 Mo, 11 s. Elle est à lancer par beko.
+
+**Mission 08, clôture du palier 3** (30-31/10). L'IeC accepte le palier. Ses conditions font
+l'objet de deux commits (`f6b1d67`, `37375dd`). Le second éprouve le classement des colonnes
+contre le texte que rend `fragments.py` : les 114 valeurs dues se retrouvent toutes dans le
+texte, et aucune valeur hors texte n'y paraît.
+
+beko a enchaîné la séquence de clôture, toute verte (silver 22/22, gold sans bloquant,
+`index verifier` conforme), puis l'évaluation complète : 62 appels, 0,9877 $. Les deux
+conditions dures tiennent, mais les réponses correctes ne sont qu'à 34/49.
+
+Le diagnostic s'est fait sans aucun appel, depuis le détail et le cache : 12 des 15 échecs
+étaient des faux positifs du contrôle. Le modèle écrit ses étiquettes de citation dans le
+texte (« … 7.06 € [1] »), et le contrôle lisait ce « 1 » comme un nombre sans appui. Ce défaut
+est latent depuis le palier 2 : la réponse DOLIPRANE de la démonstration ne passait que par
+hasard, son fragment portant « Présentations (2) : ».
+
+Le correctif, adopté par l'IeC, retire les étiquettes déclarées par le LLM avant le contrôle
+et la notation (`2891e98`). Aucun autre changement n'a suivi le résultat. La recette de `make
+evaluer`, lancée au commit de clôture sur le cache, donne 44/49, 82/88 questions traitées
+justement, 48/49 réponses à source datée et 22/22 abstentions hors périmètre et médical. Elle
+n'a fait aucun appel, et le journal des dépenses est inchangé.
+
+Il reste cinq constats, pour la mission 09 : le rappel de l'avis d'OZEMPIC, quatre dates
+omises, et `disponibilite-005`. Celle-ci compte fausse, car le jeu se contredit avec
+`avis_has-005` et on ne le touche pas après avoir vu le résultat. La mission a dépensé
+1,0309 $ sur 20 $.

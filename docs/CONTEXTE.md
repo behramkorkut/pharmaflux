@@ -441,4 +441,9 @@ la demande. Aucun appel réseau vers les sources.
     5,40 $ au pire, environ 0,89 $ au coût moyen constaté ;
   - le chemin complet, SDK importé, plafonne à 419 Mo (faux client, sans
     réseau) ;
-  - la démonstration du palier 2 : trois appels pour 0,0432 $.
+  - la démonstration du palier 2 : trois appels pour 0,0432 $ ;
+  - l'évaluation complète de la v1, par beko (30/10) : 62 appels, 0,9877 $ ;
+    conditions dures tenues ; 34/49 réponses correctes, puis **44/49** une
+    fois corrigé le contrôle des étiquettes « [k] » (commit `2891e98`,
+    renotation sur le cache, sans appel). La mission a dépensé 1,0309 $ sur
+    20 $.

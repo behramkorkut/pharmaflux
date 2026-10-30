@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
@@ -29,7 +30,13 @@ from pharmaflux.assistant.budget import (
 )
 from pharmaflux.assistant.cache import CacheReponses
 from pharmaflux.assistant.cache import cle as cle_cache
-from pharmaflux.assistant.client import SCHEMA, DoubleClient, ReponseLLM, cle_presente
+from pharmaflux.assistant.client import (
+    SCHEMA,
+    DoubleClient,
+    ReponseLLM,
+    cle_presente,
+    interpreter_reponse,
+)
 from pharmaflux.cli import application
 from pharmaflux.index import construction
 from pharmaflux.index.construction import Cache
@@ -175,6 +182,63 @@ def test_cache_cle_stable_et_lecture_ecriture(tmp_path: Path) -> None:
         cache.close()
 
 
+# --- interprétation de la réponse du SDK (sortie illisible → technique) ------------------------
+
+
+def _faux_usage() -> SimpleNamespace:
+    return SimpleNamespace(
+        input_tokens=2500,
+        output_tokens=300,
+        cache_read_input_tokens=0,
+        cache_creation_input_tokens=0,
+    )
+
+
+def _faux_reponse(content: list[object], stop_reason: str = "end_turn") -> SimpleNamespace:
+    return SimpleNamespace(
+        content=content, stop_reason=stop_reason, usage=_faux_usage(), stop_details=None
+    )
+
+
+def test_interpreter_sortie_valide() -> None:
+    import json
+
+    contenu = json.dumps(
+        {
+            "comportement": "reponse",
+            "texte": "x",
+            "citations": [1],
+            "motif": None,
+            "orientation": None,
+            "reserve": False,
+        }
+    )
+    r = interpreter_reponse(_faux_reponse([SimpleNamespace(type="text", text=contenu)]))
+    assert r.comportement == "reponse" and not r.technique
+    assert r.usage.jetons_entree == 2500 and r.usage.jetons_sortie == 300
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        [],  # aucun bloc texte
+        [SimpleNamespace(type="text", text="pas du json")],  # JSON invalide
+        [SimpleNamespace(type="text", text='{"texte": "x"}')],  # clé manquante
+    ],
+)
+def test_interpreter_sortie_illisible_est_technique_avec_usage(content: list[object]) -> None:
+    """Contrôle du palier 2, point 1 : une sortie illisible devient une abstention technique
+    qui porte son usage — l'appel payé est donc journalisable, jamais perdu par une exception."""
+    r = interpreter_reponse(_faux_reponse(content))
+    assert r.technique and r.comportement == "abstention"
+    assert r.usage.jetons_entree == 2500 and r.usage.jetons_sortie == 300
+
+
+def test_interpreter_refus_du_modele_est_technique() -> None:
+    r = interpreter_reponse(_faux_reponse([], stop_reason="refusal"))
+    assert r.technique and r.stop_reason == "refusal"
+
+
 # --- le chemin, bout en bout, avec le double ---------------------------------------------------
 
 
@@ -268,6 +332,20 @@ def test_cache_evite_le_second_appel(index: Qdrant, tmp_path: Path) -> None:
     assert len(double.appels) == 1  # le second passe par le cache
     assert not premiere.depuis_cache and seconde.depuis_cache
     assert seconde.cout == 0.0
+
+
+def test_technique_journalisee_mais_pas_cachee(index: Qdrant, tmp_path: Path) -> None:
+    """Contrôle du palier 2, point 2 : une abstention technique est journalisée (l'appel est
+    payé) mais n'entre pas au cache — une reprise retente l'appel."""
+    double = DoubleClient(
+        fixe=_llm(comportement="abstention", technique=True, stop_reason="refusal")
+    )
+    question = "PARACETAMOL TEST est-il disponible ?"
+    r1 = _demander(index, question, double, tmp_path)
+    r2 = _demander(index, question, double, tmp_path)
+    assert r1.decision == "technique" and r2.decision == "technique"
+    assert len(double.appels) == 2  # pas de cache : le second appel a bien lieu
+    assert Journal(tmp_path / "depenses.jsonl").total() == pytest.approx(cout(_USAGE_DEFAUT) * 2)
 
 
 def test_budget_refuse_avant_tout_appel(index: Qdrant, tmp_path: Path) -> None:

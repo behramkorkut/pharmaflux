@@ -719,5 +719,8 @@ non documenté), donc client inchangé, règle de la mission 07 gardée. Dépend
 `anthropic` ajoutée (`uv.lock` au 16/10, sans toucher aux paquets déjà
 verrouillés). Vérifié contre le vrai index avec le double : refus, abstention et
 porte structurelle sans appel ; « LARIAM en rupture ? » rend une réponse citant
-le CIS 65999556 daté. 649 tests verts (intégration et modèle compris, 0 réessai
-du registre).
+le CIS 65999556 daté. Correctif du contrôle du palier 2 : une sortie illisible
+du modèle (bloc absent, JSON invalide, clé manquante) devient une abstention
+technique journalisée (l'appel payé n'est jamais perdu), et une abstention
+technique n'entre pas au cache (une reprise retente l'appel). 655 tests verts
+(intégration et modèle compris, 0 réessai du registre).

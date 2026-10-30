@@ -29,10 +29,12 @@ des cinq questions (décision 6) est préparée ici pour que **beko la lance** a
   « SUNITINIB BIOGARAN » de « SUNITINIB ZENTIVA » (le piège disponibilite-009 vs -010).
 - **Le client et son double** (`assistant/client.py`) : Opus 5.5, sortie structurée
   (`output_config.format`, schéma JSON), pensée adaptative, **effort `low`** au départ (G1),
-  `max_tokens` 4 000. Un `stop_reason` `refusal` ou `max_tokens` devient une **abstention
-  technique** journalisée avec sa cause. **Aucun modèle de repli.** `anthropic` n'est importé
-  qu'à la construction du vrai client ; `cle_presente()` répond sans l'importer ni toucher le
-  réseau.
+  `max_tokens` 4 000. Un refus du modèle, une réponse tronquée (`max_tokens`) **ou une sortie
+  illisible** (bloc texte absent, JSON invalide, clé manquante) deviennent une **abstention
+  technique avec son `usage`** : l'appel payé est toujours journalisé, jamais perdu par une
+  exception avant le décompte (`interpreter_reponse`, correctif du palier 2). **Aucun modèle de
+  repli.** `anthropic` n'est importé qu'à la construction du vrai client ; `cle_presente()`
+  répond sans l'importer ni toucher le réseau.
 - **Le contrôle** (`assistant/controle.py`) : les citations du LLM sont des **étiquettes**
   (1..k) vérifiées parmi les fragments fournis ; chaque **nombre** et chaque **date** du texte
   se retrouve, après normalisation (« 65 % »/« 65% », « 1 000 »/« 1000 », « 09/09/2026 »/« 9
@@ -48,7 +50,9 @@ des cinq questions (décision 6) est préparée ici pour que **beko la lance** a
   coût exact lu dans `response.usage`.
 - **Le cache des réponses** (`assistant/cache.py`, `data/assistant/cache-reponses.sqlite`) :
   une question déjà posée sur le même index ne repaie pas (clé = empreinte du prompt système,
-  du contenu, du modèle, de l'effort, de `max_tokens` et du schéma).
+  du contenu, du modèle, de l'effort, de `max_tokens` et du schéma). Une **abstention technique
+  n'y entre pas** (une reprise retente l'appel) ; son coût reste journalisé (correctif du
+  palier 2).
 - **Les commandes** : `pharmaflux assistant demander "<question>"` (texte pour un humain, ou
   `--json` pour la trace) et `pharmaflux assistant depenses` (le total de la mission et le
   reste). Les tests injectent le double par `fabriquer_client_llm`.
@@ -89,10 +93,10 @@ des cinq questions (décision 6) est préparée ici pour que **beko la lance** a
 
 ## La démonstration des cinq questions (décision 6, lancée par beko)
 
-À lancer sur le Mac, index au format 2 construit (palier 1), par
-`sh infra/agents/avec-cle.sh uv run pharmaflux assistant demander "<question>"`. Une abstention
-et un refus sont compris ; trois réponses appellent le LLM (coût réel), deux décisions sont
-prises hors LLM (coût nul).
+À lancer sur le Mac, index au format 2 construit (palier 1), **depuis ce dossier** avec le
+script de `main` : `sh ../pharmaflux/infra/agents/avec-cle.sh uv run pharmaflux assistant
+demander "<question>"`. Une abstention et un refus sont compris ; trois réponses appellent le
+LLM (coût réel), deux décisions sont prises hors LLM (coût nul).
 
 1. `"LARIAM 250 mg, comprimé sécable est-il en rupture de stock ?"` — réponse, statut daté.
 2. `"Quel est le taux de remboursement de DOLIPRANE 1000 mg, comprimé, boîte de 8 ?"` — réponse,
@@ -108,13 +112,27 @@ prises hors LLM (coût nul).
 l'effort remonté à `medium` seulement si le contrôle échoue ou si une réponse est incomplète,
 G1). `pharmaflux assistant depenses` lit alors le total et le reste.
 
+## Correctif (contrôle du palier 2)
+
+Deux corrections avant la démonstration, sur le commit de ce rapport :
+
+1. **Un appel payé entre toujours au journal.** `interpreter_reponse` traduit la réponse du
+   SDK : une sortie illisible (bloc texte absent, JSON invalide, clé manquante) devient une
+   abstention technique **avec son `usage`**, comme un `refusal` ou un `max_tokens`, au lieu de
+   laisser une exception sortir avant `journal.ajouter` — la porte du plafond ne sous-estime
+   donc plus la suite. Testé par un faux objet de réponse (bloc absent, JSON invalide, clé
+   manquante).
+2. **Une abstention technique n'entre pas au cache.** Son coût reste journalisé, mais une
+   reprise d'évaluation **retente** l'appel au lieu de figer l'échec. Testé : deux questions
+   identiques en abstention technique donnent deux appels et deux lignes au journal.
+
 ## Vérifications locales (commit testé : celui de ce rapport)
 
 | commande | résultat |
 |---|---|
 | `uv run ruff check .` / `ruff format --check .` | All checks passed / 281 fichiers déjà formatés |
 | `uv run mypy src` | Success: no issues found in 68 source files (76 avec les ajouts) |
-| `uv run pytest -q` (unité + intégration + modèle, Qdrant et modèle présents) | **649 passed** en 5 min 48 ; **0 réessai du registre sur 30 cycles** (la coupure ne s'est pas reproduite) |
+| `GITHUB_ACTIONS=true uv run pytest -q -rE` (unité + intégration + modèle, Qdrant et modèle présents) | **655 passed** en 5 min 45, session verte ; **0 réessai du registre** (sur 30 cycles ; la coupure ne s'est pas reproduite) |
 | `sh infra/git-hooks/test-crochets.sh` / `python3 infra/agents/test_garde_fou.py` | tout est conforme / OK (21 tests) |
 | `questions verifier` v1, `--racine demo/archive` | 88 : 55 conforme, 10 non calculable, 23 sans attendu |
 | idem `--entrepot data/demo/lakehouse` | 55 depuis le gold : 55 concordent |
@@ -136,18 +154,20 @@ passe dans la suite (code 2, sans réseau).
   touche **aucun** paquet déjà verrouillé (seuls `anthropic` et ses transitifs nouveaux —
   `jiter`, `sniffio`, `docstring-parser`, `opentelemetry-api` — sont ajoutés). beko installe et
   pousse.
-- **`avec-cle.sh`** (réservé à l'IeC) n'existe pas encore dans le dépôt : la démonstration en
-  dépend. Le code trouve la clé où le SDK la cherche (`ANTHROPIC_API_KEY`) ; sans elle,
-  l'assistant s'arrête avec « clé absente » (code 2), sans réseau — testé.
+- **`avec-cle.sh`** existe sur `main` (`27b0440`) ; cette branche part d'avant, et le code de
+  l'assistant n'est que sur elle, donc beko lance la démonstration **depuis ce dossier** avec le
+  script de `main` (`sh ../pharmaflux/infra/agents/avec-cle.sh …`). Le code trouve la clé où le
+  SDK la cherche (`ANTHROPIC_API_KEY`) ; sans elle, l'assistant s'arrête avec « clé absente »
+  (code 2), sans réseau — testé.
 - **`assistant evaluer` et la notation** restent au palier 3 (décision 4) ; le palier 2 livre
   `demander` et `depenses`.
 
-## Questions pour l'IeC
+## Questions pour l'IeC — tranchées au contrôle du palier 2
 
-- La piste keep-alive (point 3) : d'accord pour la laisser **non corrigée** et s'en tenir à la
-  règle actuelle, faute de pouvoir confirmer le délai côté serveur hors d'un vrai Redpanda ?
-- Le choix des cinq questions de la démonstration te convient-il (une abstention et un refus
-  compris) ?
+- Piste keep-alive : **d'accord pour ne pas corriger le client** (`controle-palier-2.md`) ; la
+  règle de la mission 07 reste en place. Un deuxième cas daté en CI rouvrirait la discussion.
+- Les cinq questions de la démonstration : **acceptées** (trois appels réels, un refus et une
+  abstention hors LLM).
 
 ## Propositions d'évolution (PRD, consignes)
 

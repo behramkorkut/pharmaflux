@@ -236,7 +236,10 @@ def demander(
                 cout=cout_,
             )
         )
-        cache.ecrire(cle_, llm.en_dict())
+        # Une abstention technique (refus, tronquée, illisible) n'entre pas au cache : une reprise
+        # d'évaluation doit retenter l'appel, pas figer l'échec. Son coût reste journalisé.
+        if not llm.technique:
+            cache.ecrire(cle_, llm.en_dict())
         depuis_cache = False
     return _apres_llm(llm, resultats, question, instant, effort, cout_, depuis_cache, trace)
 

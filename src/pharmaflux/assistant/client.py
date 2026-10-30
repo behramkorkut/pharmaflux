@@ -109,6 +109,48 @@ def cle_presente() -> bool:
     return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
+def _technique(usage: Usage, motif: str, stop_reason: str, categorie: str | None) -> ReponseLLM:
+    """Une abstention technique : le modèle n'a pas rendu de réponse exploitable, mais l'appel
+    est payé — son ``usage`` est porté pour que le journal le compte (addendum G)."""
+    return ReponseLLM(ABSTENTION, "", (), motif, None, False, usage, stop_reason, True, categorie)
+
+
+def interpreter_reponse(reponse: Any) -> ReponseLLM:
+    """La réponse du SDK (ou un objet qui la mime) traduite en ``ReponseLLM``.
+
+    Un refus du modèle, une réponse tronquée (``max_tokens``) ou une **sortie illisible** (bloc
+    texte absent, JSON invalide, clé manquante) deviennent une **abstention technique avec son
+    ``usage``** : l'appel payé entre toujours au journal, jamais une exception avant le décompte.
+    """
+    usage = Usage(
+        jetons_entree=reponse.usage.input_tokens,
+        jetons_sortie=reponse.usage.output_tokens,
+        jetons_cache_lecture=getattr(reponse.usage, "cache_read_input_tokens", 0) or 0,
+        jetons_cache_ecriture=getattr(reponse.usage, "cache_creation_input_tokens", 0) or 0,
+    )
+    stop = reponse.stop_reason
+    if stop in ("refusal", "max_tokens"):
+        details = getattr(reponse, "stop_details", None)
+        categorie = getattr(details, "category", None) if details else None
+        cause = "refus du modèle" if stop == "refusal" else "réponse tronquée"
+        return _technique(usage, f"réponse non obtenue ({cause})", stop, categorie)
+    try:
+        texte = next(bloc.text for bloc in reponse.content if bloc.type == "text")
+        donnees = json.loads(texte)
+        return ReponseLLM(
+            comportement=donnees["comportement"],
+            texte=donnees["texte"],
+            citations=tuple(donnees["citations"]),
+            motif=donnees.get("motif"),
+            orientation=donnees.get("orientation"),
+            reserve=bool(donnees.get("reserve", False)),
+            usage=usage,
+            stop_reason=stop,
+        )
+    except (StopIteration, ValueError, KeyError, TypeError) as exc:
+        return _technique(usage, f"réponse illisible ({type(exc).__name__})", stop, None)
+
+
 class ClientClaude:
     """Le client réel. ``anthropic`` n'est importé qu'ici, à la construction (jamais aux tests)."""
 
@@ -130,40 +172,7 @@ class ClientClaude:
             messages=[{"role": "user", "content": contenu}],
             output_config={"effort": effort, "format": {"type": "json_schema", "schema": SCHEMA}},
         )
-        usage = Usage(
-            jetons_entree=reponse.usage.input_tokens,
-            jetons_sortie=reponse.usage.output_tokens,
-            jetons_cache_lecture=getattr(reponse.usage, "cache_read_input_tokens", 0) or 0,
-            jetons_cache_ecriture=getattr(reponse.usage, "cache_creation_input_tokens", 0) or 0,
-        )
-        if reponse.stop_reason in ("refusal", "max_tokens"):
-            details = getattr(reponse, "stop_details", None)
-            categorie = getattr(details, "category", None) if details else None
-            cause = "refus du modèle" if reponse.stop_reason == "refusal" else "réponse tronquée"
-            return ReponseLLM(
-                comportement=ABSTENTION,
-                texte="",
-                citations=(),
-                motif=f"réponse non obtenue ({cause})",
-                orientation=None,
-                reserve=False,
-                usage=usage,
-                stop_reason=reponse.stop_reason,
-                technique=True,
-                categorie_refus=categorie,
-            )
-        texte = next(bloc.text for bloc in reponse.content if bloc.type == "text")
-        donnees = json.loads(texte)
-        return ReponseLLM(
-            comportement=donnees["comportement"],
-            texte=donnees["texte"],
-            citations=tuple(donnees["citations"]),
-            motif=donnees.get("motif"),
-            orientation=donnees.get("orientation"),
-            reserve=bool(donnees.get("reserve", False)),
-            usage=usage,
-            stop_reason=reponse.stop_reason,
-        )
+        return interpreter_reponse(reponse)
 
 
 @dataclass

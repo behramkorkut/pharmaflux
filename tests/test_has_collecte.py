@@ -13,6 +13,7 @@ import ast
 import gzip
 import json
 import shutil
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -361,8 +362,73 @@ def test_extraire_les_pages_archivees(racine: Path, site: ServeurSimule, tmp_pat
         bilan = inspection.extraire(pages, verifier=True, sortie=flux)
     assert (bilan.pages, bilan.extraites, bilan.ecarts, bilan.divergences) == (5, 5, [], [])
     assert bilan.code_sortie == 0
+    assert (bilan.empreintes_egales, bilan.changements) == (5, [])
+    # Le second lien d'ADEMPAS n'a pas de document : accepté, mais compté à part.
+    assert bilan.sans_controle == ["p_3741668 (CT-20568)"]
+    assert "contrôle de dossier impossible : 1" in bilan.resume()
     lignes = [json.loads(ligne) for ligne in sortie.read_text(encoding="utf-8").splitlines()]
     assert {ligne["page_id"]: ligne["date_avis"] for ligne in lignes}["p_3741668"] == "2025-11-10"
+    assert {ligne["page_id"]: ligne["controle_dossier"] for ligne in lignes} == {
+        "p_4072400": True,
+        "p_3590639": True,
+        "p_3577036": True,
+        "p_3500927": True,
+        "p_3741668": False,
+    }
+
+
+def reecrire_manifeste(racine: Path, retouches: dict[str, dict[str, object]]) -> None:
+    """Le manifeste d'un passage retouché page par page : comme s'il venait d'une autre version."""
+    lignes = mf.lire(racine)
+    mf.chemin_manifeste(racine).unlink()
+    for ligne in lignes:
+        mf.ajouter(racine, replace(ligne, **retouches.get(ligne.page_id or "", {})))
+
+
+def empreinte_v1(page_id: str) -> str:
+    return extraction.extraire((PAGES / f"{page_id}.html").read_bytes()).empreinte(1)
+
+
+def test_un_manifeste_de_la_v1_relu_en_v2(racine: Path, site: ServeurSimule) -> None:
+    """Le passage de beko est en v1 : le texte se compare quand même, les statuts changés se
+    listent à part (addendum de l'IeC du 31/10)."""
+    passage(racine, site)
+    retouches: dict[str, dict[str, object]] = {
+        page_id: {"extracteur": 1, "empreinte_texte": empreinte_v1(page_id)} for page_id in ORDRE
+    }
+    retouches["p_3577036"] = {"extracteur": 1, "empreinte_texte": None, "rejet": "nom_incoherent"}
+    reecrire_manifeste(racine, retouches)
+    bilan = inspection.extraire(inspection.pages_archivees(racine), verifier=True)
+    assert (bilan.extraites, bilan.ecarts, bilan.divergences) == (5, [], [])
+    assert bilan.empreintes_egales == 4
+    assert bilan.changements == ["p_3577036 : rejetée (nom_incoherent) en v1 → extraite en v2"]
+    assert bilan.code_sortie == 0
+    assert (
+        "statut changé depuis la version du manifeste : 1"
+        " (rejetée → extraite 1, extraite → rejetée 0)"
+    ) in bilan.resume()
+
+
+def test_un_texte_ou_un_statut_qui_change_sans_raison_diverge(
+    racine: Path, site: ServeurSimule
+) -> None:
+    passage(racine, site)
+    reecrire_manifeste(
+        racine,
+        {
+            # v1, mais un autre texte que celui des octets archivés.
+            "p_4072400": {"extracteur": 1, "empreinte_texte": "0" * 64},
+            # Rejetée à la version courante, extraite aujourd'hui : l'extracteur n'est pas stable.
+            "p_3590639": {"empreinte_texte": None, "rejet": "nom_incoherent"},
+        },
+    )
+    bilan = inspection.extraire(inspection.pages_archivees(racine), verifier=True)
+    assert sorted(bilan.divergences) == [
+        "p_3590639 : rejetée (nom_incoherent) au manifeste, extraite à version égale",
+        "p_4072400 : texte différent de celui du manifeste (v1)",
+    ]
+    assert bilan.changements == []
+    assert bilan.code_sortie == 1
 
 
 def test_cli_simuler_ne_fait_aucune_requete(racine: Path, monkeypatch: pytest.MonkeyPatch) -> None:

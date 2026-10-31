@@ -7,8 +7,13 @@ lire) et à **vérifier** (``--verifier``) :
 - la non-altération : chaque ligne extraite se retrouve, dans l'ordre, dans le texte que le
   second lecteur tire de la page (``verification``) ;
 - le déterminisme : une seconde extraction des mêmes octets donne la même empreinte ;
-- la constance : l'empreinte est celle que la collecte a consignée au manifeste, pour la même
-  version de l'extracteur.
+- la constance : le texte est celui que la collecte a consigné au manifeste, quelle que soit la
+  version de l'extracteur (l'empreinte est recalculée sous la version consignée) ;
+- les changements de statut d'une version à l'autre (« rejetée » en v1, « extraite » en v2) :
+  listés à part, attendus ; à version égale, ce serait une divergence.
+
+Une page dont le document d'avis ne porte aucun numéro de dossier lisible est acceptée (le
+rattachement vient de la BDPM), mais comptée à part : son contrôle de dossier est impossible.
 """
 
 from __future__ import annotations
@@ -24,6 +29,8 @@ from pharmaflux import bronze
 from pharmaflux.has import extraction, verification
 from pharmaflux.has import manifeste as mf
 
+_SENS = ("rejetée → extraite", "extraite → rejetée")
+
 
 @dataclass(frozen=True, slots=True)
 class PageArchivee:
@@ -33,6 +40,7 @@ class PageArchivee:
     dossiers: tuple[str, ...] | None
     empreinte_consignee: str | None
     extracteur_consigne: int | None
+    rejet_consigne: str | None = None
 
 
 @dataclass(slots=True)
@@ -43,6 +51,10 @@ class BilanExtraction:
     rejets: Counter[str] = field(default_factory=Counter)
     ecarts: list[str] = field(default_factory=list)
     divergences: list[str] = field(default_factory=list)
+    sans_controle: list[str] = field(default_factory=list)
+    empreintes_egales: int = 0
+    changements: list[str] = field(default_factory=list)
+    changements_sens: Counter[str] = field(default_factory=Counter)
 
     @property
     def code_sortie(self) -> int:
@@ -55,8 +67,11 @@ class BilanExtraction:
         lignes = [
             f"{self.pages} page(s) : {self.extraites} extraite(s),"
             f" {sum(self.rejets.values())} rejetée(s){' (' + rejets + ')' if rejets else ''}"
-            f" ; extracteur v{extraction.VERSION_EXTRACTEUR}"
+            f" ; extracteur v{extraction.VERSION_EXTRACTEUR}",
+            f"contrôle de dossier impossible : {len(self.sans_controle)}"
+            " (le document d'avis ne porte aucun numéro de dossier lisible)",
         ]
+        lignes += [f"  sans contrôle de dossier : {page}" for page in self.sans_controle]
         if self.verifier:
             lignes.append(
                 f"non-altération : {self.extraites - len(self.ecarts)} conforme(s),"
@@ -65,6 +80,14 @@ class BilanExtraction:
             )
             lignes += [f"  écart : {ecart}" for ecart in self.ecarts]
             lignes += [f"  divergence : {divergence}" for divergence in self.divergences]
+            lignes.append(
+                f"empreintes du texte égales à celles du manifeste : {self.empreintes_egales}"
+            )
+            sens = ", ".join(f"{s} {self.changements_sens[s]}" for s in _SENS)
+            lignes.append(
+                f"statut changé depuis la version du manifeste : {len(self.changements)} ({sens})"
+            )
+            lignes += [f"  statut changé : {changement}" for changement in self.changements]
         return "\n".join(lignes)
 
 
@@ -82,6 +105,7 @@ def pages_archivees(racine: Path) -> list[PageArchivee]:
             dossiers=tuple(ligne.dossiers) if ligne.dossiers else None,
             empreinte_consignee=ligne.empreinte_texte,
             extracteur_consigne=ligne.extracteur,
+            rejet_consigne=ligne.rejet,
         )
     return [dernieres[page] for page in sorted(dernieres)]
 
@@ -103,12 +127,18 @@ def extraire(
             extrait = extraction.extraire(octets, dossiers=page.dossiers)
         except extraction.PageRejetee as exc:
             bilan.rejets[exc.motif] += 1
+            if verifier:
+                _comparer_statut(bilan, page, exc.motif)
             _ecrire(sortie, page, {"statut": "rejetee", "motif": exc.motif, "detail": exc.detail})
             continue
         bilan.extraites += 1
+        controle = page.dossiers is None or bool(extrait.dossiers_documents)
+        if not controle:
+            bilan.sans_controle.append(f"{page.page_id} ({', '.join(page.dossiers or ())})")
         if verifier:
+            _comparer_statut(bilan, page, None)
             _verifier(bilan, page, octets, extrait)
-        _ecrire(sortie, page, _description(extrait))
+        _ecrire(sortie, page, {**_description(extrait), "controle_dossier": controle})
     return bilan
 
 
@@ -128,9 +158,32 @@ def _verifier(
     empreinte = extrait.empreinte()
     if extraction.extraire(octets, dossiers=page.dossiers).empreinte() != empreinte:
         bilan.divergences.append(f"{page.page_id} : deux extractions, deux empreintes")
-    meme_version = page.extracteur_consigne == extraction.VERSION_EXTRACTEUR
-    if page.empreinte_consignee and meme_version and page.empreinte_consignee != empreinte:
-        bilan.divergences.append(f"{page.page_id} : empreinte différente de celle du manifeste")
+    if page.empreinte_consignee:
+        version = page.extracteur_consigne or extraction.VERSION_EXTRACTEUR
+        if extrait.empreinte(version) == page.empreinte_consignee:
+            bilan.empreintes_egales += 1
+        else:
+            bilan.divergences.append(
+                f"{page.page_id} : texte différent de celui du manifeste (v{version})"
+            )
+
+
+def _comparer_statut(bilan: BilanExtraction, page: PageArchivee, motif: str | None) -> None:
+    """Le statut consigné par la collecte contre celui de l'extracteur courant."""
+    if page.rejet_consigne is None and page.empreinte_consignee is None:
+        return  # pas de manifeste (fichiers donnés à la main)
+    if (page.rejet_consigne is None) == (motif is None):
+        return
+    avant = "extraite" if page.rejet_consigne is None else f"rejetée ({page.rejet_consigne})"
+    apres = "extraite" if motif is None else f"rejetée ({motif})"
+    version = page.extracteur_consigne
+    if version == extraction.VERSION_EXTRACTEUR:
+        bilan.divergences.append(f"{page.page_id} : {avant} au manifeste, {apres} à version égale")
+        return
+    bilan.changements.append(
+        f"{page.page_id} : {avant} en v{version} → {apres} en v{extraction.VERSION_EXTRACTEUR}"
+    )
+    bilan.changements_sens[_SENS[0] if motif is None else _SENS[1]] += 1
 
 
 def _description(extrait: extraction.AvisExtrait) -> dict[str, object]:

@@ -30,10 +30,15 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from html import unescape
 from html.parser import HTMLParser
 from typing import Any
 
-VERSION_EXTRACTEUR = 1
+# La version change avec ce que la fonction rend ou refuse : le texte, les dates, les règles
+# d'acceptation. v2 (31/10/2026, après la collecte de la première étape) : le nom JSON-LD se
+# compare après décodage des entités ; tous les numéros d'un avis commun sont lus, et chaque
+# dossier BDPM de la page doit y être nommé. Le texte des pages acceptées en v1 est inchangé.
+VERSION_EXTRACTEUR = 2
 
 # Les motifs de rejet : un motif, un défaut de structure.
 REJET_ENCODAGE = "encodage"
@@ -62,7 +67,8 @@ _IGNORES = frozenset({"script", "style", "nav", "noscript", "form", "button", "s
 _ESPACES = re.compile(r"\s+")
 _MIS_EN_LIGNE = re.compile(r"Mis en ligne le\s+(\d{1,2}(?:er)?\s+\S+\s+\d{4})")
 _MIS_A_JOUR = re.compile(r"Mis à jour le\s+(\d{1,2}(?:er)?\s+\S+\s+\d{4})")
-_DOSSIER_AVIS = re.compile(r"_AVIS_CT-?(\d{4,6})\b", re.IGNORECASE)
+# « …_AVIS_CT21340 », et l'avis commun : « …_AVIS_CT21541&21424&21540 », « …_AVIS_CT21823_21827 ».
+_DOSSIERS_AVIS = re.compile(r"_AVIS_CT-?(\d{4,6}(?:[&_]\d{4,6})*)(?!\d)", re.IGNORECASE)
 _CIP13 = re.compile(r"\b\d{13}\b")
 _MOIS = {
     "janv": 1, "janvier": 1, "févr": 2, "février": 2, "fevr": 2, "fevrier": 2, "mars": 3,
@@ -124,14 +130,16 @@ class AvisExtrait:
             if ligne.rubrique == rubrique and ligne.genre == "niveau"
         )
 
-    def empreinte(self) -> str:
+    def empreinte(self, version: int = VERSION_EXTRACTEUR) -> str:
         """Le sha256 du texte extrait et de ses dates : il ne change qu'avec ce que dit la page.
 
         Le sha256 des octets bruts change à chaque réponse (jeton CSRF, horodatage) ; c'est
-        celui-ci qui servira à toute revisite (addendum 1, C2).
+        celui-ci qui servira à toute revisite (addendum 1, C2). ``version`` : celle d'une
+        empreinte consignée, pour comparer le texte d'une version à l'autre (la forme canonique
+        est la même depuis la v1).
         """
         canonique = {
-            "version": VERSION_EXTRACTEUR,
+            "version": version,
             "titre": self.titre,
             "date_avis": self.date_avis.isoformat(),
             "mis_en_ligne": self.mis_en_ligne.isoformat(),
@@ -176,8 +184,9 @@ def date_francaise(texte: str) -> date:
 def extraire(octets: bytes, *, dossiers: tuple[str, ...] | None = None) -> AvisExtrait:
     """Le texte et les dates d'une page d'avis ; ``PageRejetee`` si sa structure manque.
 
-    ``dossiers`` : ceux qui lient la page dans la BDPM. S'ils sont donnés, le document d'avis
-    de la page ne doit pas en nommer un autre.
+    ``dossiers`` : ceux qui lient la page dans la BDPM. S'ils sont donnés et que le document
+    d'avis de la page nomme des dossiers, chacun d'eux doit y être nommé. Un avis commun en nomme
+    plusieurs ; un document sans numéro lisible ne permet pas le contrôle (l'appelant le compte).
     """
     try:
         html = octets.decode("utf-8")
@@ -213,7 +222,8 @@ def extraire(octets: bytes, *, dossiers: tuple[str, ...] | None = None) -> AvisE
     if len(lignes) < 2:
         raise PageRejetee(REJET_CORPS_VIDE, "ni motif, ni section, ni table")
 
-    nom = normaliser(str(jsonld.get("name") or ""))
+    # Le JSON-LD garde parfois les entités (« &lt; 18 ans ») que le <h1> décode.
+    nom = normaliser(unescape(str(jsonld.get("name") or "")))
     if nom != f"Avis sur {titre}":
         raise PageRejetee(REJET_NOM, f"JSON-LD « {nom[:80]} » contre le titre « {titre[:80]} »")
     extrait = AvisExtrait(
@@ -229,11 +239,13 @@ def extraire(octets: bytes, *, dossiers: tuple[str, ...] | None = None) -> AvisE
         **_metadonnees(jsonld),
     )
     _controler_niveaux(extrait, jsonld)
-    if dossiers is not None:
-        autres = sorted(set(extrait.dossiers_documents) - set(dossiers))
-        if autres:
+    if dossiers is not None and extrait.dossiers_documents:
+        absents = sorted(set(dossiers) - set(extrait.dossiers_documents))
+        if absents:
             raise PageRejetee(
-                REJET_DOSSIER, f"le document d'avis nomme {', '.join(autres)}, hors {dossiers}"
+                REJET_DOSSIER,
+                f"le document d'avis nomme {', '.join(extrait.dossiers_documents)},"
+                f" pas {', '.join(absents)}",
             )
     return extrait
 
@@ -289,9 +301,9 @@ def _metadonnees(jsonld: dict[str, Any]) -> dict[str, Any]:
     pdf_avis, dossiers = None, []
     for partie in jsonld.get("hasPart") or []:
         nom = str(partie.get("name") or "")
-        trouve = _DOSSIER_AVIS.search(nom)
+        trouve = _DOSSIERS_AVIS.search(nom)
         if trouve:
-            dossiers.append(f"CT-{trouve[1]}")
+            dossiers += [f"CT-{numero}" for numero in re.split(r"[&_]", trouve[1])]
             pdf_avis = pdf_avis or partie.get("contentUrl")
     produit = jsonld.get("itemReviewed") or {}
     code = produit.get("code") or {}

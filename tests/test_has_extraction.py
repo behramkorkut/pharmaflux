@@ -1,8 +1,9 @@
 """L'extraction des pages d'avis de la HAS (mission 09, palier 1) : sur les six pages réelles du §0.
 
-Chaque page est celle reçue le 31/10/2026 (``tests/fixtures/has/``). Les rejets se provoquent en
-retouchant une copie d'une page réelle, jamais en fabriquant une page : la structure éprouvée
-est celle du site.
+Chaque page est celle reçue le 31/10/2026 (``tests/fixtures/has/``) : six au §0, quatre reprises
+de la collecte de la première étape (les rejets de la v1, en fin de fichier). Les rejets se
+provoquent en retouchant une copie d'une page réelle, jamais en fabriquant une page : la
+structure éprouvée est celle du site.
 """
 
 from __future__ import annotations
@@ -288,3 +289,97 @@ def test_genres_et_espaces_des_lignes() -> None:
             assert ligne.genre in {"nature", "intertitre", "paragraphe", "element", "niveau"}
             assert ligne.texte == ligne.texte.strip()
             assert "  " not in ligne.texte
+
+
+# --- v2 : les rejets de la v1 à la collecte de la première étape --------------------------------
+# Quatre pages reprises à l'octet de l'archive du Mac (passage 20261031T124148Z, analyse :
+# docs/rapports/mission-09/collecte-premiere-etape.md).
+
+MENINGOCOQUES = ("CT-21402", "CT-21424", "CT-21540", "CT-21541", "CT-21567")
+NICORANDIL = ("CT-21823", "CT-21827", "CT-21832", "CT-21871", "CT-21883")
+
+
+def test_un_nom_json_ld_garde_ses_entites() -> None:
+    """KEPPRA : le JSON-LD écrit « &lt; 4 ans », le <h1> décodé « < 4 ans » ; rejetée en v1."""
+    keppra = page("p_3638197")
+    assert b"(&lt; 4 ans)" in keppra
+    extrait = extraire(keppra, dossiers=("CT-21259",))
+    assert extrait.titre.startswith("KEPPRA (lévétiracétam) - Epilepsie chez l'enfant (< 4 ans)")
+    # Le décodage ne relâche pas le contrôle : un JSON-LD qui décrit un autre avis est refusé.
+    autre = keppra.replace(b'"name": "Avis sur KEPPRA', b'"name": "Avis sur KEPRA')
+    assert _rejet(autre) == extraction.REJET_NOM
+
+
+@pytest.mark.parametrize(
+    ("nom", "dossier", "nommes"),
+    [
+        # « …_10092025_AVIS_CT21541&21424&21540&21402&21567 » (cinq vaccins méningococciques)
+        ("p_3687274", "CT-21402", MENINGOCOQUES),
+        # « NICORANDIL_08072026_AVIS_CT21823_21827_21832_21871_21883 » : non lu du tout en v1
+        ("p_4335961", "CT-21823", NICORANDIL),
+    ],
+)
+def test_un_avis_commun_nomme_tous_ses_dossiers(
+    nom: str, dossier: str, nommes: tuple[str, ...]
+) -> None:
+    extrait = extraire(page(nom), dossiers=(dossier,))
+    assert extrait.dossiers_documents == nommes
+    for voisin in nommes:  # l'avis commun couvre chacun de ses dossiers
+        assert extraire(page(nom), dossiers=(voisin,)).dossiers_documents == nommes
+
+
+@pytest.mark.parametrize(
+    ("nom", "nommes"), [("p_3687274", MENINGOCOQUES), ("p_4335961", NICORANDIL)]
+)
+def test_un_faux_rattachement_a_un_avis_commun_est_refuse(
+    nom: str, nommes: tuple[str, ...]
+) -> None:
+    # CT-21681 (MOUNJARO) : un dossier qu'aucun des deux avis ne nomme.
+    with pytest.raises(PageRejetee) as erreur:
+        extraire(page(nom), dossiers=("CT-21681",))
+    assert erreur.value.motif == extraction.REJET_DOSSIER
+    assert erreur.value.detail == f"le document d'avis nomme {', '.join(nommes)}, pas CT-21681"
+    # Un dossier nommé ne couvre pas un second qui ne l'est pas.
+    assert _rejet(page(nom), dossiers=(nommes[0], "CT-21681")) == extraction.REJET_DOSSIER
+
+
+def test_un_document_d_avis_qui_nomme_un_autre_dossier() -> None:
+    """PEDMARQSI : le libellé de l'avis dit CT21123 ; son fichier, les deux transcriptions et la
+    synthèse disent CT21223, et CT-21123 n'est pas dans la BDPM. La page se contredit : rejetée,
+    c'est la question piège « page rejetée » du jeu v2."""
+    pedmarqsi = page("p_3608587")
+    with pytest.raises(PageRejetee) as erreur:
+        extraire(pedmarqsi, dossiers=("CT-21223",))
+    assert erreur.value.motif == extraction.REJET_DOSSIER
+    assert erreur.value.detail == "le document d'avis nomme CT-21123, pas CT-21223"
+    # Seul le rattachement est en cause : sans dossier à contrôler, le texte se lit.
+    assert extraire(pedmarqsi).nature_demande == "Inscription"
+
+
+def test_un_document_sans_numero_ne_permet_pas_le_controle() -> None:
+    """ADEMPAS, second lien : aucun document ; la page est acceptée, l'appelant le compte."""
+    extrait = extraire(page("p_3741668"), dossiers=("CT-20568",))
+    assert extrait.dossiers_documents == ()
+
+
+def test_l_empreinte_se_compare_d_une_version_a_l_autre() -> None:
+    """Le texte des pages acceptées en v1 est inchangé : sous v1, l'empreinte est celle de v1."""
+    extrait = extraire(page("p_4072400"))
+    assert extrait.empreinte(1) == (
+        "7b0c06f8f57b699a669961284411ecdd10fe56a132c8c43cab4ebdd3cfbec46b"  # golden v1
+    )
+    assert extrait.empreinte() != extrait.empreinte(1)
+
+
+def test_les_pages_de_la_collecte_restent_telles_que_recues() -> None:
+    """Le sha256 de chacune est celui que le manifeste du passage de beko a consigné."""
+    import hashlib
+
+    consignes = {
+        "p_3638197": "3b8a6def17f9cdb8897e443043901a7810cf346f66b629a2c066f8f9e2dbd422",
+        "p_3687274": "7fdeb90b920a5bcad66e21f96e47e4b2b5561989301a4d35a37985d38aef3da9",
+        "p_4335961": "17ca292c03e39173a0eaca945479a3a3d817509e0fc340e762a95c1e759dfd5b",
+        "p_3608587": "5dcbbf91195414929f73de2ac4571beee749e4350ee956513b501d300c3b5fad",
+    }
+    for nom, sha256 in consignes.items():
+        assert hashlib.sha256(page(nom)).hexdigest() == sha256

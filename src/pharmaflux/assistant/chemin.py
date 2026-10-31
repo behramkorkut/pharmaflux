@@ -48,6 +48,7 @@ from pharmaflux.assistant.client import (
     ClientLLM,
     ReponseLLM,
 )
+from pharmaflux.assistant.sections import sections_demandees
 from pharmaflux.index import construction
 from pharmaflux.index.encodeur import Encodeur
 from pharmaflux.index.qdrant import Qdrant, filtre_egal
@@ -74,8 +75,16 @@ SYSTEME = (
     "- Un médicament absent du référentiel des spécialités dont une donnée existe ailleurs : tu"
     " peux donner la donnée, avec « reserve » à vrai, en disant que le référentiel ne connaît"
     " pas ce médicament.\n"
-    "- N'écris ni l'instant de l'index, ni les dates des sources : le code les rend lui-même"
-    " sous ta réponse. N'écris que les faits des fragments.\n"
+    "- N'écris ni l'instant de l'index, ni les dates des fichiers sources : le code les rend"
+    " lui-même sous ta réponse. N'écris que les faits des fragments.\n"
+    "- Donne la date de chaque fait daté avec ce fait, telle que le fragment la donne : la date"
+    " de l'avis avec son niveau de SMR ou d'ASMR, les dates de début et de mise à jour avec un"
+    " statut de disponibilité.\n"
+    "- Un avis de la Commission de la transparence (section avis_has) est une évaluation"
+    " collective : cite-le comme tel (« selon l'avis de la Commission de la transparence du … »)."
+    " Il ne s'applique jamais à une personne.\n"
+    "- N'écris aucune adresse (ni URL, ni site) : le code rend lui-même les liens des fragments"
+    " cités sous ta réponse.\n"
     "- Tu n'es pas un dispositif médical."
 )
 
@@ -206,6 +215,95 @@ def _citation(resultat: construction.Resultat, etiquette: int) -> Citation:
     )
 
 
+def dedoublonner(
+    resultats: Sequence[construction.Resultat], vises: frozenset[str]
+) -> list[construction.Resultat]:
+    """Une même (page, partie) d'avis pour plusieurs CIS ne compte qu'une fois (douze CIS pour la
+    page de MOUNJARO) : on garde celui d'un CIS visé, sinon le mieux classé, à la place du mieux
+    classé. Les autres fragments ne changent ni d'ordre, ni de place relative."""
+    places: dict[tuple[Any, ...], int] = {}
+    retenus: list[construction.Resultat] = []
+    for resultat in resultats:
+        page = resultat.charge.get("page")
+        cle = (
+            ("page", page["page_id"], resultat.charge["partie"])
+            if isinstance(page, dict)
+            else (
+                "fragment",
+                resultat.charge["code_cis"],
+                resultat.charge["section"],
+                resultat.rang,
+            )
+        )
+        if cle not in places:
+            places[cle] = len(retenus)
+            retenus.append(resultat)
+        elif str(resultat.charge["code_cis"]) in vises and (
+            str(retenus[places[cle]].charge["code_cis"]) not in vises
+        ):
+            retenus[places[cle]] = resultat
+    return [
+        construction.Resultat(rang, r.score, r.charge) for rang, r in enumerate(retenus, start=1)
+    ]
+
+
+def _rappel_par_section(
+    qdrant: Qdrant,
+    resultats: list[construction.Resultat],
+    vises: frozenset[str],
+    question: str,
+    trace: dict[str, Any],
+) -> list[construction.Resultat]:
+    """Le rappel par section (constat d'``avis_has-003``) : si la question demande une section
+    (``sections.TABLE``) et qu'aucun des fragments rendus n'en est pour le CIS visé le mieux
+    classé, sa première partie de la première section demandée qui existe prend la place du
+    dernier fragment d'un autre CIS. Rien ne change sinon."""
+    demandees = sections_demandees(question)
+    cible = next(
+        (str(r.charge["code_cis"]) for r in resultats if str(r.charge["code_cis"]) in vises), None
+    )
+    if not demandees or cible is None:
+        return resultats
+    if any(
+        str(r.charge["code_cis"]) == cible and r.charge["section"] in demandees for r in resultats
+    ):
+        return resultats
+    for section in demandees:
+        filtre: dict[str, object] = {
+            "must": [
+                {"key": "code_cis", "match": {"value": cible}},
+                {"key": "section", "match": {"value": section}},
+            ]
+        }
+        points = list(qdrant.parcourir(qdrant.alias_fragments, filtre))
+        if not points:
+            continue
+        premier = min(points, key=lambda p: _premiere_partie(p["payload"]))
+        autres = [i for i, r in enumerate(resultats) if str(r.charge["code_cis"]) != cible]
+        place = autres[-1] if autres else len(resultats) - 1
+        remplace = resultats[place]
+        trace["rappel_section"] = {
+            "code_cis": cible,
+            "section": section,
+            "remplace": {
+                "code_cis": remplace.charge["code_cis"],
+                "section": remplace.charge["section"],
+            },
+        }
+        nouveaux = [*resultats]
+        nouveaux[place] = construction.Resultat(remplace.rang, 0.0, premier["payload"])
+        return nouveaux
+    return resultats
+
+
+def _premiere_partie(charge: dict[str, Any]) -> tuple[int, str]:
+    """La première partie ; pour une page d'avis, celle de l'avis le plus récent."""
+    page = charge.get("page")
+    date_avis = str(page["date_avis"]) if isinstance(page, dict) else ""
+    inverse = "".join(str(9 - int(c)) if c.isdigit() else c for c in date_avis)
+    return int(charge["partie"]), inverse
+
+
 @dataclass(frozen=True, slots=True)
 class Appel:
     """Une question qui doit aller au LLM : ce que l'appel enverra, sa clé de cache et son
@@ -276,7 +374,11 @@ def preparer(
             collecte,
         )
 
-    _, resultats = construction.chercher(qdrant, encodeur, question, k)
+    # Mission 09 : les candidats de la recherche hybride, dédoublonnés (une même partie d'une même
+    # page d'avis pour plusieurs CIS ne compte qu'une fois), puis le rappel par section.
+    _, candidats = construction.chercher(qdrant, encodeur, question, construction.CANDIDATS)
+    resultats = dedoublonner(candidats, repere_.vises)[:k]
+    resultats = _rappel_par_section(qdrant, resultats, repere_.vises, question, trace)
     trace["fragments"] = [
         {"etiquette": i, "code_cis": r.charge["code_cis"], "section": r.charge["section"]}
         for i, r in enumerate(resultats, start=1)

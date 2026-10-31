@@ -1,7 +1,7 @@
-"""Mission 09 : la table des sections et la liste des mots courants, écrites avant les questions.
+"""Mission 09 : la table des sections et la liste des mots courants (addendum 1 G).
 
-Elles ne sont pas encore branchées sur le chemin (addendum 1 G) : ces tests fixent ce qu'elles
-disent, et que les sections nommées sont celles de l'index.
+Écrites avant les questions neuves de la v2 (07ac561), branchées après leur commit (bbb9809) :
+ces tests fixent ce qu'elles disent, et ce que le repérage en fait.
 """
 
 from __future__ import annotations
@@ -48,3 +48,32 @@ def test_les_mots_courants_sont_des_mots_significatifs() -> None:
     pas un mot vide) : sans cela, la liste ne changerait rien au repérage."""
     for mot in repere.MOTS_COURANTS:
         assert len(mot) >= 3 and mot not in repere.MOTS_VIDES and mot == mot.lower()
+
+
+def _dictionnaire() -> repere.Dictionnaire:
+    denominations = {
+        "1": "EAU OXYGENEE GILBERT 10 volumes, solution pour application cutanée",
+        "2": "FERRUM HAUSMANN 50 mg/5 ml, sirop",
+        "3": "FER ARROW 80 mg, comprimé",
+        "4": "CHLORURE DE SODIUM LAVOISIER 0,9 %, solution injectable",
+        "5": "LARIAM 250 mg, comprimé sécable",
+    }
+    return repere.construire_dictionnaire(
+        {"code_cis": cis, "denomination": d, "texte": ""} for cis, d in denominations.items()
+    )
+
+
+@pytest.mark.parametrize(
+    ("question", "vises"),
+    [
+        ("L'eau du robinet est-elle remboursée ?", set()),
+        ("Combien coûte un fer à lisser en pharmacie ?", set()),
+        ("L'EAU OXYGENEE GILBERT est-elle remboursée ?", {"1"}),
+        ("FER ARROW 80 mg est-il en rupture ?", {"3"}),
+        ("FERRUM HAUSMANN est-il remboursé ?", {"2"}),
+        ("Le chlorure de sodium Lavoisier est-il en tension ?", {"4"}),
+        ("LARIAM est-il en rupture ?", {"5"}),
+    ],
+)
+def test_un_mot_courant_ne_vise_qu_avec_le_mot_qui_le_suit(question: str, vises: set[str]) -> None:
+    assert repere.reperer(question, _dictionnaire()).vises == vises

@@ -330,8 +330,9 @@ contrôle et cite :**
   chaque nombre et chaque date du texte s'y retrouvent. Un échec donne une
   abstention, jamais une réponse non vérifiée ;
 - **le code rend lui-même** les sources, leurs dates et l'instant de l'index ;
-- chaque appel est compté dans un journal local, sous un plafond de 20 $. Une
-  question déjà posée sur le même index ne repaie pas.
+- chaque appel est compté dans un journal local, sous le plafond de la
+  mission (20 $ à la mission 08, 10 $ à la mission 09). Une question déjà
+  posée sur le même index ne repaie pas.
 
 Deux sorties réelles, celles de la démonstration du 30/10/2026. La clé de
 l'API n'est donnée qu'au processus lancé par `infra/agents/avec-cle.sh`.
@@ -385,6 +386,39 @@ réponses justes. Ce défaut est corrigé, puis l'évaluation est renotée sur l
 mêmes réponses, en cache, sans nouvel appel. Les cinq échecs qui restent sont
 réels : un fragment d'avis que la recherche n'a pas ramené, et quatre dates
 omises.
+
+**Le texte des avis de la HAS** (mission 09,
+[ADR 0013](docs/adr/0013-corpus-has-collecte-extraction-fragments-liens.md)). La
+page d'un avis de la Commission de la transparence est collectée poliment,
+son texte extrait mot pour mot et indexé à côté de la fiche. Le LLM ne voit
+aucune adresse. **Le code rend la page sous la réponse, avec la date de
+l'avis, sa mise en ligne et sa consultation**, comme la licence de la HAS le
+demande, et les deux horloges de l'index. Une sortie réelle de la
+démonstration du 31/10/2026 :
+
+```bash
+sh infra/agents/avec-cle.sh uv run pharmaflux assistant demander \
+  "Quel SMR la Commission de la transparence a-t-elle rendu pour MOUNJARO dans le dossier CT-21681 ?"
+```
+
+```text
+Réponse :
+Selon l'avis de la Commission de la transparence du 2026-05-06 (dossier CT-21681, « MOUNJARO (tirzépatide) - Diabète de type 2 »), le service médical rendu est indiqué ainsi : « SMR : Modéré ». Il s'agit d'une évaluation collective, qui ne s'applique pas à une personne en particulier. Le fragment fourni donne ce niveau sans le texte qui le précise (fiche partielle). Dans le même avis, la Commission considère que MOUNJARO (tirzépatide) n'apporte pas d'amélioration du service médical rendu (ASMR V) par rapport à TRULICITY (dulaglutide), et indique « Dans les autres situations de l'AMM : sans objet ».
+  [3] CIS 68186732, avis_has — has.avis (source du 2026-05-06, observée depuis le 2026-10-31T12:45:53Z)
+      lien : avis de la Commission de la transparence du 2026-05-06 : https://www.has-sante.fr/jcms/p_4072400 (page mise en ligne le 2026-06-12, consultée le 2026-10-31)
+  [6] CIS 68186732, avis_has — has.avis (source du 2026-05-06, observée depuis le 2026-10-31T12:45:53Z)
+      lien : avis de la Commission de la transparence du 2026-05-06 : https://www.has-sante.fr/jcms/p_4072400 (page mise en ligne le 2026-06-12, consultée le 2026-10-31)
+état de l'index : BDPM au 2026-10-27T00:17:12Z ; pages d'avis de la HAS collectées jusqu'au 2026-10-31T13:07:40Z
+coût : 0.0234 $
+```
+
+Contenu de la Haute Autorité de santé, disponible sur <https://www.has-sante.fr>,
+page consultée le 31/10/2026.
+
+**Mesuré le 31/10/2026** sur le [jeu v2](evaluation/README.md) (138 questions,
+dont 50 nouvelles) : 84 réponses correctes sur 87, aucune citation invalide,
+aucun conseil médical, la page d'avis rendue sous les 22 réponses qui
+l'attendent, 2,09 $ pour la v1 et la v2.
 
 ### Les commandes
 

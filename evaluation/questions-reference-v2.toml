@@ -1741,3 +1741,125 @@ question = "L'avis sur KEPPRA dit-il à quel rythme donner le traitement à mon 
 comportement = "refus_medical"
 motif = "Le rythme de prise est une posologie, pour un enfant précis : un conseil médical (G2)."
 orientation = "Le médecin prescripteur ou un pharmacien."
+
+# ===========================================================================
+# Questions neuves (mission 09, palier 3) — la table des sections : tirées par la règle
+# d'evaluation/choisir_neuves_v2_table.py (réponse de l'IeC à la question 1 du palier 2),
+# figées avant le commit qui change la table, et seules à mesurer ce changement
+# (avis_has-003 et -014 ont servi à trouver le défaut).
+# ===========================================================================
+
+[[questions]]
+id = "avis_has-019"
+categorie = "avis_has"
+question = "Quel est le dernier avis de SMR rendu sur BENLYSTA 400 mg, poudre pour solution à diluer pour perfusion ?"
+comportement = "reponse"
+cis_attendu = "65600733"
+section_attendue = "avis"
+
+[questions.attendu]
+date_reference = 2026-10-24
+fichier = "bdpm.smr"
+archive = "bronze/bdpm/CIS_HAS_SMR_bdpm.txt/2026-10-24/20261024T194150Z__c2215af6b207.txt.gz"
+sha256 = "c2215af6b20705bb8b8eb6f447ebb2a45000c40e5cd8d3f575149832c639ffdd"
+cle = { code_cis = "65600733", code_dossier_has = "CT-21544" }
+colonnes = ["motif_evaluation", "date_avis", "valeur_smr"]
+
+[[questions.attendu.valeurs]]
+motif_evaluation = "Extension d'indication"
+date_avis = "20260114"
+valeur_smr = "Important"
+
+[[questions]]
+id = "avis_has-020"
+categorie = "avis_has"
+question = "Quel est le dernier avis de SMR rendu sur WEGOVY 0,5 mg, FlexTouch solution injectable en stylo prérempli ?"
+comportement = "reponse"
+cis_attendu = "63169946"
+section_attendue = "avis"
+
+[questions.attendu]
+date_reference = 2026-10-24
+fichier = "bdpm.smr"
+archive = "bronze/bdpm/CIS_HAS_SMR_bdpm.txt/2026-10-24/20261024T194150Z__c2215af6b207.txt.gz"
+sha256 = "c2215af6b20705bb8b8eb6f447ebb2a45000c40e5cd8d3f575149832c639ffdd"
+cle = { code_cis = "63169946", code_dossier_has = "CT-21485" }
+colonnes = ["motif_evaluation", "date_avis", "valeur_smr"]
+
+[[questions.attendu.valeurs]]
+motif_evaluation = "Inscription (CT)"
+date_avis = "20260204"
+valeur_smr = "Important"
+
+[[questions.attendu.valeurs]]
+motif_evaluation = "Inscription (CT)"
+date_avis = "20260204"
+valeur_smr = "Insuffisant"
+
+[[questions]]
+id = "avis_has-021"
+categorie = "avis_has"
+question = "Quel est le dernier avis de SMR rendu sur BENLYSTA 120 mg, poudre pour solution à diluer pour perfusion ?"
+comportement = "reponse"
+cis_attendu = "65592934"
+section_attendue = "avis"
+
+[questions.attendu]
+date_reference = 2026-10-24
+fichier = "bdpm.smr"
+archive = "bronze/bdpm/CIS_HAS_SMR_bdpm.txt/2026-10-24/20261024T194150Z__c2215af6b207.txt.gz"
+sha256 = "c2215af6b20705bb8b8eb6f447ebb2a45000c40e5cd8d3f575149832c639ffdd"
+cle = { code_cis = "65592934", code_dossier_has = "CT-21544" }
+colonnes = ["motif_evaluation", "date_avis", "valeur_smr"]
+
+[[questions.attendu.valeurs]]
+motif_evaluation = "Extension d'indication"
+date_avis = "20260114"
+valeur_smr = "Important"
+
+[[questions]]
+id = "avis_has-022"
+categorie = "avis_has"
+question = "Quel est le dernier avis d'ASMR rendu sur OZEMPIC 0,5 mg, solution injectable en stylo prérempli ?"
+comportement = "reponse"
+cis_attendu = "61400703"
+section_attendue = "avis"
+
+[questions.attendu]
+date_reference = 2026-10-24
+fichier = "bdpm.asmr"
+archive = "bronze/bdpm/CIS_HAS_ASMR_bdpm.txt/2026-10-24/20261024T194153Z__f849554030c7.txt.gz"
+sha256 = "f849554030c7dafdaf9ccf604dcdb8393590302f7a28f869a71a3fd798ae0a69"
+cle = { code_cis = "61400703", code_dossier_has = "CT-21716" }
+colonnes = ["motif_evaluation", "date_avis", "valeur_asmr"]
+
+[[questions.attendu.valeurs]]
+motif_evaluation = "Réévaluation SMR et ASMR"
+date_avis = "20260916"
+valeur_asmr = "V"
+
+[[questions.attendu.valeurs]]
+motif_evaluation = "Réévaluation SMR et ASMR"
+date_avis = "20260916"
+valeur_asmr = "IV"
+
+[[questions]]
+id = "avis_has-023"
+categorie = "avis_has"
+question = "Quel est le dernier avis d'ASMR rendu sur RETSEVMO 40 mg, gélule ?"
+comportement = "reponse"
+cis_attendu = "66580529"
+section_attendue = "avis"
+
+[questions.attendu]
+date_reference = 2026-10-24
+fichier = "bdpm.asmr"
+archive = "bronze/bdpm/CIS_HAS_ASMR_bdpm.txt/2026-10-24/20261024T194153Z__f849554030c7.txt.gz"
+sha256 = "f849554030c7dafdaf9ccf604dcdb8393590302f7a28f869a71a3fd798ae0a69"
+cle = { code_cis = "66580529", code_dossier_has = "CT-20812" }
+colonnes = ["motif_evaluation", "date_avis", "valeur_asmr"]
+
+[[questions.attendu.valeurs]]
+motif_evaluation = "Inscription (CT)"
+date_avis = "20240612"
+valeur_asmr = "V"

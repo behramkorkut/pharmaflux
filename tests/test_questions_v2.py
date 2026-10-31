@@ -30,6 +30,10 @@ NEUVES = (
 # sha256 du JSON canonique des 18 questions neuves (clés triées, dates en texte), au commit qui
 # les fige.
 EMPREINTE_NEUVES = "c11886b22076f341478140a5c2d89a29e8d7c1e1bfe066e6c03a5c0a20fb7b22"
+# Palier 3 : les questions qui mesurent le changement de la table des sections, tirées par
+# evaluation/choisir_neuves_v2_table.py et figées avant lui (controle-palier-2.md, question 1).
+TABLE = [f"avis_has-{n:03d}" for n in range(19, 24)]
+EMPREINTE_TABLE = "33890d4817f17b46d53288005cc8d6263554787d6425b649f7d9f2f8efc8b93f"
 
 
 def _brutes(chemin: Path) -> list[dict[str, object]]:
@@ -53,6 +57,14 @@ def test_les_questions_neuves_sont_figees() -> None:
     assert hashlib.sha256(brut.encode()).hexdigest() == EMPREINTE_NEUVES
 
 
+def test_les_questions_de_la_table_sont_figees() -> None:
+    debut = 88 + len(NEUVES)
+    table = _brutes(V2)[debut : debut + len(TABLE)]
+    assert [q["id"] for q in table] == TABLE
+    brut = json.dumps(table, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":"))
+    assert hashlib.sha256(brut.encode()).hexdigest() == EMPREINTE_TABLE
+
+
 def test_le_script_de_choix_n_est_importe_par_aucun_test() -> None:
     for fichier in Path(__file__).parent.rglob("*.py"):
         for noeud in ast.walk(ast.parse(fichier.read_text(encoding="utf-8"))):
@@ -63,4 +75,4 @@ def test_le_script_de_choix_n_est_importe_par_aucun_test() -> None:
             else:
                 continue
             assert not any("choisir_neuves" in m for m in modules), fichier
-    assert SCRIPT.is_file()
+    assert SCRIPT.is_file() and SCRIPT.with_name("choisir_neuves_v2_table.py").is_file()

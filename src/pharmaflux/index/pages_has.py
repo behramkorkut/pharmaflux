@@ -58,6 +58,17 @@ class PagesHas:
     archivees: int = 0  # pages distinctes archivées jusqu'à la position
     collecte: str | None = None  # la dernière collecte de ces pages
     rejets: Counter[str] = field(default_factory=Counter)
+    # Les pages extraites qu'aucune fiche du référentiel ne cite : sans fragment (palier 4).
+    sans_fiche: list[str] = field(default_factory=list)
+
+    def marquer_sans_fiche(self, citees_par_le_referentiel: set[str]) -> None:
+        """Les pages extraites qui ne se rattachent à aucune fiche du référentiel : comptées et
+        listées dans l'état, comme les contrôles de dossier impossibles."""
+        self.sans_fiche = sorted(
+            page.page_id
+            for url, page in self.pages.items()
+            if page.rejet is None and url not in citees_par_le_referentiel
+        )
 
     def etat(self) -> dict[str, object]:
         """Ce que l'état de l'index garde (sans le texte) : sa seconde horloge."""
@@ -72,6 +83,7 @@ class PagesHas:
             "extraites": len(extraites),
             "rejets": dict(sorted(self.rejets.items())),
             "sans_controle": sorted(p.page_id for p in extraites if not p.controle_dossier),
+            "sans_fiche": self.sans_fiche,
         }
 
 

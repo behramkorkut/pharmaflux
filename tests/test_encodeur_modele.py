@@ -101,7 +101,7 @@ def test_aucun_fragment_avis_has_du_jeu_ne_depasse_la_fenetre(
     assert instant is not None
     contrats = charger_tous()
     vues = vues_gold.vues(entrepot, contrats, etats_types(entrepot, contrats, instant), instant)
-    dossiers, _ = rattachements(vues.fiche)
+    dossiers, _, _ = rattachements(vues.fiche)
     pages = pages_has.lire(JEU, dossiers).pages
     textes = [
         f.texte for f in fragments_des_fiches(vues.fiche, pages=pages) if f.section == "avis_has"

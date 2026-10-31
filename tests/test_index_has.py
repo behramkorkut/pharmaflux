@@ -361,3 +361,50 @@ def test_index_etat_rend_la_seconde_horloge(
     resultat = CliRunner().invoke(application, ["index", "etat", "--complet"])
     assert resultat.exit_code == 2 and "sans les pages d'avis" in resultat.output
     assert "aucune (index construit sans --archive-has)" in resultat.output
+
+
+# --- palier 4 : une page ne se rattache qu'aux fiches du référentiel --------------------------
+
+
+def test_une_fiche_partielle_n_a_pas_de_fragment_d_avis() -> None:
+    """La page est écartée tant que sa fiche est absente du référentiel, rattachée quand elle y
+    entre : le rattachement se recalcule à chaque construction, sans nouvelle collecte."""
+    pages = {SITE + "p_3577036": page_indexee("p_3577036")}
+    partielle = KALYDECO | {"dans_referentiel": False, "denomination": None}
+    assert avis_has(fragments(partielle, pages)) == []
+    assert avis_has(fragments(KALYDECO, pages)) != []
+
+
+def test_les_pages_sans_fiche_du_referentiel_sont_comptees(archive: Path) -> None:
+    lues = pages_has.lire(archive, DOSSIERS)
+    # Seule la page de KALYDECO est citée par une fiche du référentiel ; PEDMARQSI est rejetée.
+    lues.marquer_sans_fiche({SITE + "p_3577036"})
+    assert lues.etat()["sans_fiche"] == ["p_3741668"]
+    assert lues.etat()["extraites"] == 2  # l'extraction ne change pas, seul le rattachement
+
+
+def test_une_fiche_qui_entre_au_referentiel_retrouve_sa_page(tmp_path: Path) -> None:
+    """La mise à jour par incréments : la fiche touchée (elle entre au référentiel) reçoit les
+    fragments de sa page ; l'index égale sa reconstruction."""
+    pages = {SITE + "p_3577036": page_indexee("p_3577036")}
+    partielle = KALYDECO | {"dans_referentiel": False, "denomination": None}
+
+    def fichier(
+        nom: str, fiches: list[dict[str, Any]], instant: str, touches: Any = None
+    ) -> Fragments:
+        liste = [x for f in fiches for x in fragments(f, pages)]
+        chemin = tmp_path / f"{nom}.jsonl"
+        chemin.write_text("".join(x.en_jsonl() + "\n" for x in liste), encoding="utf-8")
+        return Fragments(chemin, instant, len(fiches), len(liste), 1, touches, has=has(1))
+
+    simule = QdrantSimule()
+    construire(simule, tmp_path / "travail", fichier("avant", [partielle], AVANT))
+    sections = {p["payload"]["section"] for p in simule.points(ALIAS).values()}
+    assert "avis_has" not in sections
+    mettre_a_jour(simule, tmp_path / "travail", fichier("maj", [KALYDECO], APRES, ("67851912",)))
+    reference = QdrantSimule()
+    complets = fichier("complets", [KALYDECO], APRES)
+    construire(reference, tmp_path / "reference", complets)
+    assert contenu(simule) == contenu(reference)
+    assert "avis_has" in {p["payload"]["section"] for p in simule.points(ALIAS).values()}
+    assert verifier(simule, tmp_path / "travail", complets).conforme

@@ -60,7 +60,10 @@ from pharmaflux.index.pages_has import PageIndexee
 # un vecteur creux BM25 à côté du dense (index.lexical, index.qdrant). Le bump force une
 # reconstruction unique ; les vecteurs denses sont relus du cache, le texte étant inchangé.
 # Format 3 (mission 09) : la section avis_has, et l'avgdl de BM25 remesurée (index.lexical).
-FORMAT = 3
+# Format 4 (mission 09, palier 4) : une page d'avis ne se rattache qu'aux fiches que le référentiel
+# des spécialités nomme ; une fiche partielle n'a plus de fragment avis_has. Le bump force la
+# reconstruction (une mise à jour garderait ceux des fiches non touchées).
+FORMAT = 4
 BORNE_CARACTERES = 1200  # recalée au palier 2 : au pire 2,48 caractères par jeton e5, 512 au plus
 ESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://github.com/behramkorkut/pharmaflux/fragments")
 
@@ -247,20 +250,27 @@ def liens_des_avis(fiche: Fiche) -> dict[str, set[str]]:
     return liens
 
 
-def rattachements(fiches: Any, lot: int = 2000) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
-    """Pour chaque page d'avis que cite une fiche de la table : ses dossiers, puis ses CIS.
+def rattachements(
+    fiches: Any, lot: int = 2000
+) -> tuple[dict[str, set[str]], dict[str, set[str]], set[str]]:
+    """Pour chaque page d'avis que cite une fiche de la table : ses dossiers, ses CIS, et les
+    pages qu'au moins une fiche du référentiel cite (les autres n'ont pas de fragment).
 
     Sur toutes les fiches, pas sur les seules touchées : le contrôle d'une page porte sur tous
     les dossiers qui la lient (``index.pages_has``).
     """
     dossiers: dict[str, set[str]] = {}
     cis: dict[str, set[str]] = {}
-    for morceau in fiches.select(["code_cis", "avis_smr", "avis_asmr"]).to_batches(lot):
+    du_referentiel: set[str] = set()
+    colonnes = ["code_cis", "dans_referentiel", "avis_smr", "avis_asmr"]
+    for morceau in fiches.select(colonnes).to_batches(lot):
         for fiche in morceau.to_pylist():
             for url, lies in liens_des_avis(fiche).items():
                 dossiers.setdefault(url, set()).update(lies)
                 cis.setdefault(url, set()).add(fiche["code_cis"])
-    return dossiers, cis
+                if fiche["dans_referentiel"]:
+                    du_referentiel.add(url)
+    return dossiers, cis, du_referentiel
 
 
 # --- avis_has (format 3) -----------------------------------------------------------------------
@@ -269,8 +279,15 @@ def rattachements(fiches: Any, lot: int = 2000) -> tuple[dict[str, set[str]], di
 def _avis_has(fiche: Fiche, entete: str, pages: Mapping[str, PageIndexee]) -> list[Fragment]:
     """Un fragment par (page, partie) pour chaque page d'avis extraite que la fiche cite.
 
-    Les pages se rangent de la plus récente à la plus ancienne (date de l'avis), puis par page.
+    Seulement pour une fiche du référentiel des spécialités (décision de l'IeC, palier 4) :
+    l'identité d'un médicament vient du référentiel, pas du titre d'une page. Une fiche partielle
+    (sans dénomination) ne peut être ni visée ni citée utilement ; ses fragments d'avis ne feraient
+    que du bruit. Le rattachement se recalcule à chaque construction et à chaque mise à jour : une
+    page revient quand sa fiche entre au référentiel. Les pages se rangent de la plus récente à la
+    plus ancienne (date de l'avis), puis par page.
     """
+    if not fiche["dans_referentiel"]:
+        return []
     code_cis = str(fiche["code_cis"])
     liens = liens_des_avis(fiche)
     retenues = [

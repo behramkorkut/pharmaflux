@@ -1938,8 +1938,9 @@ def index_fragments(
         pages = None
         cis_has: set[str] = set()
         if archive_has is not None:
-            dossiers_par_url, cis_par_url = rattachements(toutes)
+            dossiers_par_url, cis_par_url, citees = rattachements(toutes)
             pages = pages_has.lire(archive_has, dossiers_par_url, has_lignes)
+            pages.marquer_sans_fiche(citees)
             if has_depuis is not None:
                 arrivees = [u for u, p in pages.pages.items() if p.rang >= has_depuis]
                 cis_has = {c for url in arrivees for c in cis_par_url[url]}
@@ -2095,6 +2096,8 @@ def index_construire(
         f" {bilan.encodes} encodé(s), {bilan.fragments - bilan.encodes} repris du cache,"
         f" {bilan.duree_s:.0f} s ; état au {bilan.instant} ; collection {bilan.collection}"
     )
+    for ligne in _sans_fiche(fragments.has):
+        typer.echo(ligne)
     typer.echo(_memoire_des_deux_processus(), err=True)
 
 
@@ -2228,6 +2231,8 @@ def index_verifier(
         typer.echo(f"vérification refusée : {exc}", err=True)
         raise typer.Exit(code=2) from exc
     for ligne in construction.formater_verification(rapport):
+        typer.echo(ligne)
+    for ligne in _sans_fiche(fragments.has, liste=False):
         typer.echo(ligne)
     typer.echo(_memoire_des_deux_processus(), err=True)
     if not rapport.conforme:
@@ -2376,7 +2381,17 @@ def _etat_has(has: dict[str, Any] | None) -> list[str]:
         f"  contrôle de dossier impossible : {len(has['sans_controle'])}",
     ]
     lignes += [f"    {page}" for page in has["sans_controle"]]
+    lignes += _sans_fiche(has)
     return lignes
+
+
+def _sans_fiche(has: dict[str, Any] | None, liste: bool = True) -> list[str]:
+    """Les pages extraites qu'aucune fiche du référentiel ne cite : hors de l'index (palier 4)."""
+    if has is None:
+        return []
+    pages = has.get("sans_fiche") or []
+    lignes = [f"  pages sans fiche du référentiel : {len(pages)} (dans l'archive, hors de l'index)"]
+    return lignes + ([f"    {page}" for page in pages] if liste else [])
 
 
 @index.command("evaluer")

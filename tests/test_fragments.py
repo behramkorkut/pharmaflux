@@ -319,7 +319,7 @@ def test_un_fragment_s_ecrit_en_json_cles_dans_l_ordre() -> None:
             "observee_depuis": "2026-10-24T19:41:43Z",
         }
     ]
-    assert json.loads(ligne)["format"] == fr.FORMAT == 3
+    assert json.loads(ligne)["format"] == fr.FORMAT == 4
 
 
 # --- le jeu de démo ----------------------------------------------------------------------------
@@ -422,7 +422,7 @@ def test_index_fragments_en_ligne_de_commande(
     assert resultat.exit_code == 0, resultat.output
     lignes = [json.loads(x) for x in sortie.read_text(encoding="utf-8").splitlines()]
     assert [x["section"] for x in lignes] == ["identite", "presentations", "avis", "disponibilite"]
-    assert "4 fragment(s) de 1 fiche(s), format 3, état au 2026-10-27T00:17:12Z" in resultat.output
+    assert "4 fragment(s) de 1 fiche(s), format 4, état au 2026-10-27T00:17:12Z" in resultat.output
     assert not (tmp_path / "fragments.jsonl.partiel").exists()
     inconnu = CliRunner().invoke(
         application, ["index", "fragments", "--entrepot", str(dossier), "--cis", "99999999"]

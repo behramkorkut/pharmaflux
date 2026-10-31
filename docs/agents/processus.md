@@ -78,16 +78,25 @@ et une session ne demande jamais à l'autre de faire ce qui lui a été refusé.
 
 ## Rapport de palier (codeur)
 
-`docs/rapports/mission-NN/palier-K.md`, quinze lignes au plus :
+`docs/rapports/mission-NN/palier-K.md`. Il s'ouvre sur une **synthèse de
+quinze lignes au plus**, qui suffit à décider ; le détail suit, et se
+limite à ce que l'IeC ne peut pas retrouver seul (mesures, sorties citées,
+décisions prises en codant, écarts). On ne recopie ni l'ordre ni le code.
+Un rapport de plus de 200 lignes se justifie en une ligne dans sa
+synthèse. _(Revu le 31/10/2026 : la limite de quinze lignes pour tout le
+rapport n'était plus tenue depuis la mission 05.)_
 
 ```markdown
 # Mission NN — palier K
+## Synthèse
 **Fait** : …
-**Vérifications locales** (commit testé : `abc1234`)
-| commande | résultat |
+**Vérifications locales** (commit testé : `abc1234`) : vertes, ou ce qui ne l'est pas
 **Écarts à l'ordre** : … (ou « aucun »)
 **Questions pour l'IeC** : … (ou « aucune »)
 **Propositions d'évolution** (PRD, consignes) : … (ou « aucune »)
+## Détail
+| commande | résultat |
+…
 ```
 
 ## Garde-fous (trois couches)

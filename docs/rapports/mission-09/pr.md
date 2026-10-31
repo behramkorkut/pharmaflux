@@ -12,7 +12,14 @@ committés tels quels.
   sont dans `docs/relectures/mission-09/`.
 - **Le commit de clôture du code**, sur lequel l'évaluation finale est notée : `aba5173`. beko
   l'a lancée depuis `a1ae12a`, qui n'ajoute que des docs.
-- **À venir** : la relecture (Claude Fable 5.1), puis la revue finale de l'IeC.
+- **La relecture 1** (Claude Fable 5.1, sur `4eaea81`) est **CONFORME, 0 bloquant**. L'IeC a
+  tranché ses cinq points non bloquants (`reponse-relecture-1.md`) :
+  - les chiffres, le journal et les dates sont corrigés en `1c88fe7` ;
+  - un test direct de `couper_ligne` est ajouté en `881300b` ;
+  - la branche inatteignable du client HAS est écrite comme piste, sans toucher au client.
+
+  Aucun appel payant n'a été fait. Il n'y a pas de second tour.
+- **À venir** : la revue finale de l'IeC.
 - **Aucun appel à l'API n'est parti d'une session d'agent**, des tests ou de la CI. Les tests
   passent par un double du client, et une garde de session fait échouer tout test qui sortirait
   sur le réseau. La démonstration et les évaluations ont été lancées par beko, avec la clé de son
@@ -289,15 +296,15 @@ l'échantillon réencodé et de l'allocateur, et il varie d'une exécution à l'
 par lots plus petits, ou dans un sous-processus, élargirait la marge. C'est une proposition, sans
 correction ici.
 
-## Vérifications locales (commit testé : `cf04a7e`, le sommet avant ce rapport ; code identique à `aba5173`)
+## Vérifications locales (commit testé : `881300b`, après la relecture 1 ; le commit suivant n'ajoute que des docs)
 
 Redpanda, Qdrant et les fichiers du modèle sont présents sur le Mac.
 
 | commande | résultat |
 |---|---|
-| `uv run ruff check .` ; `uv run ruff format --check .` | All checks passed ; 340 files already formatted |
+| `uv run ruff check .` ; `uv run ruff format --check .` | All checks passed ; 343 files already formatted (le compte inclut les fichiers Markdown) |
 | `uv run mypy src` | Success: no issues found in 89 source files |
-| `GITHUB_ACTIONS=true uv run pytest -q -rE -rs` | **913 passed** en 6 min 25, aucun saut, session verte, intégration et modèle compris. Une première passe, lancée pendant que d'autres commandes chargeaient la machine, a donné 913 passed et une session **rouge** : un réessai du registre a servi pendant l'intégration (`RemoteProtocolError` sur un `POST /subjects/…`, règle A2). Le code du bus n'a pas changé depuis `dff0a34`. La seconde passe, seule, n'a eu aucun réessai |
+| `GITHUB_ACTIONS=true uv run pytest -q -rE -rs` | **919 passed** en 6 min 28 sur `881300b`, lancé seul : aucun saut, aucun réessai du registre, session verte, intégration et modèle compris. Sur `cf04a7e`, avant la relecture, 913 passed, et la même session verte en 6 min 25. Une première passe sur `cf04a7e`, lancée pendant que d'autres commandes chargeaient la machine, a donné 913 passed et une session **rouge** : un réessai du registre a servi pendant l'intégration (`RemoteProtocolError` sur un `POST /subjects/…`, règle A2). Le code du bus n'a pas changé depuis `dff0a34`. La seconde passe, seule, n'a eu aucun réessai |
 | aucune requête réseau dans les tests | la garde de session `tests/conftest.py::reseau_coupe` et `tests/test_reseau.py` |
 | `sh infra/git-hooks/test-crochets.sh` ; `python3 infra/agents/test_garde_fou.py` | tout est conforme ; OK (24 tests) |
 | simulation du `Makefile` | `make -n index`, `make -n demo` (palier 2) ; `make -n evaluer`, avec et sans `JEU_QUESTIONS` (palier 3) |
@@ -311,6 +318,7 @@ Redpanda, Qdrant et les fichiers du modèle sont présents sur le Mac.
 | `evenements` contre `beba0c8` | identique (`diff -r` vide, palier 1) ; le socle (`evenements`, `collecte`, `bus`, `contrats`, `silver`, `gold`) n'a pas changé depuis `dff0a34` |
 | `index verifier` sur le jeu (format 4, séquence de beko) | conforme, cosinus minimal 0,9955 ; 73 551 fragments, 18 pages sans fiche |
 | `assistant evaluer` (v1, v2), séquence de beko | conditions dures tenues ; aucune question perdue contre `4dec92b` |
+| `assistant evaluer --estimer` sur la v2, après la relecture 1 (sans clé ni appel) | 144 questions, 33 décidées hors LLM, 111 en cache, **0 appel à faire** : la description et l'en-tête corrigés ne touchent pas la clé du cache |
 | `pharmaflux assistant depenses` | mission 9 : 190 appels, 3,8244 $ ; reste 6,1756 $ sur 10 $ |
 
 **La séquence de beko** a commencé à `make index`. La partie BDPM du jeu, le silver et le gold
@@ -319,7 +327,7 @@ n'y a aucun changement de code depuis `dff0a34`. `silver verifier` et `gold qual
 rejoués ici, sur le jeu.
 
 **Le nombre de tests** : 735 au départ de la mission, puis 810, 889, 909 et 913 aux paliers 1 à
-4.
+4, et 919 après la relecture 1.
 
 ## Écarts acceptés
 
@@ -360,6 +368,16 @@ rejoués ici, sur le jeu.
 - la v1 et la v2 se relancent, parce que leurs messages changent : 82 appels de plus avec la
   question 2, pour 1,6571 $.
 
+**Relecture 1** : cinq points non bloquants, tranchés par l'IeC.
+- **Les chiffres d'avant le palier 4** passent à ceux de l'évaluation finale, dans le README,
+  `evaluation/README.md`, `docs/CONTEXTE.md` et la description du jeu v2. Les empreintes et la
+  clé du cache ne bougent pas : `--estimer` sur la v2 donne 0 appel à faire.
+- **Le journal** a une entrée pour les évaluations et le palier 4.
+- **Les dates** passent au 31/10/2026, et l'ADR 0013 date ses mesures par format.
+- **`couper_ligne`** a un test direct : la non-altération au niveau de l'index.
+- **La branche inatteignable du client HAS** n'est pas corrigée : le client a servi à la vraie
+  collecte. Elle est écrite plus bas.
+
 ## Limites et propositions
 
 - **Les liens rendus ne sont pas filtrés par le dossier de la question** (`avis_has-044`).
@@ -382,5 +400,18 @@ rejoués ici, sur le jeu.
 - **Les PDF d'avis** demandent une mission et une ADR à eux. Le chiffrage est dans l'ADR 0013 :
   722 requêtes, environ 0,45 Go, et un index qui double.
 - **Une collecte périodique des avis** : proposée dans l'ADR 0013, et pas installée.
+- **Une branche inatteignable dans le client HAS** (`has/client.py:128-129`, « après une
+  défaillance »). La règle réelle : deux défaillances d'affilée sur la même URL arrêtent le
+  passage. Une défaillance réessayée avec succès, puis une défaillance sur l'URL suivante, donnent
+  un second réessai. La docstring du module dit « sur la même URL ou sur la suivante ». Le passage
+  réel n'a eu aucune défaillance.
+  - **Proposition** : à la prochaine évolution du client, supprimer la branche et écrire la règle
+    réelle dans la docstring, avec un test (relecture 1, point 5).
+- **Les mentions légales reçues en 200, mais sans `<main>`** sont consignées `nouveau`, sans
+  archive. Le cas ne s'est pas présenté.
+  - **Proposition** : leur donner un statut à elles, avec la même évolution de la collecte.
+- **Le contrôle de dossier de l'état des pages** porte sur tous les dossiers d'une page, alors que
+  les fragments le refont fiche par fiche. Aucune page de la première étape n'a plus d'un dossier
+  BDPM ; c'est à reprendre quand le corpus s'étendra.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)

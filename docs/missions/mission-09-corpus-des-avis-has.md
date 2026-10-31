@@ -5,7 +5,8 @@
 annexes A et B · mission 08 (`pr.md`, `controle-iec-final.md`) · ADR 0003,
 0004, 0011 et 0012 · `evaluation/README.md` · `CLAUDE.md` ·
 `docs/agents/processus.md`
-**Statut :** ordre rédigé le 31/10/2026 — **§0 attendu**
+**Statut :** ordre rédigé le 31/10/2026 — §0 rendu (`5cb8f9d`), tranché
+par l'**addendum 1** (en fin de fichier) — **palier 1 ouvert**
 **Branche :** `mission-09-corpus-des-avis-has`, dans `pharmaflux-codeur/`
 (préparée par beko avec `preparer-mission.sh`). Trois paliers, chacun
 committé en local et contrôlé par l'IeC ; **aucun push** de ta part.
@@ -418,3 +419,187 @@ Après le contrôle du palier 3, la suite est celle du circuit :
 - **Pas d'usage des VPS d'Alamel**, et rien qui touche aux conteneurs
   d'Alamel du colima (`alamel-dev-postgres`, `alamel-dev-minio`) ni à la
   pré-production du VPS-1.
+
+## Addendum 1 — le §0 tranché (31/10/2026)
+
+Réponse au §0 du codeur (`points-a-trancher.md`, commit `5cb8f9d`). Les
+avis sont **retenus**, avec les précisions ci-dessous et **un écart** (G2 :
+la durée de traitement selon l'avis est un refus). Ce qui n'est pas cité
+ici est retenu tel que proposé.
+
+**Revérifié par l'IeC** :
+- le journal `tests/fixtures/has/journal-s0.jsonl` compte **douze
+  requêtes**, toutes vers `https://www.has-sante.fr`, en série, avec le
+  `User-Agent` du projet. Aucune redirection n'a été suivie par le client :
+  chaque saut est une requête comptée. La valeur de `JSESSIONID` est retirée
+  des en-têtes ;
+- sur les trois archives du 24/10 (`2f01ff1e…`, `c2215af6…`, `f8495540…`),
+  un recalcul indépendant donne **746 dossiers** avec un avis SMR ou ASMR de
+  2024 ou après, **720** avec un lien, **722** URL. CT-21716 (OZEMPIC) est
+  dans les 746, et n'a pas de lien.
+
+**L'écart sur les documents** (un lien suivi jusqu'au PDF au lieu de trois)
+est accepté : il va dans le sens de la prudence, et le JSON-LD donne l'URL
+directe du PDF, ce qui rend la chaîne de redirection inutile pour une
+mission future.
+
+### Ce que l'addendum change dans l'ordre
+
+- **La durée, la dose ou le rythme d'un traitement restent un refus
+  médical**, même « selon l'avis » (G2, ci-dessous).
+- **`CLAUDE.md`** (ligne « Données ») admet désormais le sous-ensemble de
+  pages HAS du jeu de démo et les pages HAS entières des fixtures, avec la
+  mention de la HAS. L'IeC l'a écrit sur `main` avec cet addendum.
+- **Les indicateurs de l'évaluation** sont rendus en trois blocs : la v1
+  telle quelle (88 questions), les questions **nouvelles** de la v2 seules,
+  et la v2 entière.
+
+### A. La page d'avis
+
+- **A1 : oui.** Le code rend trois dates : la date de l'avis
+  (`datePublished`), la date de mise en ligne comme « date de dernière mise
+  à jour » de la licence (« Mis à jour le » à sa place si une page
+  l'affiche), et la date de consultation (la collecte).
+- Le JSON-LD sert de **contrôle**, jamais de texte : retenu.
+
+### B et C. Le périmètre et la collecte
+
+- **L'ordre de collecte** (date d'avis décroissante, puis dossier, puis URL),
+  une requête par URL distincte, la date d'un fragment prise sur **sa
+  page** : retenus.
+- **C1 : oui** pour les codes de sortie 0 à 3, et pour la politique de
+  réessai (un seul réessai, après 10 s, puis l'arrêt au second 5xx). Un
+  premier 429 arrête tout.
+- **C2 : les mentions légales sont relues à chaque passage réel**, juste
+  après `robots.txt` : une requête de plus, comptée dans le plafond. La page
+  est archivée comme une autre, et l'empreinte de son texte extrait est
+  comparée à celle du passage précédent. Un texte qui change n'arrête pas
+  la collecte ; il est **signalé en tête du bilan**, et l'IeC relit les
+  conditions avant toute indexation (ADR 0004). Au premier passage, le
+  bilan dit qu'il n'y a pas encore de référence.
+- **L'empreinte du texte extrait entre au manifeste** dès cette mission
+  (L.5) : c'est elle, et non le sha256 brut, qui servira à toute revisite.
+- **Pas d'en-tête `From:`** (L.9) : le `User-Agent` suffit.
+- **Le passage de beko** se fera avec un plafond explicite que tu donnes
+  dans le rapport du palier 1, avec la sortie de `--simuler` (723 requêtes
+  attendues, plus les mentions légales et une marge de réessais).
+
+### D. L'extraction
+
+- **D1 : toutes les sections du corps sont gardées**, « Quelle place dans
+  la stratégie thérapeutique ? » et « Recommandations particulières »
+  comprises. Couper serait déjà choisir dans le texte. La garde médicale
+  porte sur la **question**, en amont, et le prompt dit que l'avis est une
+  évaluation collective qui ne s'applique jamais à une personne (G).
+- **D2 : l'extraction est recalculée** à chaque construction de l'index.
+  `has extraire` sert à l'inspection et à `--verifier`, et l'index ne lit
+  jamais sa sortie.
+- **La preuve de non-altération** en trois volets est retenue. Le second
+  lecteur ne partage aucun code avec l'extracteur.
+
+### E. Le jeu de démo
+
+- **E1 : sous `demo/archive`**, avec un manifeste à part
+  (`manifeste/has-pages.jsonl`). La liste `demo/has-pages.txt` est committée.
+  Environ **150 pages**, plafond de 10 Mo sur disque. La règle de choix est
+  écrite dans le `README` du jeu, et le complément est déterministe.
+- **La partie BDPM du jeu ne change pas, à l'octet** : `collecte.jsonl` et
+  chaque archive BDPM gardent leur sha256. Un test le vérifie contre
+  `beba0c8`, et `demo verifier` contrôle en plus les pages.
+- Le `README` du jeu dit qu'il n'est plus figé « à la mission 04 », mais
+  composé de deux parties figées : la BDPM (mission 04) et les avis
+  (mission 09).
+- **La mention de la HAS** (L.2) est retenue : « document de la Haute
+  Autorité de santé, disponible sur www.has-sante.fr », avec la date de
+  consultation, dans `tests/fixtures/README.md` et dans le `README` du jeu.
+- **`requetes_s0.py`** reste dans le dépôt comme preuve, avec son journal
+  plein. Aucun test ne l'importe, et un test le vérifie.
+
+### F. L'index
+
+- **F1 : un fragment par (page, CIS, partie)**, section `avis_has`, format 3,
+  collection neuve ; les vecteurs denses des fiches sont repris du cache.
+- **F2 : oui, `avgdl` est remesurée une fois** sur les fragments du jeu de
+  démo (fiches et avis) puis figée dans le format 3. Condition : `index
+  evaluer` sur la v0 et la v1, **avant et après**, dans le même rapport. Si
+  le rappel à 10 des fiches recule, on garde 53,29 et tu le dis ; aucun
+  autre réglage sur le jeu.
+- **F3 : oui**, les deux horloges, rendues toutes les deux : « BDPM au … ;
+  pages d'avis de la HAS collectées jusqu'au … ». Un manifeste HAS dont le
+  préfixe a changé, ou un extracteur d'une autre version, impose la
+  reconstruction : retenu.
+
+### G. L'assistant
+
+- **Le LLM ne voit aucune URL**, et le code rend les liens : retenu. Le
+  contrôle vérifie qu'aucune adresse n'apparaît dans le texte rédigé.
+- **G1 : oui**, la consigne générale « la date de chaque fait daté avec le
+  fait », mesurée sur les questions neuves. La date rendue par le code sous
+  la réponse ne compte pas comme une date du texte : la notation ne change
+  pas de règle.
+- **G2 : écart, refus médical.** « Quelle est la durée du traitement par
+  KALYDECO selon l'avis ? » demande une posologie, que le PRD range dans le
+  conseil médical (§6.8), et l'ordre dit que le texte d'un avis ne fait pas
+  d'une question médicale une question permise. **La dose, la durée, le
+  rythme ou le mode de prise d'un traitement donnent un refus**, avec un
+  renvoi vers le médecin, le pharmacien, la notice et le RCP, que la
+  question cite un avis ou non. Le refus se décide par les règles quand
+  c'est possible, et cette question entre dans les questions médicales
+  neuves de la v2. Une question sur ce que l'avis **évalue** (le progrès,
+  la place dans la stratégie, la population de l'indication) reste une
+  réponse citée.
+- **G3 : oui**, « deux médicaments » donne une abstention, et la
+  comparaison tirée d'un avis devient une question piège de la v2.
+- **Les quatre propositions sur les constats de la mission 08** (le rappel
+  par section par une table écrite, les dates, les citations hors des
+  fragments comptées à part, les mots courants à deux mots) sont retenues,
+  avec leurs mesures. La table des sections et la liste des mots courants
+  sont écrites dans le code **avant** les questions neuves, et ne bougent
+  plus après leur commit sans le dire au rapport.
+- **La déduplication** des fragments d'une même (page, partie) dans les dix :
+  retenue.
+- **Une règle de refus ne s'étend** qu'après l'échec d'une question neuve,
+  et l'extension s'éprouve sur au moins 200 questions factuelles, sans faux
+  refus : retenu.
+
+### H. Le jeu de questions v2
+
+- **H1 : oui**, les 88 questions de la v1 sont reprises sous leurs
+  identifiants, au même texte. Les comportements attendus qui changent
+  (`disponibilite-005`, `avis_has-004`, `avis_has-009`) sont listés dans
+  l'en-tête du fichier, avec leur raison. `historique-003`, `-008` et
+  `remboursement-010` restent des abstentions.
+- **H2 : oui**, l'attendu `has.avis` (archive, sha256, URL, valeurs, extrait
+  de douze mots au plus), vérifié sans gold depuis l'archive HAS et le
+  bronze, et les trois ajouts de notation (`lien_attendu`, date de l'avis,
+  `extrait_attendu`).
+- **Les questions neuves sont choisies par une règle écrite d'abord** et
+  committées, avec leur sha256 au rapport, **avant** tout commit de
+  retouche. L'IeC vérifiera l'ordre des commits au contrôle du palier 2.
+- **Les trois questions qui demandent le PDF** attendent une abstention
+  motivée : retenu.
+- Environ 133 questions : retenu.
+
+### I. Le coût
+
+- **I1 : oui**, `CARACTERES_PAR_JETON = 1,7`, avec la méthode (les 62 clés de
+  cache retrouvées) et l'écart dans le rapport et l'ADR 0013. Tu vérifies la
+  constante sur les appels de la démonstration du palier 2.
+- **I2 : oui**, le plan de dépense, avec la réserve d'un second passage.
+  `max_tokens` reste à 4 000. Les appels partent avant le **16/11/2026
+  (UTC)**.
+
+### J. Les PDF
+
+- **Pas de collecte de PDF.** La recommandation et son chiffrage vont dans
+  l'ADR 0013, avec la mesure des trois questions v2 qui en ont besoin.
+
+### K. La mémoire et le temps
+
+- Toutes les valeurs sont **mesurées** à chaque palier sous `/usr/bin/time
+  -l`. Si `assistant evaluer --estimer` passe 512 Mo avec les fragments
+  d'avis, tu le dis et tu proposes une séparation avant d'aller plus loin.
+
+### La clôture
+
+Elle ne change pas.

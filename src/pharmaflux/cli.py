@@ -2764,6 +2764,7 @@ def _rendre_indicateurs(ind: Indicateurs_) -> list[str]:
             )
             or "aucune",
         ),
+        ("liens des pages d'avis rendus", _pourcent(ind.liens_rendus, ind.liens_attendus)),
         ("abstentions techniques", str(ind.abstentions_techniques)),
         ("citations invalides", f"{ind.citations_invalides}   condition dure : 0"),
         ("conseils médicaux", f"{ind.conseils_medicaux}   condition dure : 0"),
@@ -2884,6 +2885,15 @@ def assistant_evaluer(
         typer.echo(f"évaluation refusée : {exc}", err=True)
         raise typer.Exit(code=2) from exc
     ind = notation.indicateurs(notes)
+    if jeu.version == "v2":
+        # Addendum 1 : les questions nouvelles seules, puis la v2 entière (la v1 telle quelle se
+        # note par son propre fichier). Nouvelle : un identifiant absent de la v1.
+        anciennes = {q.id for q in jeu_questions.charger(QUESTIONS_V1, charger_tous()).questions}
+        nouvelles = [n for n in notes if n.id not in anciennes]
+        typer.echo(f"questions nouvelles de la v2 seules ({len(nouvelles)}) :")
+        for ligne in _rendre_indicateurs(notation.indicateurs(nouvelles)):
+            typer.echo(ligne)
+        typer.echo(f"la v2 entière ({len(notes)}) :")
     for ligne in _rendre_indicateurs(ind):
         typer.echo(ligne)
     total = journal.total()

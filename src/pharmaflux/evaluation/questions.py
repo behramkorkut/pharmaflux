@@ -55,6 +55,12 @@ CATEGORIES = (
 )
 LOTS = ("lot1", "lot2", "lot3", "lot4", "lot5")
 MOTIF_ID = re.compile(r"(?P<categorie>[a-z_]+)-\d{3}")
+# Une page d'avis de la HAS (mission 09) : son URL et son archive sous bronze/has/pages.
+MOTIF_URL_AVIS = re.compile(r"https://www\.has-sante\.fr/jcms/(?P<page>[pc]_\d+)")
+MOTIF_ARCHIVE_HAS = re.compile(
+    r"bronze/has/pages/(?P<page>[pc]_\d+)/\d{8}T\d{6}Z__[0-9a-f]{12}\.html\.gz"
+)
+MOTS_EXTRAIT_MAXIMUM = 12
 MOTIF_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
@@ -86,6 +92,23 @@ class Attendu:
 
 
 @dataclass(frozen=True, slots=True)
+class AttenduHas:
+    """Une page d'avis de la HAS (mission 09, addendum 1 H2) : ce que ``questions verifier``
+    relit sans gold, depuis l'archive HAS et le bronze des liens. ``date_avis`` et ``extrait``
+    sont dus dans la réponse ; ``extrait`` est une suite de douze mots au plus d'une ligne de la
+    page, citée par un fragment ``avis_has``."""
+
+    archive: str  # bronze/has/pages/<page>/<horodatage>__<sha12>.html.gz, relatif à la racine
+    sha256: str  # des octets de la page, décompressés
+    url: str  # la page, telle que HAS_LiensPageCT_bdpm.txt la donne
+    dossier: str  # le dossier de la CT qui lie la page
+    date_avis: str  # AAAA-MM-JJ, le datePublished de la page
+    mis_en_ligne: str  # AAAA-MM-JJ
+    nature_demande: str | None = None
+    extrait: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Question:
     id: str
     categorie: str
@@ -104,6 +127,10 @@ class Question:
     section_attendue: str | None = None
     mots_interdits: tuple[str, ...] = ()
     reserve: bool = False
+    # Mission 09 : la page d'avis rendue par le code sous la réponse (le lien), et l'attendu lu
+    # dans une page d'avis de la HAS.
+    lien_attendu: str | None = None
+    attendu_has: AttenduHas | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,8 +216,12 @@ def _question(table: _Table, contrats: Mapping[str, Contrat], version: str) -> Q
     reserve = table.booleen_facultatif("reserve", defaut=False)
     table_attendu = table.table_facultative("attendu")
     attendu = None if table_attendu is None else _attendu(table_attendu, contrats)
+    lien_attendu = table.texte_facultatif("lien_attendu")
+    table_has = table.table_facultative("attendu_has")
+    attendu_has = None if table_has is None else _attendu_has(table_has)
     table.terminer()
-    _coherence(table.contexte, comportement, attendu, motif, calculable_au, version)
+    _coherence_has(table.contexte, comportement, lien_attendu, attendu_has, attendu)
+    _coherence(table.contexte, comportement, attendu or attendu_has, motif, calculable_au, version)
     _coherence_notation(table.contexte, comportement, cis_attendu, section_attendue, reserve)
     return Question(
         id=id_,
@@ -206,13 +237,66 @@ def _question(table: _Table, contrats: Mapping[str, Contrat], version: str) -> Q
         section_attendue=section_attendue,
         mots_interdits=mots_interdits,
         reserve=reserve,
+        lien_attendu=lien_attendu,
+        attendu_has=attendu_has,
     )
+
+
+def _coherence_has(
+    contexte: str,
+    comportement: Comportement,
+    lien_attendu: str | None,
+    attendu_has: AttenduHas | None,
+    attendu: Attendu | None,
+) -> None:
+    """Un lien attendu et un attendu HAS n'ont de sens que pour une réponse ; une réponse a un
+    attendu BDPM ou un attendu HAS, pas les deux ; le lien d'un attendu HAS est sa page."""
+    if comportement is not Comportement.REPONSE and (lien_attendu or attendu_has):
+        raise JeuInvalide(f"{contexte} : « lien_attendu » et « attendu_has » : réponse seulement")
+    if lien_attendu is not None and not MOTIF_URL_AVIS.fullmatch(lien_attendu):
+        raise JeuInvalide(f"{contexte} : « lien_attendu » est l'URL d'une page d'avis de la HAS")
+    if attendu_has is not None and attendu is not None:
+        raise JeuInvalide(f"{contexte} : un « attendu » ou un « attendu_has », pas les deux")
+    if attendu_has is not None and lien_attendu not in (None, attendu_has.url):
+        raise JeuInvalide(f"{contexte} : « lien_attendu » n'est pas l'URL de l'attendu HAS")
+
+
+def _attendu_has(table: _Table) -> AttenduHas:
+    archive = table.texte("archive")
+    url = table.texte("url")
+    page_archive, page_url = MOTIF_ARCHIVE_HAS.fullmatch(archive), MOTIF_URL_AVIS.fullmatch(url)
+    if page_archive is None or page_url is None or page_archive["page"] != page_url["page"]:
+        raise JeuInvalide(
+            f"{table.contexte} : « archive » (bronze/has/pages/<page>/…html.gz) et « url » nomment"
+            " la même page d'avis"
+        )
+    sha256 = table.texte("sha256")
+    if not MOTIF_SHA256.fullmatch(sha256):
+        raise JeuInvalide(f"{table.contexte} : « sha256 » doit être un sha256 hexadécimal")
+    dossier = table.texte("dossier")
+    if not re.fullmatch(r"CT-\d{4,6}", dossier):
+        raise JeuInvalide(f"{table.contexte} : « dossier » de la forme CT-NNNNN")
+    dates = {}
+    for cle in ("date_avis", "mis_en_ligne"):
+        valeur = table.texte(cle)
+        try:
+            date.fromisoformat(valeur)
+        except ValueError:
+            raise JeuInvalide(f"{table.contexte} : « {cle} » en AAAA-MM-JJ") from None
+        dates[cle] = valeur
+    nature = table.texte_facultatif("nature_demande")
+    extrait = table.texte_facultatif("extrait")
+    if extrait is not None and len(extrait.split()) > MOTS_EXTRAIT_MAXIMUM:
+        raise JeuInvalide(f"{table.contexte} : « extrait » de {MOTS_EXTRAIT_MAXIMUM} mots au plus")
+    table.terminer()
+    return AttenduHas(archive, sha256, url, dossier, dates["date_avis"], dates["mis_en_ligne"],
+                      nature, extrait)  # fmt: skip
 
 
 def _coherence(
     contexte: str,
     comportement: Comportement,
-    attendu: Attendu | None,
+    attendu: Attendu | AttenduHas | None,
     motif: str | None,
     calculable_au: str | None,
     version: str,
@@ -239,7 +323,7 @@ def _coherence(
         raise JeuInvalide(f"{contexte} : « calculable_au » n'a de sens que pour une réponse")
     if comportement is Comportement.REFUS_MEDICAL and attendu is not None:
         raise JeuInvalide(f"{contexte} : un refus n'a pas d'« attendu »")
-    if attendu is not None and attendu.valeurs:
+    if isinstance(attendu, Attendu) and attendu.valeurs:
         raise JeuInvalide(f"{contexte} : l'attendu d'une abstention ne contient aucune ligne")
 
 

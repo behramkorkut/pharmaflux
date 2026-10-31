@@ -34,6 +34,7 @@ EMPREINTE_NEUVES = "c11886b22076f341478140a5c2d89a29e8d7c1e1bfe066e6c03a5c0a20fb
 # evaluation/choisir_neuves_v2_table.py et figées avant lui (controle-palier-2.md, question 1).
 TABLE = [f"avis_has-{n:03d}" for n in range(19, 24)]
 EMPREINTE_TABLE = "33890d4817f17b46d53288005cc8d6263554787d6425b649f7d9f2f8efc8b93f"
+CHANGEES = {"disponibilite-005", "avis_has-004", "avis_has-009"}
 
 
 def _brutes(chemin: Path) -> list[dict[str, object]]:
@@ -41,11 +42,34 @@ def _brutes(chemin: Path) -> list[dict[str, object]]:
 
 
 def test_la_v2_se_charge_et_reprend_la_v1_a_l_identique() -> None:
+    """Les 88 questions de la v1, au même texte ; seuls trois comportements attendus changent
+    (en-tête du fichier, addendum 1 H1)."""
     jeu = questions.charger(V2, charger_tous())
     v1 = questions.charger(V1, charger_tous())
     assert jeu.version == "v2" and jeu.instant == v1.instant
-    assert jeu.questions[: len(v1.questions)] == v1.questions
-    assert _brutes(V2)[:88] == _brutes(V1)
+    reprises = jeu.questions[: len(v1.questions)]
+    assert [(q.id, q.question) for q in reprises] == [(q.id, q.question) for q in v1.questions]
+    changees = {a.id for a, b in zip(reprises, v1.questions, strict=True) if a != b}
+    assert changees == CHANGEES
+    brutes_v1 = {q["id"]: q for q in _brutes(V1)}
+    assert all(q == brutes_v1[q["id"]] for q in _brutes(V2)[:88] if q["id"] not in CHANGEES)
+    par_id = {q.id: q for q in jeu.questions}
+    assert (
+        par_id["disponibilite-005"].reserve
+        and par_id["disponibilite-005"].comportement == "reponse"
+    )
+    assert par_id["avis_has-004"].lien_attendu == "https://www.has-sante.fr/jcms/c_2027377"
+    assert par_id["avis_has-009"].lien_attendu == "https://www.has-sante.fr/jcms/p_3577036"
+
+
+def test_la_v2_complete() -> None:
+    jeu = questions.charger(V2, charger_tous())
+    ids = [q.id for q in jeu.questions]
+    assert len(ids) == len(set(ids)) == 138
+    texte = [q for q in jeu.questions if q.attendu_has is not None]
+    assert len(texte) == 20  # 19 tirées par la règle, et le piège d'ADEMPAS
+    assert all(q.lien_attendu == q.attendu_has.url for q in texte if q.attendu_has)
+    assert all(q.section_attendue == "avis_has" for q in texte)
 
 
 def test_les_questions_neuves_sont_figees() -> None:
@@ -74,5 +98,6 @@ def test_le_script_de_choix_n_est_importe_par_aucun_test() -> None:
                 modules = [noeud.module or ""]
             else:
                 continue
-            assert not any("choisir_neuves" in m for m in modules), fichier
-    assert SCRIPT.is_file() and SCRIPT.with_name("choisir_neuves_v2_table.py").is_file()
+            assert not any("choisir_" in m for m in modules), fichier
+    for nom in ("choisir_neuves_v2_table.py", "choisir_texte_v2.py"):
+        assert SCRIPT.with_name(nom).is_file()

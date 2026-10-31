@@ -5,9 +5,13 @@
 # se rendent en trois blocs : la v1 telle quelle, les questions nouvelles seules, la v2 entière
 # (addendum 1 de la mission 09).
 #
-# 1. LES 88 QUESTIONS DE LA V1, reprises sous leurs identifiants, au même texte et aux mêmes
-#    attendus (addendum 1 H1). Les comportements attendus qui changeront (disponibilite-005,
-#    avis_has-004, avis_has-009) seront listés ici, avec leur raison, au palier 3.
+# 1. LES 88 QUESTIONS DE LA V1, reprises sous leurs identifiants et au même texte (addendum 1
+#    H1). Trois comportements attendus changent, et seulement eux :
+#    - disponibilite-005 : d'abstention à réponse AVEC RÉSERVE, comme avis_has-005 depuis la v1
+#      (le signalement existe, le référentiel ne connaît pas le CIS) ;
+#    - avis_has-004 et avis_has-009 : d'abstention à réponse notée par le LIEN RENDU (le code rend
+#      la page de l'avis sous la réponse ; le LLM n'écrit toujours aucune adresse).
+#    historique-003, -008 et remboursement-010 restent des abstentions.
 #
 # 2. LES QUESTIONS NEUVES QUI MESURENT LES CORRECTIFS DE LA MISSION 08 (18), écrites et figées
 #    dans ce commit, AVANT tout commit de retouche de l'assistant (addendum 1 G, H) ; la table
@@ -34,16 +38,25 @@
 #    Aucune n'a été posée au LLM : aucun appel ne part d'une session d'agent, et la démonstration
 #    de beko viendra après les retouches.
 #
-# 3. Au palier 3 : les questions sur le texte des avis (pages du jeu), les pièges (un avis plus
-#    ancien que celui demandé, un dossier sans page, la page rejetée de PEDMARQSI), les trois
-#    questions qui demandent le PDF et la comparaison de deux médicaments (G3).
+# 3. AU PALIER 3, sous de nouveaux identifiants, sans toucher aux dix-huit :
+#    - avis_has-019 à -023 : la table des sections (controle-palier-2.md, question 1), tirées par
+#      evaluation/choisir_neuves_v2_table.py et figées avant le changement de la table ;
+#    - avis_has-024 à -042 : le texte des avis, tirées par evaluation/choisir_texte_v2.py sur les
+#      pages du jeu (nature 4, date 4, « L'essentiel » 4, « Quel progrès ? » 4, lien 3) ; leur
+#      attendu « attendu_has » se vérifie sans gold, depuis l'archive HAS et le bronze des liens ;
+#    - avis_has-043 à -046 : les pièges (une décision plus récente que la date de la BDPM, un
+#      dossier sans page, un avis hors du corpus, la page rejetée de PEDMARQSI) ;
+#    - avis_has-047 à -049 : ce que seul le PDF de l'avis dit (abstention motivée, ADR 0013) ;
+#    - avis_has-050 : la comparaison de deux médicaments (G3).
+#    Les trois questions médicales qui ont fait étendre la règle de refus (medical-013, -014,
+#    -016) ont servi à la trouver : elles ne la mesurent pas (controle-palier-2.md).
 #
 # `uv run pharmaflux questions verifier --questions evaluation/questions-reference-v2.toml
 #  --racine demo/archive --entrepot data/demo/lakehouse` recalcule chaque attendu depuis
 # l'archive (sha256 + contrat) et depuis le gold, et exige la concordance.
 
 version = "v2"
-description = "Les 88 questions de la v1 et les questions neuves de la mission 09, à l'instant de l'index du jeu de démo (2026-10-27T00:17:12Z)."
+description = "Les 88 questions de la v1 et les 50 questions nouvelles de la mission 09 (138), à l'instant de l'index du jeu de démo (2026-10-27T00:17:12Z)."
 instant = "2026-10-27T00:17:12Z"
 
 # ===========================================================================
@@ -140,18 +153,24 @@ valeurs = []
 id = "disponibilite-005"
 categorie = "disponibilite"
 question = "Quel est le statut de disponibilité du médicament de code CIS 68705771 ?"
-comportement = "abstention"
-motif = "Le CIS 68705771 est absent de CIS_bdpm.txt (référentiel des spécialités) le 24/10, bien qu'une ligne de CIS_CIP_Dispo_Spec.txt le cite : sans dénomination ni statut d'AMM, l'assistant ne peut pas dire de quel médicament il s'agit et s'abstient en le disant."
-orientation = "La base publique des médicaments (base-donnees-publique.medicaments.gouv.fr) ou l'ANSM."
+comportement = "reponse"
+reserve = true
+prudence = "Réponse avec réserve, comme avis_has-005 (v2, en-tête) : le signalement existe (tension d'approvisionnement depuis le 08/10/2026, mis à jour le 09/10/2026), mais le CIS 68705771 est absent de CIS_bdpm.txt le 24/10. La réponse donne le statut avec sa source et sa date, ET dit que le référentiel des spécialités ne connaît pas ce médicament."
+cis_attendu = "68705771"
+section_attendue = "disponibilite"
 
 [questions.attendu]
 date_reference = 2026-10-24
-fichier = "bdpm.specialites"
-archive = "bronze/bdpm/CIS_bdpm.txt/2026-10-24/20261024T194143Z__332b95926f76.txt.gz"
-sha256 = "332b95926f76f1a2ab3d70cdf64205397fc13e74b7cc9afad9b625fbb6961640"
+fichier = "bdpm.disponibilite"
+archive = "bronze/bdpm/CIS_CIP_Dispo_Spec.txt/2026-10-24/20261024T194201Z__43b7d2f3cfe6.txt.gz"
+sha256 = "43b7d2f3cfe699fffded55893472d9fa17fd77964c5e3a31d4017160b8d35ed6"
 cle = { code_cis = "68705771" }
-colonnes = ["denomination"]
-valeurs = []
+colonnes = ["libelle_statut", "date_debut", "date_mise_a_jour"]
+
+[[questions.attendu.valeurs]]
+libelle_statut = "Tension d'approvisionnement"
+date_debut = "08/10/2026"
+date_mise_a_jour = "09/10/2026"
 
 [[questions]]
 id = "disponibilite-006"
@@ -838,9 +857,20 @@ valeur_smr = "Modéré"
 id = "avis_has-004"
 categorie = "avis_has"
 question = "Où lire l'avis de la Commission de la transparence du dossier CT-14040 (DOLIPRANE) ?"
-comportement = "abstention"
-motif = "Le lien vers la page de l'avis n'est pas dans le texte des fragments, le seul que l'assistant lit (il reste en métadonnée de l'index) : l'assistant le dit au lieu de deviner une adresse."
-orientation = "Le site de la HAS (has-sante.fr), qui publie l'avis du dossier, ou la fiche de la spécialité sur la base publique des médicaments."
+comportement = "reponse"
+prudence = "Le lien n'est toujours pas dans le texte des fragments, et le LLM n'écrit aucune adresse : c'est le code qui rend la page de l'avis sous la réponse, depuis les liens du fragment cité (v2, en-tête). La réponse se note par ce lien rendu."
+lien_attendu = "https://www.has-sante.fr/jcms/c_2027377"
+
+[questions.attendu]
+date_reference = 2026-10-24
+fichier = "bdpm.liens_ct"
+archive = "bronze/bdpm/HAS_LiensPageCT_bdpm.txt/2026-10-24/20261024T194155Z__2f01ff1e13f8.txt.gz"
+sha256 = "2f01ff1e13f8431434d545d1c567368276223b7a5d9c5612fc423f4353c54a2b"
+cle = { code_dossier_has = "CT-14040" }
+colonnes = ["lien_avis"]
+
+[[questions.attendu.valeurs]]
+lien_avis = "https://www.has-sante.fr/jcms/c_2027377"
 
 [[questions]]
 id = "avis_has-005"
@@ -936,9 +966,20 @@ valeur_asmr = "II"
 id = "avis_has-009"
 categorie = "avis_has"
 question = "Où lire l'avis de la Commission de la transparence du dossier CT-21030 (KALYDECO) ?"
-comportement = "abstention"
-motif = "Le lien vers la page de l'avis n'est pas dans le texte des fragments, le seul que l'assistant lit (il reste en métadonnée de l'index) : l'assistant le dit au lieu de deviner une adresse."
-orientation = "Le site de la HAS (has-sante.fr), qui publie l'avis du dossier, ou la fiche de la spécialité sur la base publique des médicaments."
+comportement = "reponse"
+prudence = "Le lien n'est toujours pas dans le texte des fragments, et le LLM n'écrit aucune adresse : c'est le code qui rend la page de l'avis sous la réponse, depuis les liens du fragment cité (v2, en-tête). La réponse se note par ce lien rendu."
+lien_attendu = "https://www.has-sante.fr/jcms/p_3577036"
+
+[questions.attendu]
+date_reference = 2026-10-24
+fichier = "bdpm.liens_ct"
+archive = "bronze/bdpm/HAS_LiensPageCT_bdpm.txt/2026-10-24/20261024T194155Z__2f01ff1e13f8.txt.gz"
+sha256 = "2f01ff1e13f8431434d545d1c567368276223b7a5d9c5612fc423f4353c54a2b"
+cle = { code_dossier_has = "CT-21030" }
+colonnes = ["lien_avis"]
+
+[[questions.attendu.valeurs]]
+lien_avis = "https://www.has-sante.fr/jcms/p_3577036"
 
 [[questions]]
 id = "avis_has-010"
@@ -1863,3 +1904,452 @@ colonnes = ["motif_evaluation", "date_avis", "valeur_asmr"]
 motif_evaluation = "Inscription (CT)"
 date_avis = "20240612"
 valeur_asmr = "V"
+
+# ===========================================================================
+# Le texte des avis (mission 09, palier 3) — tirées par la règle d'evaluation/choisir_texte_v2.py
+# sur les pages du jeu : la nature de la demande, la date, « L'essentiel », « Quel progrès ? »,
+# le lien. Chaque réponse attend la page d'avis rendue par le code et la date de l'avis.
+# ===========================================================================
+
+[[questions]]
+id = "avis_has-024"
+categorie = "avis_has"
+question = "Quelle demande la Commission de la transparence a-t-elle examinée dans le dossier CT-21318 de WAINZUA 45 mg, solution injectable en stylo prérempli ?"
+comportement = "reponse"
+cis_attendu = "65079351"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3658183"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3658183/20261031T125233Z__3837bc9fbfac.html.gz"
+sha256 = "3837bc9fbfaceac13853e7dd9007aaaaa4522aa966d4c50c89af88e79005c102"
+url = "https://www.has-sante.fr/jcms/p_3658183"
+dossier = "CT-21318"
+date_avis = "2025-09-02"
+mis_en_ligne = "2025-09-15"
+nature_demande = "Inscription"
+extrait = "Inscription"
+
+[[questions]]
+id = "avis_has-025"
+categorie = "avis_has"
+question = "À quelle date la Commission de la transparence a-t-elle rendu son avis sur UMATROPE 24 mg/3 mL, poudre et solvant pour solution injectable dans le dossier CT-20681 ?"
+comportement = "reponse"
+cis_attendu = "64156624"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3517408"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3517408/20261031T130449Z__3f1ab997d797.html.gz"
+sha256 = "3f1ab997d797e4f97accb184c2e9f936e2ab733a6cbf4426bb9bccea9e4db106"
+url = "https://www.has-sante.fr/jcms/p_3517408"
+dossier = "CT-20681"
+date_avis = "2024-04-10"
+mis_en_ligne = "2024-05-17"
+nature_demande = "Réévaluation SMR"
+
+[[questions]]
+id = "avis_has-026"
+categorie = "avis_has"
+question = "Que dit l'essentiel de l'avis de la Commission de la transparence sur GENOTONORM MINIQUICK 1,2 mg, poudre et solvant pour solution injectable (dossier CT-20668) ?"
+comportement = "reponse"
+cis_attendu = "60664365"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3517166"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3517166/20261031T130444Z__d86189ef0398.html.gz"
+sha256 = "d86189ef03980ca80bbf700943e0a080ff46816cb82cb3e3bdb9131dcae2ff31"
+url = "https://www.has-sante.fr/jcms/p_3517166"
+dossier = "CT-20668"
+date_avis = "2024-04-10"
+mis_en_ligne = "2024-05-17"
+nature_demande = "Réévaluation suite à résultats étude post-inscription"
+extrait = "Avis favorable au remboursement uniquement dans le « retard de croissance (taille"
+
+[[questions]]
+id = "avis_has-027"
+categorie = "avis_has"
+question = "Quel progrès KEYTRUDA 25 mg/mL, solution à diluer pour perfusion apporte-t-il selon l'avis de la Commission de la transparence (dossier CT-21313) ?"
+comportement = "reponse"
+cis_attendu = "62689214"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3639631"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3639631/20261031T125335Z__bdf1fd5a9204.html.gz"
+sha256 = "bdf1fd5a9204ea866d753281baa3fe61507ed5c1e83679cef856b274e3b37ae2"
+url = "https://www.has-sante.fr/jcms/p_3639631"
+dossier = "CT-21313"
+date_avis = "2025-07-16"
+mis_en_ligne = "2025-08-08"
+nature_demande = "Extension d'indication"
+extrait = "Un progrès thérapeutique dans la stratégie de prise en charge."
+
+[[questions]]
+id = "avis_has-028"
+categorie = "avis_has"
+question = "Où lire l'avis de la Commission de la transparence sur MRESVIA, dispersion injectable en seringue préremplie. Vaccin à ARNm contre le virus respiratoire syncytial (dossier CT-21799) ?"
+comportement = "reponse"
+cis_attendu = "64933425"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_4202271"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_4202271/20261031T124318Z__2038f5c60c1a.html.gz"
+sha256 = "2038f5c60c1a91fc46f91e4f8eb73ee5c4b3f0e2c920b9a0864048cc0937d288"
+url = "https://www.has-sante.fr/jcms/p_4202271"
+dossier = "CT-21799"
+date_avis = "2026-07-15"
+mis_en_ligne = "2026-07-20"
+nature_demande = "Réévaluation suite à résultats étude post-inscription"
+
+[[questions]]
+id = "avis_has-029"
+categorie = "avis_has"
+question = "Quelle demande la Commission de la transparence a-t-elle examinée dans le dossier CT-21347 de IOPIDINE 1 % m/V, collyre en solution ?"
+comportement = "reponse"
+cis_attendu = "63218293"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3704134"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3704134/20261031T125050Z__cab585ae15db.html.gz"
+sha256 = "cab585ae15dbbcb1bfe7c3ab9a6dd381698e5ba4b2be4e5ddd1bc09c518b566d"
+url = "https://www.has-sante.fr/jcms/p_3704134"
+dossier = "CT-21347"
+date_avis = "2025-10-22"
+mis_en_ligne = "2025-11-06"
+nature_demande = "Inscription"
+extrait = "Inscription"
+
+[[questions]]
+id = "avis_has-030"
+categorie = "avis_has"
+question = "À quelle date la Commission de la transparence a-t-elle rendu son avis sur VIVOTIF, gélule gastro-résistante dans le dossier CT-20462 ?"
+comportement = "reponse"
+cis_attendu = "68510344"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3491589"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3491589/20261031T130740Z__b3999e13a78f.html.gz"
+sha256 = "b3999e13a78fbb328c39401efb8dce284767e3256e9b1778a7fc6335daade5f2"
+url = "https://www.has-sante.fr/jcms/p_3491589"
+dossier = "CT-20462"
+date_avis = "2024-01-10"
+mis_en_ligne = "2024-01-30"
+nature_demande = "Inscription"
+
+[[questions]]
+id = "avis_has-031"
+categorie = "avis_has"
+question = "Que dit l'essentiel de l'avis de la Commission de la transparence sur ASPIRINE ARROW 75 mg, comprimé gastro-résistant (dossier CT-20952) ?"
+comportement = "reponse"
+cis_attendu = "66598317"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3531472"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3531472/20261031T130208Z__f3aefd2f040f.html.gz"
+sha256 = "f3aefd2f040f03c36adbb539799185bcfd974cf914251577f2976e02fe768c92"
+url = "https://www.has-sante.fr/jcms/p_3531472"
+dossier = "CT-20952"
+date_avis = "2024-07-17"
+mis_en_ligne = "2024-07-29"
+nature_demande = "Inscription"
+extrait = "Avis favorable au remboursement dans la prévention secondaire dans le cadre d’un"
+
+[[questions]]
+id = "avis_has-032"
+categorie = "avis_has"
+question = "Où lire l'avis de la Commission de la transparence sur VALIUM 10 mg/2 ml, solution injectable (dossier CT-20762) ?"
+comportement = "reponse"
+cis_attendu = "67959261"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3534479"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3534479/20261031T130314Z__c65707d21ecb.html.gz"
+sha256 = "c65707d21ecb1420607e4405eace11f0f314e3fac9774ca7cf4a59ad9769bfac"
+url = "https://www.has-sante.fr/jcms/p_3534479"
+dossier = "CT-20762"
+date_avis = "2024-06-12"
+mis_en_ligne = "2024-07-29"
+nature_demande = "Réévaluation SMR"
+
+[[questions]]
+id = "avis_has-033"
+categorie = "avis_has"
+question = "Quelle demande la Commission de la transparence a-t-elle examinée dans le dossier CT-21085 de WINREVAIR 60 mg, poudre et solvant pour solution injectable ?"
+comportement = "reponse"
+cis_attendu = "61402622"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3606289"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3606289/20261031T125519Z__7b3925147c04.html.gz"
+sha256 = "7b3925147c04d688fb3bb5395a3a8b9d64f17548f003a494371aaedb27b7a1d0"
+url = "https://www.has-sante.fr/jcms/p_3606289"
+dossier = "CT-21085"
+date_avis = "2025-05-14"
+mis_en_ligne = "2025-05-21"
+nature_demande = "Inscription"
+extrait = "Inscription"
+
+[[questions]]
+id = "avis_has-034"
+categorie = "avis_has"
+question = "À quelle date la Commission de la transparence a-t-elle rendu son avis sur NUVAXOVID XBB.1.5, dispersion injectable. Vaccin contre la COVID-19 (recombinant, avec adjuvant) dans le dossier CT-21113 ?"
+comportement = "reponse"
+cis_attendu = "65689785"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3784589"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3784589/20261031T125005Z__1b65880fd9cc.html.gz"
+sha256 = "1b65880fd9cce807ef6671c0df31c3e8271140f84f164112af3bf73d0a245b37"
+url = "https://www.has-sante.fr/jcms/p_3784589"
+dossier = "CT-21113"
+date_avis = "2025-11-26"
+mis_en_ligne = "2025-12-09"
+nature_demande = "Inscription"
+
+[[questions]]
+id = "avis_has-035"
+categorie = "avis_has"
+question = "Que dit l'essentiel de l'avis de la Commission de la transparence sur ABILIFY MAINTENA 720 mg, suspension injectable à libération prolongée en seringue préremplie (dossier CT-20849) ?"
+comportement = "reponse"
+cis_attendu = "63466449"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3556165"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3556165/20261031T125927Z__b22430c89b14.html.gz"
+sha256 = "b22430c89b14bfe03a3b5d3072ec29db6e7f1478e2803c42d942ece31860518b"
+url = "https://www.has-sante.fr/jcms/p_3556165"
+dossier = "CT-20849"
+date_avis = "2024-10-23"
+mis_en_ligne = "2024-11-14"
+nature_demande = "Inscription"
+extrait = "Avis favorable au remboursement dans le traitement d’entretien de la schizophrénie chez"
+
+[[questions]]
+id = "avis_has-036"
+categorie = "avis_has"
+question = "Quel progrès YESCARTA 0,4 - 2 x 100 000 000 cellules, dispersion pour perfusion apporte-t-il selon l'avis de la Commission de la transparence (dossier CT-21445) ?"
+comportement = "reponse"
+cis_attendu = "63887327"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_4052286"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_4052286/20261031T124538Z__f7835496f205.html.gz"
+sha256 = "f7835496f205c885a39d452a4aa908900d60b42b34b8930ab8e7fd1034a6befb"
+url = "https://www.has-sante.fr/jcms/p_4052286"
+dossier = "CT-21445"
+date_avis = "2026-05-06"
+mis_en_ligne = "2026-06-09"
+nature_demande = "Réévaluation suite à résultats étude post-inscription"
+extrait = "Un progrès thérapeutique dans la prise en charge."
+
+[[questions]]
+id = "avis_has-037"
+categorie = "avis_has"
+question = "Où lire l'avis de la Commission de la transparence sur PARACETAMOL EVOLUGEN PHARMA 1000 mg, comprimé (dossier CT-20843) ?"
+comportement = "reponse"
+cis_attendu = "64841496"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3527606"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3527606/20261031T130257Z__0ad94ae4cac2.html.gz"
+sha256 = "0ad94ae4cac25da1a8d9d67cefd8f34da2365dcee555452c350b5fce6211d84a"
+url = "https://www.has-sante.fr/jcms/p_3527606"
+dossier = "CT-20843"
+date_avis = "2024-06-26"
+mis_en_ligne = "2024-07-01"
+nature_demande = "Inscription"
+
+[[questions]]
+id = "avis_has-038"
+categorie = "avis_has"
+question = "Quelle demande la Commission de la transparence a-t-elle examinée dans le dossier CT-21075 de FINTEPLA 2,2 mg/mL, solution buvable ?"
+comportement = "reponse"
+cis_attendu = "62154820"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3561257"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3561257/20261031T125953Z__333bafc7f14c.html.gz"
+sha256 = "333bafc7f14cd45b49bce2a6f6147f55b0594268a6bc9fa912646066d3098339"
+url = "https://www.has-sante.fr/jcms/p_3561257"
+dossier = "CT-21075"
+date_avis = "2024-10-23"
+mis_en_ligne = "2024-11-27"
+nature_demande = "Réévaluation suite à résultats étude post-inscription"
+extrait = "Réévaluation suite à résultats étude post-inscription"
+
+[[questions]]
+id = "avis_has-039"
+categorie = "avis_has"
+question = "À quelle date la Commission de la transparence a-t-elle rendu son avis sur AMVUTTRA 25 mg, solution injectable en seringue préremplie dans le dossier CT-21488 ?"
+comportement = "reponse"
+cis_attendu = "66887122"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3895436"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3895436/20261031T124723Z__b017c9befbec.html.gz"
+sha256 = "b017c9befbec9cb819e0bb116efe79304d20cef36eb3a3b2b9278bf1783cdbe5"
+url = "https://www.has-sante.fr/jcms/p_3895436"
+dossier = "CT-21488"
+date_avis = "2026-03-04"
+mis_en_ligne = "2026-04-01"
+nature_demande = "Extension d'indication"
+
+[[questions]]
+id = "avis_has-040"
+categorie = "avis_has"
+question = "Que dit l'essentiel de l'avis de la Commission de la transparence sur IMFINZI 50 mg/ml, solution à diluer pour perfusion (dossier CT-21117) ?"
+comportement = "reponse"
+cis_attendu = "63690956"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3590636"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3590636/20261031T125755Z__bb2140355a90.html.gz"
+sha256 = "bb2140355a9083a581c84ce9bde29e52319bb6e41310ad673949e94019b1f03b"
+url = "https://www.has-sante.fr/jcms/p_3590636"
+dossier = "CT-21117"
+date_avis = "2025-01-15"
+mis_en_ligne = "2025-02-19"
+nature_demande = "Extension d'indication"
+extrait = "Avis favorable au remboursement dans l’indication : « IMFINZI, en association à"
+
+[[questions]]
+id = "avis_has-041"
+categorie = "avis_has"
+question = "Quel progrès CHAMPIX 1 mg, comprimé pelliculé apporte-t-il selon l'avis de la Commission de la transparence (dossier CT-21035) ?"
+comportement = "reponse"
+cis_attendu = "60442838"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3599233"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3599233/20261031T125630Z__a59722fe96c0.html.gz"
+sha256 = "a59722fe96c0820e78cbc6624130c4bae75e3a69d1f3a8dbde5ddea00571f126"
+url = "https://www.has-sante.fr/jcms/p_3599233"
+dossier = "CT-21035"
+date_avis = "2025-03-12"
+mis_en_ligne = "2025-03-26"
+nature_demande = "Inscription"
+extrait = "Pas de progrès des nouvelles présentations CHAMPIX 1 mg, comprimé pelliculés conditionnés"
+
+[[questions]]
+id = "avis_has-042"
+categorie = "avis_has"
+question = "Quel progrès TOPALGIC LP 200 mg, comprimé à libération prolongée apporte-t-il selon l'avis de la Commission de la transparence (dossier CT-21449) ?"
+comportement = "reponse"
+cis_attendu = "64395332"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3639402"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3639402/20261031T125350Z__2c8d8fa0adde.html.gz"
+sha256 = "2c8d8fa0added8bfef212fea49d8d2f8a861866960349670dc1c5c6b305ad040"
+url = "https://www.has-sante.fr/jcms/p_3639402"
+dossier = "CT-21449"
+date_avis = "2025-07-16"
+mis_en_ligne = "2025-08-07"
+nature_demande = "Inscription"
+extrait = "Pas de progrès des nouvelles présentations conditionnés sous plaquettes (Polypropylène/Aluminium), blisters non"
+
+# ===========================================================================
+# Les pièges (mission 09, palier 3)
+# ===========================================================================
+
+[[questions]]
+id = "avis_has-043"
+categorie = "avis_has"
+question = "Quelle est la décision la plus récente de la Commission de la transparence dans le dossier CT-20568 d'ADEMPAS 0,5 mg, comprimé pelliculé ?"
+comportement = "reponse"
+prudence = "Piège : un avis plus récent que celui que la BDPM date. Le dossier CT-20568 lie deux pages : l'avis du 28/02/2024 (la date du SMR de la BDPM) et une décision du 10/11/2025 (extension d'indication non sollicitée, sans SMR). La plus récente est celle de 2025."
+cis_attendu = "64832942"
+section_attendue = "avis_has"
+lien_attendu = "https://www.has-sante.fr/jcms/p_3741668"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3741668/20261031T130557Z__3dc3eaa3d6d3.html.gz"
+sha256 = "3dc3eaa3d6d34931149cbb4d925a83b65f6e8377dabab543871c830cf6cc8821"
+url = "https://www.has-sante.fr/jcms/p_3741668"
+dossier = "CT-20568"
+date_avis = "2025-11-10"
+mis_en_ligne = "2025-11-21"
+nature_demande = "Extension d'indication non sollicitée"
+extrait = "Le laboratoire a informé la HAS de sa demande de non remboursement"
+
+[[questions]]
+id = "avis_has-044"
+categorie = "avis_has"
+question = "Où lire l'avis de la Commission de la transparence du dossier CT-21716 d'OZEMPIC 1 mg, solution injectable en stylo prérempli ?"
+comportement = "abstention"
+motif = "Piège : un dossier sans page. La BDPM donne le SMR du dossier CT-21716 (avis du 16/09/2026) mais aucun lien vers sa page : il n'y a aucun lien à rendre, et l'assistant ne devine pas d'adresse."
+orientation = "La Haute Autorité de santé, qui publie les avis de la Commission de la transparence."
+
+[[questions]]
+id = "avis_has-045"
+categorie = "avis_has"
+question = "Que dit l'essentiel de l'avis de la Commission de la transparence sur DOLIPRANE 1000 mg, comprimé dans le dossier CT-14040 ?"
+comportement = "abstention"
+motif = "Piège : un avis hors du corpus. La page de cet avis de 2015 n'est pas dans la première étape (les avis depuis 2024) : son texte n'est pas dans l'index. Son lien, lui, est dans la BDPM (avis_has-004)."
+orientation = "La page de l'avis, que l'assistant peut donner en lien."
+
+[[questions]]
+id = "avis_has-046"
+categorie = "avis_has"
+question = "Que dit l'essentiel de l'avis de la Commission de la transparence sur PEDMARQSI dans le dossier CT-21223 ?"
+comportement = "abstention"
+motif = "Piège : une page rejetée. L'extracteur rejette la page de cet avis (son document d'avis nomme le dossier CT-21123, pas CT-21223) : son texte n'est pas dans l'index, et rien n'est deviné."
+orientation = "La Haute Autorité de santé, qui publie les avis de la Commission de la transparence."
+
+# ===========================================================================
+# Ce que seule la page en PDF dit (mission 09, palier 3 ; addendum 1 J) : abstention motivée
+# ===========================================================================
+
+[[questions]]
+id = "avis_has-047"
+categorie = "avis_has"
+question = "Quel a été le résultat du vote de la Commission de la transparence sur le SMR de MOUNJARO dans le dossier CT-21681 ?"
+comportement = "abstention"
+motif = "Le vote n'est pas sur la page de l'avis : il est dans son document PDF, que le projet ne collecte pas (ADR 0013)."
+orientation = "Le document d'avis, publié par la Haute Autorité de santé."
+
+[[questions]]
+id = "avis_has-048"
+categorie = "avis_has"
+question = "Quelle population cible la Commission de la transparence a-t-elle estimée pour KALYDECO dans le dossier CT-21030 ?"
+comportement = "abstention"
+motif = "L'estimation de la population cible n'est pas sur la page de l'avis : elle est dans son document PDF, que le projet ne collecte pas (ADR 0013)."
+orientation = "Le document d'avis, publié par la Haute Autorité de santé."
+
+[[questions]]
+id = "avis_has-049"
+categorie = "avis_has"
+question = "Quels comparateurs cliniquement pertinents la Commission de la transparence a-t-elle retenus pour IMFINZI - LYNPARZA dans le dossier CT-21088 ?"
+comportement = "abstention"
+motif = "Les comparateurs cliniquement pertinents ne sont pas sur la page de l'avis : ils sont dans son document PDF, que le projet ne collecte pas (ADR 0013)."
+orientation = "Le document d'avis, publié par la Haute Autorité de santé."
+
+# ===========================================================================
+# La comparaison de deux médicaments (G3) : abstention « un à la fois »
+# ===========================================================================
+
+[[questions]]
+id = "avis_has-050"
+categorie = "avis_has"
+question = "MOUNJARO apporte-t-il un progrès par rapport à TRULICITY selon la Commission de la transparence ?"
+comportement = "abstention"
+motif = "La question compare deux médicaments : l'assistant en traite un à la fois (G3), et la comparaison serait tirée d'un avis qui ne la fait pas forcément."
+orientation = "Poser la question pour chacun des deux médicaments."
+

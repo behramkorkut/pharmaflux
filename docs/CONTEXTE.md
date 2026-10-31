@@ -224,7 +224,7 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 | Quoi | Où |
 |---|---|
 | Spécifications (PRD) | `01_Specifications/` |
-| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `suivi.py`, `schemas/` ; `demo/` : `jeu.py`, `rejeu_accelere.py` ; `silver/` : `entrepot.py`, `schema.py`, `expressions.py`, `application.py`, `construction.py`, `consommation.py`, `etat.py`, `sql.py`, `comparaison.py`, `verification.py` ; `gold/` : `typage.py`, `qualite.py`, `vues.py`, `questions.py`, `rendu.py`, `sql.py` ; `index/` : `fragments.py`, `lexical.py`, `construction.py`, `changements.py`, `encodeur.py`, `modeles.py`, `qdrant.py`, `evaluation.py` ; `assistant/` : `chemin.py`, `regles.py`, `repere.py`, `client.py`, `controle.py`, `budget.py`, `cache.py`, `notation.py`, `evaluation.py` |
+| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `suivi.py`, `schemas/` ; `demo/` : `jeu.py`, `rejeu_accelere.py` ; `silver/` : `entrepot.py`, `schema.py`, `expressions.py`, `application.py`, `construction.py`, `consommation.py`, `etat.py`, `sql.py`, `comparaison.py`, `verification.py` ; `gold/` : `typage.py`, `qualite.py`, `vues.py`, `questions.py`, `rendu.py`, `sql.py` ; `index/` : `fragments.py`, `lexical.py`, `construction.py`, `changements.py`, `encodeur.py`, `modeles.py`, `qdrant.py`, `evaluation.py` ; `assistant/` : `chemin.py`, `regles.py`, `repere.py`, `sections.py`, `client.py`, `controle.py`, `budget.py`, `cache.py`, `notation.py`, `evaluation.py` ; `has/` (mission 09) : `perimetre.py`, `client.py`, `collecte.py`, `manifeste.py`, `extraction.py`, `verification.py`, `inspection.py` ; `index/pages_has.py` ; `demo/has.py` |
 | Tests et fixtures | `tests/`, `tests/fixtures/` |
 | Démo : jeu figé, Makefile, prérequis | `demo/` (archive et `README.md`), `Makefile`, `infra/demo/prerequis.sh` |
 | Planification de la collecte (systemd, rapatriement) | `infra/planification/` |
@@ -447,3 +447,32 @@ la demande. Aucun appel réseau vers les sources.
     fois corrigé le contrôle des étiquettes « [k] » (commit `2891e98`,
     renotation sur le cache, sans appel). La mission a dépensé 1,0309 $ sur
     20 $.
+
+## Le corpus des avis de la HAS (mission 09)
+
+- **La collecte** (`pharmaflux has collecter`, ADR 0013) : polie (robots.txt et son
+  `Crawl-delay`, deux secondes, série, plafond obligatoire, arrêt net au 429 ou au second 5xx,
+  aucune redirection suivie), archivée à l'octet sous `bronze/has/pages/`, manifeste
+  `manifeste/has-pages.jsonl` en ajout seul, reprise sans requête, mentions légales relues à
+  chaque passage. La première étape (722 pages, avis depuis 2024) est collectée par beko le
+  31/10/2026 ; `--simuler` donne le plan sans requête.
+- **L'extraction** (`has/extraction.py`, v2) : `html.parser`, toutes les sections mot pour mot,
+  le JSON-LD en contrôle ; douze motifs de rejet ; la version change avec ce qu'elle rend ou
+  refuse. `has extraire --verifier` : non-altération par un second lecteur, empreinte du texte
+  contre le manifeste, statuts changés d'une version à l'autre, contrôles de dossier
+  impossibles.
+- **L'index au format 3** : section `avis_has`, un fragment par (page, CIS, partie), texte de la
+  page sans URL ; avgdl 55,44 ; deux horloges dans l'état (silver, position du manifeste HAS) ;
+  `--archive-has` pour `index fragments`, `construire`, `mettre-a-jour`, `verifier` (la démo :
+  `demo/archive`, que `make index` passe). L'encodage précède l'écriture et le modèle se rend :
+  sous 512 Mo.
+- **Le jeu de démo** a deux parties figées : la BDPM (mission 04, inchangée à l'octet) et 150
+  pages d'avis (`demo choisir-has`, `demo fabriquer-has`, `demo/has-pages.txt`).
+- **L'assistant** : le LLM ne voit aucune URL ; le code rend la page d'avis et ses trois dates,
+  et les deux horloges ; déduplication des pages, rappel par section (`assistant/sections.py`),
+  mots courants (`repere.MOTS_COURANTS`), refus de la posologie. Budget de la mission : 10 $,
+  1,7 caractère par jeton.
+- **Le jeu v2** (`evaluation/questions-reference-v2.toml`, 138 questions) : la v1 reprise, les
+  questions neuves figées avant les retouches, le texte des avis (`attendu_has`, vérifié sans
+  gold), les pièges ; la v2 se lance après la v1.
+

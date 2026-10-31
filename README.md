@@ -51,18 +51,27 @@ devient des fragments datés et prudents, encodés par un modèle local épingl�
 depuis le silver, et vérifié contre sa reconstruction complète ; `make index`
 (ADR 0011).
 
-**Mission 08 en cours** : l'assistant gouverné. La recherche devient hybride
-(le sens et les mots). Claude rédige à partir des seuls fragments, et le code
-contrôle chaque citation, chaque nombre et chaque date. L'assistant
+**Mission 08 fusionnée** (PR #9) : l'assistant gouverné. La recherche devient
+hybride (le sens et les mots). Claude rédige à partir des seuls fragments, et
+le code contrôle chaque citation, chaque nombre et chaque date. L'assistant
 s'abstient quand il ne sait pas et refuse le conseil médical. Un jeu de
-88 questions le note sans juge LLM, sous un plafond de 20 $ (ADR 0012).
+88 questions le note sans juge LLM : 44 bonnes réponses sur 49, aucune
+citation invalide, aucun conseil médical, 1,03 $ (ADR 0012).
+
+**Mission 09 en cours** : le corpus des avis de la HAS. Une collecte polie des
+pages d'avis de la Commission de la transparence (722 pages, avis depuis 2024),
+leur texte extrait mot pour mot et indexé à côté des fiches. L'assistant cite
+une page d'avis : son lien, la date de l'avis et la date de consultation sont
+rendus par le code, jamais écrits par le LLM. Un jeu v2 de 138 questions
+mesure le texte des avis et les correctifs de la mission 08, sur des questions
+figées avant eux (ADR 0013).
 
 | Lot | Contenu | État |
 |---|---|---|
 | 0 | archivage des sources, profilage, décisions d'architecture | fait |
 | 1 | collecte, détection des changements, flux d'événements (Redpanda) | fait sur le Mac ; le VPS reste |
 | 2 | lakehouse Iceberg + DuckDB, historique, voyage dans le temps | fait |
-| 3 | assistant gouverné (sources citées, abstention) | en cours : l'index fait (mission 07), l'assistant (mission 08) |
+| 3 | assistant gouverné (sources citées, abstention) | en cours : l'index (mission 07) et l'assistant (mission 08) faits ; les avis de la HAS (mission 09) |
 | 4 | volet assurance : dépense exposée aux ruptures (Open Medic) | à venir |
 | 5 | observabilité, objectifs de service, incidents provoqués | à venir |
 

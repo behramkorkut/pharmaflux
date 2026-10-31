@@ -831,3 +831,27 @@ les ajustements tirés des réponses de Claude, et ces défauts viennent de la r
 
 La renotation sur le cache a été faite avant le commit : 0 appel, journal inchangé, 44/49 et
 82/88, et une sortie identique à l'octet à celle du commit de clôture.
+
+**Mission 09, paliers 1 à 3** (31/10 et 01/11). Le corpus des avis de la HAS.
+
+- **Palier 1** (`dff0a34`) : `pharmaflux has collecter` et `has extraire`. La collecte de la
+  première étape par beko (31/10) : 724 requêtes sur 761, 25 min 56 s, 722 pages, 0 erreur.
+- **La correction de l'extracteur** : huit rejets analysés un par un (`3ea9651`), dont sept
+  venaient d'un contrôle trop strict. L'extracteur v2 (`104cebb`) en extrait 721 ; PEDMARQSI reste
+  rejetée, sa page se contredit sur son dossier.
+- **Palier 2**, dans l'ordre des commits que demande l'addendum :
+  - `07ac561` : l'index au format 3, avec les avis, le jeu de démo à deux parties et les liens
+    rendus par le code ;
+  - `bbb9809` : les questions neuves figées ;
+  - `ee2f0a6` : les retouches.
+
+  Deux réglages de mémoire ramènent `index construire` et `index verifier` sous 512 Mo.
+- **Palier 3** :
+  - `c80b795` puis `5bbf3a8` : cinq questions figées, puis le changement de la table des sections,
+    la dernière retouche du rappel ;
+  - `fa8a5be` : le jeu v2 complet (138 questions, `attendu_has` vérifié sans gold) ;
+  - l'ADR 0013.
+
+  La première étape entière tient sous 512 Mo : 471 Mo pour `index construire` et 483 Mo pour
+  `index verifier`, sur 78 461 fragments.
+

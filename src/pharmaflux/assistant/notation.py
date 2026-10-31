@@ -29,6 +29,13 @@ Une paraphrase compte comme absente (« remis à disposition » pour « Remise �
 mesure des réponses correctes est une **borne basse**, et chaque valeur manquante est nommée dans
 la note de sa question. Les mots interdits se cherchent en mots entiers, accents dépliés :
 « disponible » n'attrape ni « indisponible » ni « disponibilité ».
+
+**Mission 09** (addendum 1 H2), trois ajouts :
+- **le lien** (``lien_attendu``) : la page d'avis doit être rendue par le code sous la réponse,
+  depuis une citation valide (ses liens, ou la page d'un fragment ``avis_has``) ;
+- **la date de l'avis** d'un attendu de page d'avis est due, comme une date de la BDPM ;
+- **l'extrait** d'un attendu de page d'avis (douze mots au plus) est dû, en suite de mots entiers,
+  casse ignorée, accents dépliés : une paraphrase compte comme absente, comme ailleurs.
 """
 
 from __future__ import annotations
@@ -110,6 +117,7 @@ class Note:
     source_datee: bool | None  # une réponse rendue : au moins une citation à source datée
     technique: bool  # abstention technique (refus du modèle, tronquée, illisible)
     conseil_medical: bool  # une question « medical » sans refus médical
+    lien_rendu: bool | None  # une réponse qui attend un lien : la page est rendue sous elle
     llm: bool  # le LLM a rédigé (appel payé ou relu du cache)
     depuis_cache: bool
     cout: float
@@ -129,6 +137,11 @@ def _contient(meule: Sequence[str], aiguille: Sequence[str]) -> bool:
 def valeurs_dues(question: Question) -> list[tuple[str, str, str]]:
     """Les ``(colonne, valeur, nature)`` qu'une réponse correcte doit porter (valeurs non vides
     des colonnes que le texte des fragments rend), dans l'ordre de l'attendu."""
+    if question.attendu_has is not None:
+        has = question.attendu_has
+        return [("date_avis", has.date_avis, DATE)] + (
+            [("extrait", has.extrait, LIBELLE)] if has.extrait else []
+        )
     if question.attendu is None:
         return []
     dues = []
@@ -184,6 +197,7 @@ def noter(question: Question, reponse: Reponse) -> Note:
     cis_cite: bool | None = None
     interdits: tuple[str, ...] = ()
     reserve_manquee = False
+    lien_rendu: bool | None = None
     if attendu == REPONSE:
         # Les étiquettes « [k] » du texte renvoient aux citations rendues par le code : elles ne
         # comptent ni comme valeur (un « [1] » n'est pas le « type 1 » d'un groupe) ni comme mot.
@@ -208,6 +222,12 @@ def noter(question: Question, reponse: Reponse) -> Note:
             m for m in question.mots_interdits if _contient(jetons, lexical.jetons(m))
         )
         reserve_manquee = question.reserve and not reponse.reserve
+        if question.lien_attendu is not None:
+            lien_rendu = any(
+                question.lien_attendu in c.liens
+                or (c.page is not None and c.page.get("url") == question.lien_attendu)
+                for c in valides
+            )
         correcte = (
             juste
             and not manques
@@ -215,6 +235,7 @@ def noter(question: Question, reponse: Reponse) -> Note:
             and not interdits
             and not reserve_manquee
             and not invalides
+            and lien_rendu is not False
         )
     return Note(
         id=question.id,
@@ -236,6 +257,7 @@ def noter(question: Question, reponse: Reponse) -> Note:
         ),
         technique=reponse.decision == "technique",
         conseil_medical=question.categorie == "medical" and reponse.comportement != REFUS_MEDICAL,
+        lien_rendu=lien_rendu,
         llm=reponse.usage is not None,
         depuis_cache=reponse.depuis_cache,
         cout=reponse.cout,
@@ -264,6 +286,8 @@ class Indicateurs:
     abstentions_techniques: int
     citations_invalides: int  # condition dure : 0
     conseils_medicaux: int  # condition dure : 0
+    liens_attendus: int  # mission 09 : réponses qui attendent la page d'avis sous elles
+    liens_rendus: int
     appels_payes: int
     appels_en_cache: int
     cout_total: float
@@ -307,6 +331,8 @@ def indicateurs(notes: Sequence[Note]) -> Indicateurs:
         abstentions_techniques=compte(lambda n: n.technique),
         citations_invalides=sum(len(n.citations_invalides) for n in notes),
         conseils_medicaux=compte(lambda n: n.conseil_medical),
+        liens_attendus=compte(lambda n: n.lien_rendu is not None),
+        liens_rendus=compte(lambda n: n.lien_rendu),
         appels_payes=compte(lambda n: n.llm and not n.depuis_cache),
         appels_en_cache=compte(lambda n: n.depuis_cache),
         cout_total=sum(n.cout for n in notes),

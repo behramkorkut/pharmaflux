@@ -123,7 +123,7 @@ def test_le_jeu_v0_suit_l_addendum() -> None:
 @pytest.mark.parametrize(
     ("ancien", "nouveau", "message"),
     [
-        ('version = "v0"', 'version = "v2"', "version « v2 »"),
+        ('version = "v0"', 'version = "v3"', "version « v3 »"),
         ('description = "Essai"', 'description = "Essai"\ncouleur = "bleu"', "inconnue"),
         ('id = "disponibilite-001"', 'id = "dispo 1"', "hors forme"),
         ('id = "disponibilite-001"', 'id = "alternatives-001"', "ne commence pas par"),

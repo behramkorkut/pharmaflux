@@ -16,6 +16,8 @@ observations, à la cadence accélérée. ``silver construire`` / ``etat`` /
 (mission 05), dont les bibliothèques ne s'importent que dans ces commandes.
 ``gold etat`` / ``qualite`` / ``sql`` : l'état typé du silver à un instant et
 ses contrôles de qualité (mission 06), sous la même règle d'import.
+``has collecter`` / ``has extraire`` : les pages d'avis de la HAS (mission 09), collectées
+poliment et extraites mot pour mot.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import json
 import logging
 import os
 import sys
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -64,6 +67,7 @@ from pharmaflux.contrats.chargeur import charger_tous
 from pharmaflux.contrats.modele import Contrat
 from pharmaflux.contrats.profil import ArchiveIntrouvable, profiler_racine
 from pharmaflux.contrats.rendu import rendre_markdown, resume
+from pharmaflux.demo import has as demo_has
 from pharmaflux.demo import jeu, rejeu_accelere
 from pharmaflux.evaluation import questions as jeu_questions
 from pharmaflux.evaluation.verification import formater_bilan, verifier_jeu
@@ -95,6 +99,10 @@ fabriquer_transport_registre: Callable[[], httpx.BaseTransport | None] = (  # no
     lambda: None
 )
 fabriquer_lecteur_silver: Callable[[str], LecteurSilver | None] = lambda _courtier: None  # noqa: E731
+# La collecte des pages de la HAS (mission 09) : les tests simulent le site, jamais le réseau,
+# et ne dorment pas les deux secondes de pause.
+fabriquer_transport_has: Callable[[], httpx.BaseTransport | None] = lambda: None  # noqa: E731
+dormir_has: Callable[[float], None] = time.sleep
 # Les tests simulent Qdrant de la même façon (mission 07).
 fabriquer_transport_qdrant: Callable[[], httpx.BaseTransport | None] = (  # noqa: E731
     lambda: None
@@ -677,6 +685,79 @@ def demo_verifier(racine: OptionJeu = jeu.JEU_PAR_DEFAUT) -> None:
     raise typer.Exit(code=0 if bilan.conforme else 1)
 
 
+@demo.command("choisir-has")
+def demo_choisir_has(
+    racine: OptionJeu = jeu.JEU_PAR_DEFAUT,
+    questions: Annotated[
+        Path, typer.Option("--questions", help="Le jeu de questions dont les CIS sont repris.")
+    ] = demo_has.QUESTIONS_PAR_DEFAUT,
+    sortie: Annotated[
+        Path, typer.Option("--sortie", help="La liste des pages, une URL par ligne.")
+    ] = demo_has.LISTE_PAR_DEFAUT,
+) -> None:
+    """Écrit la liste des pages d'avis du jeu de démo, par la règle de demo.has.
+
+    Le périmètre de la première étape se calcule sur la BDPM du jeu (sans
+    réseau) : pages imposées, pages des CIS des questions, puis complément par
+    le plus petit sha256 de l'URL, jusqu'à 150 pages. Code 2 : périmètre
+    illisible ou page imposée absente.
+    """
+    from pharmaflux.has.perimetre import PerimetreIllisible, calculer
+
+    try:
+        perimetre = calculer(racine)
+        pages = demo_has.choisir(perimetre, demo_has.cis_des_questions(questions))
+    except (PerimetreIllisible, demo_has.FabricationRefusee) as exc:
+        typer.echo(f"choix refusé : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    raisons: dict[str, int] = {}
+    for page in pages:
+        cle = page.raison.split(" :")[0]
+        raisons[cle] = raisons.get(cle, 0) + 1
+    entete = [
+        "Pages d'avis de la HAS du jeu de démo (mission 09, addendum 1 E). Fichier écrit par",
+        f"« pharmaflux demo choisir-has --questions {questions.as_posix()} », jamais à la main.",
+        "",
+        "La règle (src/pharmaflux/demo/has.py, demo/README.md), sur la première étape",
+        f"(avis SMR ou ASMR depuis le {perimetre.depuis.isoformat()}, {len(perimetre.pages)} pages,"
+        f" liste sha256 {perimetre.empreinte_liste()[:16]}…) :",
+        "1. les pages imposées (fixtures du §0, cas de la collecte) ;",
+        "2. les pages des CIS visés par une question du jeu ;",
+        "3. le complément : les plus petits sha256 de l'URL, jusqu'à"
+        f" {demo_has.NOMBRE_PAGES} pages.",
+    ]
+    demo_has.ecrire_liste(sortie, pages, entete)
+    detail = ", ".join(f"{cle} {n}" for cle, n in raisons.items())
+    typer.echo(f"{len(pages)} page(s) écrites dans {sortie} ({detail})")
+
+
+@demo.command("fabriquer-has")
+def demo_fabriquer_has(
+    racine: OptionRacine = None,
+    destination: Annotated[
+        Path, typer.Option("--destination", help="Le jeu, qui n'a pas encore de pages d'avis.")
+    ] = jeu.JEU_PAR_DEFAUT,
+    liste: Annotated[
+        Path, typer.Option("--liste", help="La liste écrite par demo choisir-has.")
+    ] = demo_has.LISTE_PAR_DEFAUT,
+) -> None:
+    """Copie dans le jeu, à l'octet, la dernière archive de chaque page de la liste et sa
+    ligne du manifeste HAS, depuis l'archive de la collecte (lue, jamais écrite).
+
+    Codes de sortie : 2 si la liste est illisible, une page n'a pas d'archive, la
+    destination est sous la racine ou a déjà ses pages ; 1 si le jeu écrit n'est
+    pas conforme (« demo verifier » dit pourquoi).
+    """
+    try:
+        demo_has.fabriquer(_racine(racine), destination, liste)
+    except demo_has.FabricationRefusee as exc:
+        typer.echo(f"fabrication refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    bilan = jeu.verifier(destination)
+    typer.echo(_resume_jeu(destination, bilan))
+    raise typer.Exit(code=0 if bilan.conforme else 1)
+
+
 @demo.command("rejouer")
 def demo_rejouer(
     racine: OptionJeu = jeu.JEU_PAR_DEFAUT,
@@ -793,6 +874,11 @@ def _resume_jeu(racine: Path, bilan: jeu.Bilan) -> str:
         f"  {identifiant:28} {nombre} archive(s)"
         for identifiant, nombre in bilan.archives_par_entite().items()
     )
+    if bilan.has.present:
+        lignes.append(
+            f"pages d'avis de la HAS : {len(bilan.has.pages)} page(s), {bilan.has.lignes} ligne(s)"
+            f" de manifeste, {bilan.has.octets} octets compressés"
+        )
     if bilan.conforme:
         lignes.append("conforme")
     else:
@@ -892,6 +978,169 @@ def _racine(racine: Path | None) -> Path:
         return racine
     variable = os.environ.get(VARIABLE_RACINE)
     return Path(variable) if variable else RACINE_PAR_DEFAUT
+
+
+# --- has (mission 09) -------------------------------------------------------------------------
+
+has = typer.Typer(
+    name="has",
+    help="Les pages d'avis de la HAS (mission 09, ADR 0004) : collecter, extraire.",
+    no_args_is_help=True,
+)
+application.add_typer(has)
+
+
+@has.command("collecter")
+def has_collecter(
+    plafond: Annotated[
+        int | None,
+        typer.Option(
+            "--plafond",
+            help="Requêtes au plus, réessais, robots.txt et mentions légales compris. Obligatoire"
+            " pour un passage réel ; --simuler en conseille un.",
+        ),
+    ] = None,
+    depuis: Annotated[
+        str,
+        typer.Option(
+            "--depuis", help="Les dossiers dont un avis SMR ou ASMR date de ce jour ou après."
+        ),
+    ] = "2024-01-01",
+    dossier: Annotated[
+        list[str] | None,
+        typer.Option("--dossier", help="Restreindre à ce dossier (CT-21030), répétable."),
+    ] = None,
+    pause: Annotated[
+        float,
+        typer.Option("--pause", help="Secondes entre deux requêtes, deux au moins."),
+    ] = 2.0,
+    simuler: Annotated[
+        bool,
+        typer.Option(
+            "--simuler",
+            help="Dire ce qui serait demandé (URL, nombre, durée), sans aucune requête.",
+        ),
+    ] = False,
+    reessayer_erreurs: Annotated[
+        bool,
+        typer.Option("--reessayer-erreurs", help="Redemander aussi les pages en erreur."),
+    ] = False,
+    racine: OptionRacine = None,
+) -> None:
+    """Un passage de collecte des pages d'avis : robots.txt, mentions légales, pages.
+
+    Une page archivée n'est jamais redemandée ; une relance reprend ce qui manque. Codes de
+    sortie : 0 tout est archivé ; 1 des pages en erreur ; 2 refus (option, archive de la BDPM
+    ou robots.txt illisibles) ; 3 arrêt net (429, 5xx répété, plafond).
+    """
+    from pharmaflux.has import collecte as collecte_has
+    from pharmaflux.has.client import PAUSE_MINIMALE, ClientHas
+    from pharmaflux.has.perimetre import PerimetreIllisible, calculer
+
+    configurer_journal()
+    racine_ = _racine(racine)
+    if pause < PAUSE_MINIMALE:
+        typer.echo(f"--pause {pause} : {PAUSE_MINIMALE} s au moins", err=True)
+        raise typer.Exit(code=2)
+    try:
+        jour = datetime.strptime(depuis, "%Y-%m-%d").date()
+    except ValueError as exc:
+        typer.echo(f"--depuis {depuis} : une date AAAA-MM-JJ est attendue", err=True)
+        raise typer.Exit(code=2) from exc
+    try:
+        perimetre = calculer(racine_, depuis=jour, dossiers=dossier)
+        plan = collecte_has.planifier(racine_, perimetre, reessayer_erreurs=reessayer_erreurs)
+    except (PerimetreIllisible, manifeste.ManifesteCorrompu) as exc:
+        typer.echo(f"refus : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if simuler:
+        _echo_simulation(plan, pause, plafond)
+        raise typer.Exit(code=0)
+    if plafond is None:
+        typer.echo(
+            "--plafond est obligatoire pour un passage réel (--simuler en conseille un)", err=True
+        )
+        raise typer.Exit(code=2)
+    with ClientHas(
+        plafond=plafond, pause=pause, transport=fabriquer_transport_has(), dormir=dormir_has
+    ) as client:
+        bilan = collecte_has.executer(racine_, plan, client)
+    typer.echo(bilan.resume())
+    raise typer.Exit(code=bilan.code_sortie)
+
+
+def _echo_simulation(plan: Any, pause: float, plafond: int | None) -> None:
+    perimetre = plan.perimetre
+    typer.echo("simulation : aucune requête envoyée")
+    for source in perimetre.sources:
+        typer.echo(f"  {source.identifiant:15} {source.archive} (sha256 {source.sha256[:12]}…)")
+    typer.echo(
+        f"dossiers avec un avis SMR ou ASMR depuis le {perimetre.depuis.isoformat()} :"
+        f" {perimetre.dossiers}, dont {perimetre.dossiers_avec_lien} avec un lien et"
+        f" {len(perimetre.dossiers_sans_lien)} sans lien ; {len(perimetre.pages)} page(s)"
+    )
+    if perimetre.liens_hors_forme:
+        typer.echo(f"liens hors forme, écartés : {', '.join(perimetre.liens_hors_forme)}")
+    etat = plan.etat
+    typer.echo(
+        f"déjà archivées : {len(etat.archivees)} ; archives orphelines à reprendre :"
+        f" {len(etat.orphelines)} ; en erreur, non redemandées : {plan.erreurs_ecartees}"
+    )
+    duree = plan.duree_estimee(pause)
+    typer.echo(
+        f"requêtes : {plan.requetes} (robots.txt, mentions légales et {len(plan.a_demander)}"
+        f" page(s)) ; durée estimée ≈ {int(duree // 60)} min {int(duree % 60):02d} s à {pause} s"
+        f" de pause ; plafond conseillé : {plan.plafond_conseille}"
+    )
+    if plafond is not None and plafond < plan.requetes:
+        typer.echo(f"--plafond {plafond} : le passage s'arrêterait avant la fin")
+    typer.echo(f"liste des URL (sha256 {perimetre.empreinte_liste()[:12]}…), dans l'ordre :")
+    for page in plan.a_demander:
+        typer.echo(f"  {page.date_avis} {','.join(page.dossiers)} {page.url}")
+
+
+@has.command("extraire")
+def has_extraire(
+    verifier: Annotated[
+        bool,
+        typer.Option(
+            "--verifier",
+            help="Non-altération (second lecteur), déterminisme et empreintes du manifeste.",
+        ),
+    ] = False,
+    sortie: Annotated[
+        Path | None,
+        typer.Option("--sortie", help="Écrire chaque page en JSON Lines, pour la lire."),
+    ] = None,
+    page: Annotated[
+        list[Path] | None,
+        typer.Option("--page", help="Une page (.html ou .html.gz) hors archive, répétable."),
+    ] = None,
+    racine: OptionRacine = None,
+) -> None:
+    """L'extraction rejouée sur les pages archivées : bilan des rejets, vérification.
+
+    L'index ne lit jamais sa sortie. Codes : 0 conforme ; 1 un écart ou une divergence ;
+    2 aucune page.
+    """
+    from pharmaflux.has import inspection
+
+    try:
+        pages = (
+            inspection.pages_de_fichiers(page)
+            if page
+            else inspection.pages_archivees(_racine(racine))
+        )
+    except manifeste.ManifesteCorrompu as exc:
+        typer.echo(f"refus : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if sortie is not None:
+        with sortie.open("w", encoding="utf-8") as flux:
+            bilan = inspection.extraire(pages, verifier=verifier, sortie=flux)
+    else:
+        bilan = inspection.extraire(pages, verifier=verifier)
+    typer.echo(bilan.resume())
+    raise typer.Exit(code=bilan.code_sortie)
 
 
 # --- silver (mission 05) -----------------------------------------------------------------------
@@ -1603,6 +1852,16 @@ index = typer.Typer(
 application.add_typer(index)
 
 
+OptionArchiveHas = Annotated[
+    Path | None,
+    typer.Option(
+        "--archive-has",
+        help="L'archive des pages d'avis de la HAS (manifeste/has-pages.jsonl), lue jamais écrite"
+        " ; sans elle, pas de section avis_has. La démo : demo/archive.",
+    ),
+]
+
+
 @index.command("fragments")
 def index_fragments(
     cis: Annotated[
@@ -1624,22 +1883,41 @@ def index_fragments(
             "--sortie", help="Fichier JSON Lines, écrit entier puis renommé ; défaut : la sortie."
         ),
     ] = None,
+    archive_has: OptionArchiveHas = None,
+    has_lignes: Annotated[
+        int | None,
+        typer.Option(
+            "--has-lignes", help="Ne lire que ces premières lignes du manifeste HAS (vérifier)."
+        ),
+    ] = None,
+    has_depuis: Annotated[
+        int | None,
+        typer.Option(
+            "--has-depuis",
+            help="Les lignes du manifeste HAS déjà dans l'index : les CIS des pages arrivées"
+            " après sont touchés.",
+        ),
+    ] = None,
 ) -> None:
     """Les fragments de chaque fiche à un instant, en JSON Lines, sans index ni modèle.
 
     Un fragment par ligne, dans l'ordre des CIS, puis des sections (identite,
-    presentations, avis, disponibilite, informations), puis des parties.
+    presentations, avis, avis_has, disponibilite, informations), puis des
+    parties. Avec --archive-has, la section avis_has : les pages d'avis de la
+    HAS que les liens de la fiche désignent, réextraites depuis l'archive.
     L'instant n'est pas dans les fragments : il est dit sur la sortie d'erreur
     et, avec --sortie, dans <sortie>.bilan.json, avec les CIS touchés si
-    --depuis ; l'index le tient. Code 2 : CIS inconnu à l'instant, instant
-    antérieur à --depuis (le silver serait en arrière de l'index), ou refus
+    --depuis et la position du manifeste HAS ; l'index les tient. Code 2 : CIS
+    inconnu à l'instant, instant antérieur à --depuis (le silver serait en
+    arrière de l'index), manifeste HAS plus court que --has-lignes, ou refus
     (instant, entrepôt).
     """
     import pyarrow as pa
     import pyarrow.compute as pc
 
+    from pharmaflux.index import pages_has
     from pharmaflux.index.changements import cis_touches
-    from pharmaflux.index.fragments import FORMAT, fragments_des_fiches
+    from pharmaflux.index.fragments import FORMAT, fragments_des_fiches, rattachements
     from pharmaflux.silver import etat as etat_silver
     from pharmaflux.silver.entrepot import Entrepot
     from pharmaflux.silver.schema import texte_instant
@@ -1657,11 +1935,20 @@ def index_fragments(
                     f" ({texte_instant(t0)}) : reconstruire l'index"
                 )
             touches = cis_touches(Entrepot.ouvrir(entrepot), etats, t0, instant)
-    except SilverRefuse as exc:
+        pages = None
+        cis_has: set[str] = set()
+        if archive_has is not None:
+            dossiers_par_url, cis_par_url, citees = rattachements(toutes)
+            pages = pages_has.lire(archive_has, dossiers_par_url, has_lignes)
+            pages.marquer_sans_fiche(citees)
+            if has_depuis is not None:
+                arrivees = [u for u, p in pages.pages.items() if p.rang >= has_depuis]
+                cis_has = {c for url in arrivees for c in cis_par_url[url]}
+    except (SilverRefuse, pages_has.PositionRefusee) as exc:
         typer.echo(f"fragments refusés : {exc}", err=True)
         raise typer.Exit(code=2) from exc
     fiches = toutes
-    selection = set(cis or ()) | set(touches.cis if touches else ())
+    selection = set(cis or ()) | set(touches.cis if touches else ()) | cis_has
     if cis or touches is not None:
         fiches = fiches.filter(
             pc.is_in(fiches["code_cis"], value_set=pa.array(sorted(selection), pa.string()))
@@ -1678,7 +1965,7 @@ def index_fragments(
     provisoire = None if sortie is None else sortie.with_name(sortie.name + ".partiel")
     flux = sys.stdout if provisoire is None else provisoire.open("w", encoding="utf-8")
     try:
-        for fragment in fragments_des_fiches(fiches):
+        for fragment in fragments_des_fiches(fiches, pages=pages.pages if pages else None):
             flux.write(fragment.en_jsonl() + "\n")
             nombre += 1
     finally:
@@ -1690,11 +1977,13 @@ def index_fragments(
         "fiches_total": toutes.num_rows,
         "fragments": nombre,
         "format": FORMAT,
+        "has": pages.etat() if pages is not None else None,
     }
     if touches is not None:
         bilan |= {
             "depuis": depuis,
-            "cis_touches": sorted(touches.cis),
+            "cis_touches": sorted(touches.cis | cis_has),
+            "par_has": len(cis_has - touches.cis),
             "par_version": touches.par_version,
             "par_bascule": touches.par_bascule,
         }
@@ -1710,9 +1999,15 @@ def index_fragments(
         else f" ; {len(touches.cis)} CIS touché(s) depuis {depuis}"
         f" ({touches.par_version} par une version, {touches.par_bascule} par le jour)"
     )
+    has_texte = (
+        ""
+        if pages is None
+        else f" ; pages d'avis de la HAS : {len(pages.pages)} rattachée(s), collectées jusqu'au"
+        f" {pages.collecte}, manifeste lu jusqu'à la ligne {pages.position.lignes}"
+    )
     typer.echo(
         f"{nombre} fragment(s) de {fiches.num_rows} fiche(s), format {FORMAT}, état au"
-        f" {texte_instant(instant)}{touches_texte}",
+        f" {texte_instant(instant)}{touches_texte}{has_texte}",
         err=True,
     )
 
@@ -1757,6 +2052,7 @@ def index_construire(
     qdrant: OptionQdrant = None,
     modele_: OptionModele = MODELE_PAR_DEFAUT,
     travail: OptionTravail = TRAVAIL_INDEX,
+    archive_has: OptionArchiveHas = None,
 ) -> None:
     """Construit l'index en entier, à la dernière observation du silver.
 
@@ -1772,7 +2068,9 @@ def index_construire(
     try:
         with construction.verrou(travail):
             encodeur_ = encodeur.charger(modele_)
-            fragments = construction.calculer_fragments(entrepot, travail, cis or ())
+            fragments = construction.calculer_fragments(
+                entrepot, travail, cis or (), archive_has=archive_has
+            )
             cache = construction.Cache(travail, encodeur_.empreinte)
             try:
                 with Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as client:
@@ -1798,6 +2096,8 @@ def index_construire(
         f" {bilan.encodes} encodé(s), {bilan.fragments - bilan.encodes} repris du cache,"
         f" {bilan.duree_s:.0f} s ; état au {bilan.instant} ; collection {bilan.collection}"
     )
+    for ligne in _sans_fiche(fragments.has):
+        typer.echo(ligne)
     typer.echo(_memoire_des_deux_processus(), err=True)
 
 
@@ -1825,6 +2125,7 @@ def index_mettre_a_jour(
     qdrant: OptionQdrant = None,
     modele_: OptionModele = MODELE_PAR_DEFAUT,
     travail: OptionTravail = TRAVAIL_INDEX,
+    archive_has: OptionArchiveHas = None,
 ) -> None:
     """Met l'index à jour par incréments, de son instant à la dernière observation du silver.
 
@@ -1846,7 +2147,15 @@ def index_mettre_a_jour(
             etat = construction.etat_exige(client)
             encodeur_ = encodeur.charger(modele_)
             construction.encodeur_de_l_index(etat, encodeur_)
-            fragments = construction.calculer_fragments(entrepot, travail, depuis=etat["instant"])
+            construction.exiger_has(etat, archive_has)
+            has = etat.get("has")
+            fragments = construction.calculer_fragments(
+                entrepot,
+                travail,
+                depuis=etat["instant"],
+                archive_has=archive_has if has else None,
+                has_depuis=has["position"] if has else None,
+            )
             cache = construction.Cache(travail, encodeur_.empreinte)
             try:
                 bilan = construction.mettre_a_jour(client, encodeur_, fragments, cache)
@@ -1865,7 +2174,8 @@ def index_mettre_a_jour(
     else:
         typer.echo(
             f"index mis à jour de {bilan.depuis} à {bilan.instant} : {bilan.cis_touches} CIS"
-            f" touché(s) ({bilan.par_version} par une version, {bilan.par_bascule} par le jour) ;"
+            f" touché(s) ({bilan.par_version} par une version, {bilan.par_bascule} par le jour,"
+            f" {bilan.par_has} par une page d'avis arrivée) ;"
             f" fragments {bilan.ajoutes} ajouté(s), {bilan.remplaces} remplacé(s),"
             f" {bilan.retires} retiré(s), {bilan.inchanges} inchangé(s) ; {bilan.encodes}"
             f" encodé(s) ; {bilan.fragments} fragments ; {bilan.duree_s:.0f} s"
@@ -1879,6 +2189,7 @@ def index_verifier(
     qdrant: OptionQdrant = None,
     modele_: OptionModele = MODELE_PAR_DEFAUT,
     travail: OptionTravail = TRAVAIL_INDEX,
+    archive_has: OptionArchiveHas = None,
 ) -> None:
     """L'index est-il égal à sa reconstruction complète depuis le gold, au même instant ?
 
@@ -1902,8 +2213,14 @@ def index_verifier(
             etat = construction.etat_exige(client)
             encodeur_ = encodeur.charger(modele_)
             construction.encodeur_de_l_index(etat, encodeur_)
+            has = etat.get("has")
             fragments = construction.calculer_fragments(
-                entrepot, travail, etat.get("cis_reduits") or (), a=etat["instant"]
+                entrepot,
+                travail,
+                etat.get("cis_reduits") or (),
+                a=etat["instant"],
+                archive_has=archive_has if has else None,
+                has_lignes=has["position"] if has else None,
             )
             cache = construction.Cache(travail, encodeur_.empreinte)
             try:
@@ -1914,6 +2231,8 @@ def index_verifier(
         typer.echo(f"vérification refusée : {exc}", err=True)
         raise typer.Exit(code=2) from exc
     for ligne in construction.formater_verification(rapport):
+        typer.echo(ligne)
+    for ligne in _sans_fiche(fragments.has, liste=False):
         typer.echo(ligne)
     typer.echo(_memoire_des_deux_processus(), err=True)
     if not rapport.conforme:
@@ -1946,11 +2265,11 @@ def index_chercher(
     modèle différent de celui de l'index, Qdrant injoignable.
     """
     from pharmaflux.index import construction, encodeur
-    from pharmaflux.index.fragments import SECTIONS
+    from pharmaflux.index.fragments import SECTIONS_INDEX
     from pharmaflux.index.qdrant import Qdrant, QdrantIndisponible
 
-    if section is not None and section not in SECTIONS:
-        typer.echo(f"recherche refusée : section parmi {', '.join(SECTIONS)}", err=True)
+    if section is not None and section not in SECTIONS_INDEX:
+        typer.echo(f"recherche refusée : section parmi {', '.join(SECTIONS_INDEX)}", err=True)
         raise typer.Exit(code=2)
     conditions = [
         {"key": c, "match": {"value": v}} for c, v in (("code_cis", cis), ("section", section)) if v
@@ -1988,17 +2307,21 @@ def index_etat(
     complet: Annotated[
         bool,
         typer.Option(
-            "--complet", help="Code 2 aussi pour un index réduit (construire --cis) : make index."
+            "--complet",
+            help="Code 2 aussi pour un index réduit (construire --cis), d'un autre format, sans"
+            " les pages d'avis ou d'un autre extracteur : make index le reconstruit alors.",
         ),
     ] = False,
 ) -> None:
-    """L'état de l'index : instant, mise à jour en suspens, format, modèle, fragments par section.
+    """L'état de l'index : instant, mise à jour en suspens, format, modèle, fragments par section,
+    et sa seconde horloge, les pages d'avis de la HAS.
 
     Code 2 : pas d'index, alias et état en désaccord, Qdrant injoignable ;
-    avec --complet, aussi un index réduit, qu'une mise à jour élargirait.
+    avec --complet, aussi un index réduit, qu'une mise à jour élargirait, ou
+    un index qu'une mise à jour refuserait (format, extracteur des pages).
     """
     from pharmaflux.index import construction
-    from pharmaflux.index.fragments import SECTIONS
+    from pharmaflux.index.fragments import SECTIONS_INDEX
     from pharmaflux.index.qdrant import Qdrant, QdrantIndisponible, filtre_egal
 
     try:
@@ -2006,7 +2329,9 @@ def index_etat(
             etat = construction.etat_exige(client)
             alias = client.alias_fragments
             total = client.compter(alias)
-            par_section = {s: client.compter(alias, filtre_egal("section", s)) for s in SECTIONS}
+            par_section = {
+                s: client.compter(alias, filtre_egal("section", s)) for s in SECTIONS_INDEX
+            }
     except (construction.IndexRefuse, QdrantIndisponible) as exc:
         typer.echo(f"état refusé : {exc}", err=True)
         raise typer.Exit(code=2) from exc
@@ -2023,9 +2348,50 @@ def index_etat(
     typer.echo(f"fragments         {total}")
     for s, n in par_section.items():
         typer.echo(f"  {s:15} {n}")
+    for ligne in _etat_has(etat.get("has")):
+        typer.echo(ligne)
     if complet and reduits:
         typer.echo("index réduit : il faut le reconstruire en entier", err=True)
         raise typer.Exit(code=2)
+    from pharmaflux.has.extraction import VERSION_EXTRACTEUR
+    from pharmaflux.index.fragments import FORMAT
+
+    has = etat.get("has")
+    if complet and (
+        etat["format"] != FORMAT or has is None or has["extracteur"] != VERSION_EXTRACTEUR
+    ):
+        typer.echo(
+            f"index au format {etat['format']} (ce code écrit le {FORMAT}), sans les pages d'avis"
+            " ou d'un autre extracteur : make index le reconstruit",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+
+def _etat_has(has: dict[str, Any] | None) -> list[str]:
+    """La seconde horloge de l'index : les pages d'avis de la HAS qu'il a lues (addendum 1 F3)."""
+    if has is None:
+        return ["pages HAS        aucune (index construit sans --archive-has)"]
+    rejets = ", ".join(f"{motif} {n}" for motif, n in has["rejets"].items()) or "aucune"
+    lignes = [
+        f"pages HAS        collectées jusqu'au {has['collecte']} ; manifeste lu jusqu'à la ligne"
+        f" {has['position']} ({has['empreinte'][:12]}…), extracteur v{has['extracteur']}",
+        f"  archivées      {has['archivees']}, dont {has['rattachees']} rattachée(s) à une fiche",
+        f"  extraites      {has['extraites']} ; rejetées : {rejets}",
+        f"  contrôle de dossier impossible : {len(has['sans_controle'])}",
+    ]
+    lignes += [f"    {page}" for page in has["sans_controle"]]
+    lignes += _sans_fiche(has)
+    return lignes
+
+
+def _sans_fiche(has: dict[str, Any] | None, liste: bool = True) -> list[str]:
+    """Les pages extraites qu'aucune fiche du référentiel ne cite : hors de l'index (palier 4)."""
+    if has is None:
+        return []
+    pages = has.get("sans_fiche") or []
+    lignes = [f"  pages sans fiche du référentiel : {len(pages)} (dans l'archive, hors de l'index)"]
+    return lignes + ([f"    {page}" for page in pages] if liste else [])
 
 
 @index.command("evaluer")
@@ -2272,7 +2638,8 @@ def _rendre_reponse(reponse: Reponse_) -> list[str]:
         lignes.append(f"orientation : {reponse.orientation}")
     for c in reponse.citations:
         lignes.append(f"  [{c.etiquette}] CIS {c.code_cis}, {c.section} — {c.sources}")
-    lignes.append(f"état de l'index au {reponse.instant_index}")
+        lignes += [f"      lien : {lien}" for lien in c.liens_rendus()]
+    lignes.append(reponse.horloges())
     lignes.append(f"coût : {_cout_texte(reponse)}")
     return lignes
 
@@ -2294,10 +2661,12 @@ def _reponse_json(reponse: Reponse_) -> dict[str, Any]:
                 "dans_referentiel": c.dans_referentiel,
                 "sources": c.sources,
                 "source_datee": c.source_datee,
+                "liens": c.liens_rendus(),
             }
             for c in reponse.citations
         ],
         "instant_index": reponse.instant_index,
+        "collecte_has": reponse.collecte_has,
         "decision": reponse.decision,
         "depuis_cache": reponse.depuis_cache,
         "cout": reponse.cout,
@@ -2410,6 +2779,7 @@ def _rendre_indicateurs(ind: Indicateurs_) -> list[str]:
             )
             or "aucune",
         ),
+        ("liens des pages d'avis rendus", _pourcent(ind.liens_rendus, ind.liens_attendus)),
         ("abstentions techniques", str(ind.abstentions_techniques)),
         ("citations invalides", f"{ind.citations_invalides}   condition dure : 0"),
         ("conseils médicaux", f"{ind.conseils_medicaux}   condition dure : 0"),
@@ -2530,6 +2900,15 @@ def assistant_evaluer(
         typer.echo(f"évaluation refusée : {exc}", err=True)
         raise typer.Exit(code=2) from exc
     ind = notation.indicateurs(notes)
+    if jeu.version == "v2":
+        # Addendum 1 : les questions nouvelles seules, puis la v2 entière (la v1 telle quelle se
+        # note par son propre fichier). Nouvelle : un identifiant absent de la v1.
+        anciennes = {q.id for q in jeu_questions.charger(QUESTIONS_V1, charger_tous()).questions}
+        nouvelles = [n for n in notes if n.id not in anciennes]
+        typer.echo(f"questions nouvelles de la v2 seules ({len(nouvelles)}) :")
+        for ligne in _rendre_indicateurs(notation.indicateurs(nouvelles)):
+            typer.echo(ligne)
+        typer.echo(f"la v2 entière ({len(notes)}) :")
     for ligne in _rendre_indicateurs(ind):
         typer.echo(ligne)
     total = journal.total()

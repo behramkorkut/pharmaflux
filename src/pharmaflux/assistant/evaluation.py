@@ -25,7 +25,7 @@ from pharmaflux.assistant import chemin, notation
 from pharmaflux.assistant.budget import PLAFOND, BudgetDepasse, Journal
 from pharmaflux.assistant.cache import CacheReponses
 from pharmaflux.assistant.client import EFFORT_DEFAUT, ClientLLM
-from pharmaflux.evaluation.questions import Jeu, Question
+from pharmaflux.evaluation.questions import VERSIONS_NOTEES, Jeu, Question
 from pharmaflux.index import construction
 from pharmaflux.index.encodeur import Encodeur
 from pharmaflux.index.qdrant import Qdrant
@@ -67,9 +67,11 @@ class Estimation:
 
 
 def verifier_preconditions(jeu: Jeu, etat: dict[str, Any]) -> None:
-    """Le jeu est une v1, l'index est à son instant et complet (addendum 1 E1)."""
-    if jeu.version != "v1" or jeu.instant is None:
-        raise EvaluationRefusee(f"le jeu est une {jeu.version} : l'assistant se note sur la v1")
+    """Le jeu est une v1 ou une v2, l'index est à son instant et complet (addendum 1 E1)."""
+    if jeu.version not in VERSIONS_NOTEES or jeu.instant is None:
+        raise EvaluationRefusee(
+            f"le jeu est une {jeu.version} : l'assistant se note sur la v1 ou la v2"
+        )
     if etat["instant"] != jeu.instant:
         raise EvaluationRefusee(
             f"l'index est à l'instant {etat['instant']}, le jeu attend {jeu.instant} : relancer"

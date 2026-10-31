@@ -11,12 +11,14 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass, field, fields
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 journal = logging.getLogger("pharmaflux.collecte")
+
 
 # Ajouté à la fin d'une ligne tronquée (fichier sans ``\n`` final) avant d'écrire la
 # suivante : la ligne reste ignorée par ``lire`` sans passer pour une corruption.
@@ -115,17 +117,22 @@ def chemin_manifeste(racine: Path) -> Path:
 
 
 def ajouter(racine: Path, enregistrement: Enregistrement) -> None:
-    """Ajoute une ligne en fin de manifeste et la force sur le disque.
+    """Ajoute une ligne en fin de manifeste et la force sur le disque (``ajouter_ligne``)."""
+    ajouter_ligne(chemin_manifeste(racine), asdict(enregistrement))
+
+
+def ajouter_ligne(chemin: Path, valeurs: Mapping[str, Any]) -> None:
+    """Ajoute ``valeurs`` en JSON en fin du manifeste ``chemin`` et la force sur le disque.
 
     Si une coupure a laissé le fichier sans ``\\n`` final (ligne tronquée), la
     marque de troncature puis un ``\\n`` sont écrits d'abord : la nouvelle
     ligne commence toujours sur une ligne propre, et la ligne tronquée, ainsi
     marquée, reste ignorée par ``lire`` même quand d'autres lignes la suivent.
-    Rien n'est jamais réécrit : on n'ajoute qu'en fin de fichier.
+    Rien n'est jamais réécrit : on n'ajoute qu'en fin de fichier. Le manifeste
+    des pages de la HAS (mission 09) s'écrit par la même porte.
     """
-    chemin = chemin_manifeste(racine)
     chemin.parent.mkdir(parents=True, exist_ok=True)
-    ligne = json.dumps(asdict(enregistrement), ensure_ascii=False) + "\n"
+    ligne = json.dumps(valeurs, ensure_ascii=False) + "\n"
     prefixe = b""
     if _fin_sans_retour_ligne(chemin):
         journal.warning("%s : fin de fichier tronquée, la ligne est marquée et isolée", chemin)
@@ -167,7 +174,16 @@ def parcourir_brut(racine: Path) -> Iterator[tuple[bytes, Enregistrement]]:
     Toute autre ligne illisible lève ``ManifesteCorrompu`` : c'est un signe de
     corruption, pas une coupure. Rien n'est produit si le fichier n'existe pas.
     """
-    chemin = chemin_manifeste(racine)
+    yield from parcourir_lignes(chemin_manifeste(racine), _decoder)
+
+
+def parcourir_lignes[T](chemin: Path, decoder: Callable[[bytes], T]) -> Iterator[tuple[bytes, T]]:
+    """Les lignes lisibles d'un manifeste en ajout seul, décodées par ``decoder``.
+
+    La règle de ``parcourir_brut`` pour tout manifeste écrit par ``ajouter_ligne`` :
+    une dernière ligne illisible, ou marquée tronquée, est ignorée avec un
+    avertissement ; toute autre ligne illisible lève ``ManifesteCorrompu``.
+    """
     if not chemin.exists():
         return
     numero = 0
@@ -184,7 +200,7 @@ def parcourir_brut(racine: Path) -> Iterator[tuple[bytes, Enregistrement]]:
                     f"{chemin} : ligne {numero_illisible} illisible ({exc})"
                 ) from exc
             try:
-                enregistrement = _decoder(ligne)
+                valeur = decoder(ligne)
             except (ValueError, TypeError) as exc:
                 if ligne.endswith(MARQUE_TRONCATURE):
                     journal.warning(
@@ -193,7 +209,7 @@ def parcourir_brut(racine: Path) -> Iterator[tuple[bytes, Enregistrement]]:
                 else:
                     en_attente = (numero, exc)
                 continue
-            yield ligne, enregistrement
+            yield ligne, valeur
     if en_attente is not None:
         journal.warning(
             "%s : dernière ligne (%d) illisible, ignorée : %s", chemin, en_attente[0], en_attente[1]

@@ -32,6 +32,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from itertools import pairwise
 
 from pharmaflux.index import lexical
 
@@ -43,6 +44,33 @@ _MOTS_VIDES = (
     " leur leurs dans avec sans cette ces que qui quoi dont"
 )
 MOTS_VIDES = frozenset(_MOTS_VIDES.split())
+# Les mots courants (mission 09, addendum 1 G) : premiers mots de dénominations du jeu qui sont
+# aussi des mots de tous les jours ou de chimie (« eau » 13 dénominations, « fer » 5, « huile » 6,
+# « vitamine » 25, « acide » 83, « chlorure » 35…). Seuls, ils ne visent pas un médicament : il
+# faut les deux premiers mots significatifs du nom (« EAU OXYGENEE », « CHLORURE DE SODIUM »).
+# Liste écrite et committée avant les questions neuves de la v2 qui la mesurent (07ac561), branchée
+# sur le repérage après leur commit (bbb9809), et éprouvée comme « deux médicaments ».
+MOTS_COURANTS = frozenset(
+    [
+        "eau",
+        "fer",
+        "gel",
+        "huile",
+        "alcool",
+        "charbon",
+        "cuivre",
+        "zinc",
+        "calcium",
+        "magnesium",
+        "vitamine",
+        "acide",
+        "chlorure",
+        "sulfate",
+        "citrate",
+        "glycerine",
+        "vaseline",
+    ]
+)
 # Un groupe générique dans le texte d'un fragment ``identite`` : « - groupe 793 (libellé), type 0 ».
 _GROUPE = re.compile(r"^\s*- groupe \d+ \((.*)\)(?:, type \S+)?$", re.MULTILINE)
 
@@ -92,6 +120,15 @@ def premier_mot(
     return mots[0] if mots else None
 
 
+def cle_du_nom(denomination: str | None, mots_de_forme: frozenset[str] = frozenset()) -> str | None:
+    """Ce qu'une question doit porter pour viser la dénomination : son premier mot significatif,
+    ou ses deux premiers, joints par une espace, si le premier est un mot courant (mission 09)."""
+    mots = _significatifs(denomination, mots_de_forme)
+    if not mots:
+        return None
+    return " ".join(mots[:2]) if mots[0] in MOTS_COURANTS else mots[0]
+
+
 def nom(denomination: str) -> str:
     """Le nom d'une dénomination « NOM dosage, forme » : ce qui précède la dernière « , »."""
     debut, separateur, _ = denomination.rpartition(", ")
@@ -137,7 +174,7 @@ def construire_dictionnaire(
     formes = mots_de_forme(denomination_par_cis.values())
     mot_vers_cis: dict[str, set[str]] = {}
     for cis, denomination in denomination_par_cis.items():
-        mot = premier_mot(denomination, formes)
+        mot = cle_du_nom(denomination, formes)
         if mot is not None:
             mot_vers_cis.setdefault(mot, set()).add(cis)
     cip_vers_cis: dict[str, str] = {}
@@ -194,8 +231,11 @@ def reperer(question: str, dictionnaire: Dictionnaire) -> Repere:
     noms = []
     vises: set[str] = set(cis_explicites)
     vises.update(dictionnaire.cip_vers_cis[c] for c in cip13 if c in dictionnaire.cip_vers_cis)
-    for jeton in jetons:
-        if jeton in dictionnaire.mot_vers_cis:
-            noms.append(jeton)
-            vises.update(dictionnaire.mot_vers_cis[jeton])
+    formes = dictionnaire.mots_de_forme  # le même filtre que la clé du nom (cle_du_nom)
+    significatifs = [j for j in jetons if _MOT.match(j) and j not in MOTS_VIDES | formes]
+    paires = [f"{a} {b}" for a, b in pairwise(significatifs)]
+    for cle in [*jetons, *paires]:  # un mot courant ne vise qu'avec le mot qui le suit
+        if cle in dictionnaire.mot_vers_cis:
+            noms.append(cle)
+            vises.update(dictionnaire.mot_vers_cis[cle])
     return Repere(cis_explicites, cip13, tuple(dict.fromkeys(noms)), frozenset(vises))

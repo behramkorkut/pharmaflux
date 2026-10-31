@@ -1,7 +1,8 @@
 # ADR-0004 — Corpus HAS : les pages d'avis de la Commission de la transparence, les PDF en second
 
 **Statut :** accepté · **Date :** 2026-10-26 · **Mission :** 01
-**Remplace / remplacé par :** —
+**Remplace / remplacé par :** — · **Complété par :** ADR 0013 (la collecte, l'extraction, les
+fragments d'avis, le rendu des liens et la clause « Liens hypertextes », mission 09)
 
 ## Contexte
 

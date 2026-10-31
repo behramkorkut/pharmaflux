@@ -23,6 +23,7 @@ from typer.testing import CliRunner
 from pharmaflux import cli
 from pharmaflux.assistant import chemin, controle, regles, repere
 from pharmaflux.assistant.budget import (
+    MISSION,
     PLAFOND,
     BudgetDepasse,
     Journal,
@@ -201,13 +202,15 @@ def test_budget_cout_estimation_et_journal(tmp_path: Path) -> None:
     assert cout_estime("x" * 100, 4000) > 0
     journal = Journal(tmp_path / "depenses.jsonl")
     assert journal.total() == 0.0 and journal.reste() == PLAFOND
-    journal.ajouter(Ligne("2026-10-30T00:00:00Z", 8, "q-1", "m", "low", 10, 5, 0, 0, 1.5))
+    journal.ajouter(Ligne("2026-10-30T00:00:00Z", MISSION, "q-1", "m", "low", 10, 5, 0, 0, 1.5))
     assert journal.total() == pytest.approx(1.5) and journal.reste() == pytest.approx(PLAFOND - 1.5)
 
 
 def test_exiger_budget_refuse_au_dela_du_plafond(tmp_path: Path) -> None:
     journal = Journal(tmp_path / "depenses.jsonl")
-    journal.ajouter(Ligne("2026-10-30T00:00:00Z", 8, "q-1", "m", "low", 0, 0, 0, 0, PLAFOND - 0.01))
+    journal.ajouter(
+        Ligne("2026-10-30T00:00:00Z", MISSION, "q-1", "m", "low", 0, 0, 0, 0, PLAFOND - 0.01)
+    )
     with pytest.raises(BudgetDepasse):
         exiger_budget(journal, 0.5)
 
@@ -396,7 +399,9 @@ def test_technique_journalisee_mais_pas_cachee(index: Qdrant, tmp_path: Path) ->
 
 def test_budget_refuse_avant_tout_appel(index: Qdrant, tmp_path: Path) -> None:
     journal = Journal(tmp_path / "depenses.jsonl")
-    journal.ajouter(Ligne("2026-10-30T00:00:00Z", 8, "q", "m", "low", 0, 0, 0, 0, PLAFOND - 0.001))
+    journal.ajouter(
+        Ligne("2026-10-30T00:00:00Z", MISSION, "q", "m", "low", 0, 0, 0, 0, PLAFOND - 0.001)
+    )
     cache = CacheReponses(tmp_path / "assistant")
     double = DoubleClient(fixe=_llm())
     try:
@@ -448,7 +453,7 @@ def test_cli_demander_texte(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
         application,
         ["assistant", "depenses", "--donnees", str(tmp_path / "a")],
     )
-    assert "mission 8" in attendu.output
+    assert "mission 9" in attendu.output
 
 
 @pytest.mark.usefixtures("cli_index")

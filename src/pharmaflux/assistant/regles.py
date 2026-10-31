@@ -12,6 +12,15 @@ effets indésirables, sans personne, est une **abstention** hors périmètre, pa
 Deux tests portent sur la v1 entière (test_assistant) : chaque question ``medical`` déclenche
 le refus, et **aucune** question d'une autre catégorie ne le déclenche — un faux positif est
 un défaut, au même titre qu'un oubli.
+
+Mission 09 (addendum 1 G2), après l'échec aux règles de trois questions médicales neuves de la
+v2 (``medical-013``, ``-014``, ``-016``, figées dans le commit qui précède cette extension) :
+- **la posologie** (dose, durée, rythme, mode de prise) donne un refus **sans cadre de
+  décision**, que la question cite un avis ou non : « quelle est la durée du traitement selon
+  l'avis ? » demande une posologie ;
+- **la convenance pour une personne** (« convient-il à ma mère ? ») est une décision de soin.
+L'extension est éprouvée sur la v0, la v1, la v2 et 200 questions factuelles tirées des
+dénominations du jeu (``tests/test_regles_posologie.py``) : aucun faux refus.
 """
 
 from __future__ import annotations
@@ -64,6 +73,22 @@ _VERBES_SOIN = frozenset(
 )
 # Une situation individuelle : le refus ne s'y prononce jamais, même sans verbe de soin.
 _MARQUEURS_PERSONNELS = ("grossesse", "enceinte", "allaitement", "allaite", "dans mon cas")
+# La posologie (mission 09, G2) : en suites aplaties, mots entiers ; refus sans cadre de décision.
+_POSOLOGIE = (
+    "posologie",
+    "duree du traitement",
+    "duree de traitement",
+    "duree d un traitement",
+    "duree de prise",
+    "rythme",
+    "mode de prise",
+    "quelle dose",
+    "combien de fois par",
+    "combien de comprimes",
+)
+# La convenance pour une personne (mission 09) : un mot de convenance et un possessif ou « je ».
+_CONVENANCE = frozenset({"convient", "conviendrait", "conviennent", "adapte", "adaptee"})
+_PERSONNE = frozenset({"je", "moi", "mon", "ma", "mes"})
 
 # L'orientation d'un refus médical (annexe B, D) : vers un professionnel, et le rappel que
 # l'assistant n'est pas un dispositif médical.
@@ -84,10 +109,17 @@ def refus_medical(question: str) -> str | None:
     for marqueur in _MARQUEURS_PERSONNELS:
         if marqueur in flux:
             return f"situation de santé individuelle ({marqueur})"
+    for suite in _POSOLOGIE:
+        if f" {suite} " in f" {flux} ":
+            return f"la question demande une posologie (« {suite} »)"
     mots = set(flux.split())
     gestes = mots & _VERBES_SOIN
     if gestes and any(f" {cadre} " in f" {flux} " for cadre in _CADRE_DECISION):
         return f"la question demande une décision de soin (« {sorted(gestes)[0]} »)"
+    convenance = mots & _CONVENANCE
+    if convenance and mots & _PERSONNE:
+        mot = sorted(convenance)[0]
+        return f"la question demande si un médicament convient à une personne (« {mot} »)"
     return None
 
 

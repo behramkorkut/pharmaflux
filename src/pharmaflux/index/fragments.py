@@ -25,6 +25,13 @@ Ce que le texte encodé ne contient pas : l'instant de l'état (tenu une fois,
 par l'index, addendum 1 D2), les liens (en métadonnée) et les citations (en
 métadonnée : fichier, date de la source, observée depuis). Une valeur absente
 ou illisible ne s'écrit pas : la phrase est omise, jamais devinée.
+
+Depuis le format 3 (mission 09, addendum 1 F1), une section de plus, ``avis_has`` : le texte
+d'une page d'avis de la HAS, mot pour mot (``has.extraction``), un fragment par (page, CIS,
+partie). Il s'ouvre sur la ligne d'identité et sur une ligne d'en-tête à nous (le titre de la
+page, le dossier, la date de l'avis, la mise en ligne), répétées à chaque partie : chaque
+partie se date seule. La page vient des liens de la fiche (``liens_avis`` du SMR et de l'ASMR)
+et de l'archive HAS (``index.pages_has``) ; l'URL n'est jamais dans le texte.
 """
 
 from __future__ import annotations
@@ -40,15 +47,31 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
+from pharmaflux.has.extraction import (
+    VERSION_EXTRACTEUR,
+    AvisExtrait,
+    PageRejetee,
+    controler_dossiers,
+)
+from pharmaflux.index.pages_has import PageIndexee
+
 # Change dès que, pour les mêmes fiches, un texte, un identifiant ou une métadonnée change.
 # Format 2 (mission 08) : le texte des fragments ne change pas, mais chaque point porte désormais
 # un vecteur creux BM25 à côté du dense (index.lexical, index.qdrant). Le bump force une
 # reconstruction unique ; les vecteurs denses sont relus du cache, le texte étant inchangé.
-FORMAT = 2
+# Format 3 (mission 09) : la section avis_has, et l'avgdl de BM25 remesurée (index.lexical).
+# Format 4 (mission 09, palier 4) : une page d'avis ne se rattache qu'aux fiches que le référentiel
+# des spécialités nomme ; une fiche partielle n'a plus de fragment avis_has. Le bump force la
+# reconstruction (une mise à jour garderait ceux des fiches non touchées).
+FORMAT = 4
 BORNE_CARACTERES = 1200  # recalée au palier 2 : au pire 2,48 caractères par jeton e5, 512 au plus
 ESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://github.com/behramkorkut/pharmaflux/fragments")
 
 SECTIONS = ("identite", "presentations", "avis", "disponibilite", "informations")
+SECTION_AVIS_HAS = "avis_has"
+# Les sections de l'index, dans l'ordre des fragments d'une fiche.
+SECTIONS_INDEX = (*SECTIONS[:3], SECTION_AVIS_HAS, *SECTIONS[3:])
+SOURCE_AVIS_HAS = "has.avis"
 # Les entités qui nourrissent chaque section : ses citations, et la place de ses illisibles.
 ENTITES_SECTION: dict[str, tuple[str, ...]] = {
     "identite": (
@@ -75,6 +98,8 @@ PORTEE_SPECIALITE = (
     " n'est nommée"
 )
 _MENTION_LA_PLUS_LONGUE = "(suite, partie 99 sur 99)"
+LIGNE_AVIS_MINIMALE = 300  # une coupe ne descend pas sous cette longueur, même sous un long en-tête
+_FIN_DE_PHRASE = re.compile(r"(?<=[.!?;:]) ")
 _LIEN = re.compile(r"<a\b[^>]*?\bhref=(['\"])(.*?)\1[^>]*>(.*?)</a>", re.DOTALL | re.IGNORECASE)
 _BALISE = re.compile(r"<[^>]+>")
 
@@ -102,6 +127,7 @@ class Fragment:
     texte: str
     sources: tuple[Source, ...]
     liens: tuple[str, ...]
+    page: Mapping[str, object] | None = None  # avis_has : la page d'avis et ses dates
 
     @property
     def empreinte_texte(self) -> str:
@@ -129,7 +155,7 @@ class Fragment:
                 for s in self.sources
             ],
             "liens": list(self.liens),
-        }
+        } | ({} if self.page is None else {"page": dict(self.page)})
 
     def en_jsonl(self) -> str:
         return json.dumps(self.en_dict(), ensure_ascii=False, separators=(",", ":"))
@@ -140,6 +166,11 @@ def identifiant(code_cis: str, section: str, partie: int) -> str:
     return str(uuid.uuid5(ESPACE, f"f{FORMAT}/{code_cis}/{section}/{partie}"))
 
 
+def identifiant_avis_has(code_cis: str, page_id: str, partie: int) -> str:
+    """Une page par suite de fragments : un dossier à deux pages donne deux suites (F1)."""
+    return str(uuid.uuid5(ESPACE, f"f{FORMAT}/{code_cis}/{SECTION_AVIS_HAS}/{page_id}/{partie}"))
+
+
 @dataclass(frozen=True, slots=True)
 class _Bloc:
     """Un sous-titre et ses éléments (une ligne chacun) ; la découpe ne coupe qu'entre deux."""
@@ -148,13 +179,19 @@ class _Bloc:
     elements: tuple[str, ...]
 
 
-def fragments(fiche: Fiche) -> list[Fragment]:
-    """Les fragments d'une fiche, dans l'ordre des sections, puis des parties."""
+def fragments(fiche: Fiche, pages: Mapping[str, PageIndexee] | None = None) -> list[Fragment]:
+    """Les fragments d'une fiche, dans l'ordre des sections, puis des parties.
+
+    ``pages`` : les pages d'avis de la HAS lues par l'index, par URL ; sans elles, aucun
+    fragment ``avis_has``.
+    """
     code_cis = str(fiche["code_cis"])
     entete = f"CIS {code_cis} — {fiche['denomination'] or '(dénomination inconnue)'}"
     illisibles = _illisibles_par_section(fiche)
     resultat: list[Fragment] = []
     for section in SECTIONS:
+        if section == "disponibilite" and pages:  # avis_has vient juste après avis
+            resultat += _avis_has(fiche, entete, pages)
         contenu = _SECTIONS[section](fiche)
         if contenu is None:
             continue
@@ -194,11 +231,210 @@ def fragments(fiche: Fiche) -> list[Fragment]:
     return resultat
 
 
-def fragments_des_fiches(fiches: Any, lot: int = 500) -> Iterator[Fragment]:
+def fragments_des_fiches(
+    fiches: Any, lot: int = 500, pages: Mapping[str, PageIndexee] | None = None
+) -> Iterator[Fragment]:
     """Les fragments de toutes les fiches d'une table PyArrow (la vue du gold), par lots."""
     for morceau in fiches.to_batches(max_chunksize=lot):
         for fiche in morceau.to_pylist():
-            yield from fragments(fiche)
+            yield from fragments(fiche, pages)
+
+
+def liens_des_avis(fiche: Fiche) -> dict[str, set[str]]:
+    """Les pages d'avis que cite la fiche (liens_avis du SMR et de l'ASMR), et leurs dossiers."""
+    liens: dict[str, set[str]] = {}
+    for genre in ("smr", "asmr"):
+        for avis in fiche[f"avis_{genre}"] or ():
+            for lien in avis["liens_avis"] or ():
+                liens.setdefault(lien, set()).add(avis["code_dossier_has"])
+    return liens
+
+
+def rattachements(
+    fiches: Any, lot: int = 2000
+) -> tuple[dict[str, set[str]], dict[str, set[str]], set[str]]:
+    """Pour chaque page d'avis que cite une fiche de la table : ses dossiers, ses CIS, et les
+    pages qu'au moins une fiche du référentiel cite (les autres n'ont pas de fragment).
+
+    Sur toutes les fiches, pas sur les seules touchées : le contrôle d'une page porte sur tous
+    les dossiers qui la lient (``index.pages_has``).
+    """
+    dossiers: dict[str, set[str]] = {}
+    cis: dict[str, set[str]] = {}
+    du_referentiel: set[str] = set()
+    colonnes = ["code_cis", "dans_referentiel", "avis_smr", "avis_asmr"]
+    for morceau in fiches.select(colonnes).to_batches(lot):
+        for fiche in morceau.to_pylist():
+            for url, lies in liens_des_avis(fiche).items():
+                dossiers.setdefault(url, set()).update(lies)
+                cis.setdefault(url, set()).add(fiche["code_cis"])
+                if fiche["dans_referentiel"]:
+                    du_referentiel.add(url)
+    return dossiers, cis, du_referentiel
+
+
+# --- avis_has (format 3) -----------------------------------------------------------------------
+
+
+def _avis_has(fiche: Fiche, entete: str, pages: Mapping[str, PageIndexee]) -> list[Fragment]:
+    """Un fragment par (page, partie) pour chaque page d'avis extraite que la fiche cite.
+
+    Seulement pour une fiche du référentiel des spécialités (décision de l'IeC, palier 4) :
+    l'identité d'un médicament vient du référentiel, pas du titre d'une page. Une fiche partielle
+    (sans dénomination) ne peut être ni visée ni citée utilement ; ses fragments d'avis ne feraient
+    que du bruit. Le rattachement se recalcule à chaque construction et à chaque mise à jour : une
+    page revient quand sa fiche entre au référentiel. Les pages se rangent de la plus récente à la
+    plus ancienne (date de l'avis), puis par page.
+    """
+    if not fiche["dans_referentiel"]:
+        return []
+    code_cis = str(fiche["code_cis"])
+    liens = liens_des_avis(fiche)
+    retenues = [
+        (pages[url], sorted(dossiers))
+        for url, dossiers in liens.items()
+        if url in pages and _confirmee(pages[url], dossiers)
+    ]
+    retenues.sort(key=lambda r: (_inverse_date(r[0]), r[0].page_id))
+    resultat = []
+    for page, dossiers in retenues:
+        extrait = page.extrait
+        assert extrait is not None
+        en_tete_avis = (
+            f"Avis de la Commission de la transparence (HAS) « {extrait.titre} »,"
+            f" dossier {', '.join(dossiers)}, du {extrait.date_avis.isoformat()} ;"
+            f" page mise en ligne le {extrait.mis_en_ligne.isoformat()}"
+            + (f", mise à jour le {extrait.mis_a_jour.isoformat()}" if extrait.mis_a_jour else "")
+        )
+        tete = f"{entete}\n{en_tete_avis}"
+        rubriques = _rubriques(extrait, tete)
+        parties = _decouper_avis(tete, rubriques, BORNE_CARACTERES)
+        if len(parties) > 1:
+            parties = _decouper_avis(
+                tete, rubriques, BORNE_CARACTERES - len(_MENTION_LA_PLUS_LONGUE) - 1
+            )
+        metadonnees = {
+            "url": page.url,
+            "page_id": page.page_id,
+            "dossiers": dossiers,
+            "date_avis": extrait.date_avis.isoformat(),
+            "mis_en_ligne": extrait.mis_en_ligne.isoformat(),
+            "mis_a_jour": extrait.mis_a_jour.isoformat() if extrait.mis_a_jour else None,
+            "collectee_le": page.collectee_le,
+            "archive": page.archive,
+            "sha256": page.sha256,
+            "pdf_avis": extrait.pdf_avis,
+            "extracteur": VERSION_EXTRACTEUR,
+        }
+        source = Source(SOURCE_AVIS_HAS, extrait.date_avis.isoformat(), page.collectee_le)
+        for numero, lignes in enumerate(parties, start=1):
+            if len(parties) > 1:
+                mention = f"(partie 1 sur {len(parties)})" if numero == 1 else None
+                mention = mention or f"(suite, partie {numero} sur {len(parties)})"
+                lignes = [lignes[0], mention, *lignes[1:]]
+            resultat.append(
+                Fragment(
+                    identifiant=identifiant_avis_has(code_cis, page.page_id, numero),
+                    code_cis=code_cis,
+                    section=SECTION_AVIS_HAS,
+                    partie=numero,
+                    parties=len(parties),
+                    denomination=fiche["denomination"],
+                    dans_referentiel=bool(fiche["dans_referentiel"]),
+                    texte="\n".join(lignes),
+                    sources=(source,),
+                    liens=(page.url,),
+                    page=metadonnees,
+                )
+            )
+    return resultat
+
+
+def _confirmee(page: PageIndexee, dossiers: set[str]) -> bool:
+    """Extraite, et chaque dossier de cette fiche qui la lie est nommé par son document d'avis."""
+    if page.extrait is None:
+        return False
+    try:
+        controler_dossiers(page.extrait, dossiers)
+    except PageRejetee:
+        return False
+    return True
+
+
+def _inverse_date(page: PageIndexee) -> str:
+    assert page.extrait is not None
+    return "".join(str(9 - int(c)) for c in page.extrait.date_avis.strftime("%Y%m%d"))
+
+
+def _rubriques(extrait: AvisExtrait, tete: str) -> list[tuple[str | None, list[str]]]:
+    """Les lignes rendues de l'avis (sans le titre, déjà dans l'en-tête), par rubrique.
+
+    Le titre d'une rubrique est sa première ligne quand c'est un intertitre (« L'essentiel »,
+    « Service Médical Rendu (SMR) ») : la découpe le répète avec « (suite) ». Une ligne qui ne
+    tiendrait pas dans une partie, avec l'en-tête, la mention et un titre répété, se coupe
+    entre deux phrases (``couper_ligne``).
+    """
+    rendues = extrait.lignes_rendues()[1:]
+    titres = [
+        r for ligne, r in zip(extrait.lignes, rendues, strict=True) if ligne.genre == "intertitre"
+    ]
+    reserve = len(tete) + len(_MENTION_LA_PLUS_LONGUE) + max((len(t) for t in titres), default=0)
+    limite = max(LIGNE_AVIS_MINIMALE, BORNE_CARACTERES - reserve - len(" (suite)") - 3)
+    groupes: list[tuple[str | None, list[str]]] = []
+    precedente: str | None = None
+    for ligne, rendue in zip(extrait.lignes, rendues, strict=True):
+        if not groupes or ligne.rubrique != precedente:
+            titre = rendue if ligne.genre == "intertitre" else None
+            groupes.append((titre, []))
+            precedente = ligne.rubrique
+        groupes[-1][1].extend(couper_ligne(rendue, limite))
+    return groupes
+
+
+def couper_ligne(ligne: str, limite: int) -> list[str]:
+    """Une ligne trop longue en morceaux d'au plus ``limite`` caractères, mot pour mot.
+
+    On coupe après une fin de phrase (« . », « ! », « ? », « ; », « : ») suivie d'une espace,
+    sinon à une espace : les morceaux rejoints par une espace redonnent la ligne (ses espaces
+    sont déjà normalisées par l'extraction). Une ligne assez courte est rendue telle quelle.
+    """
+    if len(ligne) <= limite:
+        return [ligne]
+    morceaux: list[str] = []
+    reste = ligne
+    while len(reste) > limite:
+        fenetre = reste[: limite + 1]
+        coupe = max((m.start() for m in _FIN_DE_PHRASE.finditer(fenetre)), default=-1)
+        if coupe <= 0:
+            coupe = fenetre.rfind(" ")
+        if coupe <= 0:  # un seul mot plus long que la limite : il reste entier
+            break
+        morceaux.append(reste[:coupe])
+        reste = reste[coupe + 1 :]
+    return [*morceaux, reste]
+
+
+def _decouper_avis(
+    entete: str, rubriques: Sequence[tuple[str | None, list[str]]], borne: int
+) -> list[list[str]]:
+    """Comme ``_decouper``, ligne par ligne, mot pour mot, sans préfixe ajouté.
+
+    Une partie ouverte au milieu d'une rubrique répète son titre avec « (suite) ».
+    """
+    parties: list[list[str]] = [[entete]]
+    fixes = 1
+    for titre, lignes in rubriques:
+        for rang, ligne in enumerate(lignes):
+            courante = parties[-1]
+            taille = sum(len(x) + 1 for x in courante) + len(ligne)
+            if taille > borne and len(courante) > fixes:
+                courante = [entete]
+                if rang > 0 and titre is not None:
+                    courante.append(f"{titre} (suite)")
+                parties.append(courante)
+                fixes = len(courante)
+            courante.append(ligne)
+    return parties
 
 
 # --- les sections ------------------------------------------------------------------------------

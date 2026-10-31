@@ -1,0 +1,29 @@
+HTTP/1.1 200 OK
+server: nginx
+date: Sat, 31 Oct 2026 10:41:56 GMT
+content-type: text/html;charset=UTF-8
+content-length: 18050
+connection: keep-alive
+x-id-fe: parf20-hw-edge-or0001
+x-shard: parf20-shard0-default
+access-control-allow-origin: *
+age: 0
+cache-control: no-cache, no-store, must-revalidate
+content-encoding: gzip
+expires: 0
+feature-policy: accelerometer 'none'; autoplay 'none'; camera *; geolocation 'self'; gyroscope 'none'; magnetometer 'none'; microphone *; midi 'none'; payment 'none'; usb 'none';
+permissions-policy: accelerometer=(), autoplay=(), camera=*, geolocation=(self), gyroscope=(), magnetometer=(), microphone=*, midi=(), payment=(), usb=()
+pragma: no-cache
+referrer-policy: strict-origin-when-cross-origin
+set-cookie: JSESSIONID=<retiré>; Path=/; Secure; HttpOnly
+strict-transport-security: max-age=31536000
+vary: Accept-Encoding
+x-content-type-options: nosniff
+x-jcms-ajax-id: AjaxCtxt-0-1793443316456
+x-ogo-cache: MISS
+x-varnish: 200327301
+x-xss-protection: 1
+x-id: parf20-hw-edge-or0002
+cache: MISS
+accept-ranges: bytes
+traceparent: 00-0a16da25f58a9d968cb65ad3a8315806-63aab417d43a0901-01

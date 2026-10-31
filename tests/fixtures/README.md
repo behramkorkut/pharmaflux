@@ -108,6 +108,63 @@ archives (le test les écrit sous les noms cités, horodatage figé
 `bdpm/` change, le sha256 cité change aussi : c'est le vérificateur qui le
 dit (`sha256 différent`).
 
+## `has/` — <https://www.has-sante.fr> (mission 09, §0)
+
+**Date : 31/10/2026, entre 10:41:23 et 10:43:24 UTC.** Les douze requêtes du
+§0 de la mission 09, les seules permises à l'agent : en série, deux secondes
+au moins entre deux, le `User-Agent` de la collecte de la BDPM
+(`pharmaflux/0.1.0 (+https://github.com/behramkorkut/pharmaflux)`), aucune
+redirection suivie. Elles sont faites par `requetes_s0.py` (ce dossier), qui
+tient le journal en ajout seul `journal-s0.jsonl` (heure, méthode, URL,
+statut, taille, sha256, en-têtes utiles) et refuse la treizième. Le détail et
+ce que chaque réponse apprend : `docs/rapports/mission-09/points-a-trancher.md`.
+
+| Fichier | URL | Ce que c'est |
+|---|---|---|
+| `robots.txt` | `/robots.txt` | 109 octets, deux chemins interdits (`/jcms/fc_2875171/`, un export de Scope Santé) : ni les pages d'avis, ni `/upload/` |
+| `p_4072400.html` | `/jcms/p_4072400` | CT-21681, MOUNJARO, avis du 06/05/2026 : 12 spécialités, deux SMR et deux ASMR |
+| `p_3590639.html` | `/jcms/p_3590639` | CT-21088, IMFINZI - LYNPARZA, avis du 15/01/2025 : un dossier, deux marques |
+| `p_3577036.html` | `/jcms/p_3577036` | CT-21030, KALYDECO, avis du 18/12/2024 (questions `avis_has-002`, `-008`, `-009` de la v1) |
+| `p_3500927.html` | `/jcms/p_3500927` | CT-20568, ADEMPAS, avis du 28/02/2024, premier des deux liens du dossier |
+| `p_3741668.html` | `/jcms/p_3741668` | CT-20568, second lien : une autre décision, du 10/11/2025, sans SMR ni document |
+| `c_2027377.html` | `/jcms/c_2027377` | CT-14040, DOLIPRANE, avis du 01/04/2015 : la forme `c_N`, 20 spécialités |
+| `doc1-saut1.headers` … `doc1-saut4-pdf.headers` | le document d'avis de MOUNJARO, saut par saut | 302 vers `doXiti.jsp`, page de mesure d'audience (`doc1-saut3-doXiti.html`, rafraîchissement vers le PDF), puis le PDF en `HEAD` (631 564 octets) |
+| `doc2-saut1.headers` | le document d'avis de DOLIPRANE (2015) | 302 vers `doXiti.jsp`, comme en 2026 |
+
+**Quatre pages de la collecte de la première étape**, reprises après le §0 : ce
+sont celles que la v1 de l'extracteur rejetait à tort ou à raison. Elles ont
+été copiées à l'octet de l'archive du Mac (passage `20261031T124148Z` de beko,
+`bronze/has/pages/<page>/…html.gz` décompressé), **aucune requête de plus**.
+Leur sha256 est celui du manifeste du passage (`test_has_extraction.py`).
+L'analyse est dans `docs/rapports/mission-09/collecte-premiere-etape.md`.
+
+| Fichier | Reçu (UTC) | Ce que c'est |
+|---|---|---|
+| `p_3638197.html` | 31/10/2026 12:53:18 | CT-21259, KEPPRA, avis du 16/07/2025 : le `name` du JSON-LD garde `&lt;`, le `<h1>` le décode |
+| `p_3687274.html` | 31/10/2026 12:52:11 | CT-21402, NIMENRIX, avis du 10/09/2025 commun à cinq vaccins (`…_AVIS_CT21541&21424&21540&21402&21567`) |
+| `p_4335961.html` | 31/10/2026 12:43:35 | CT-21823, NICORANDIL BIOGARAN / ALMUS, avis du 08/07/2026 commun à cinq dossiers (`…_AVIS_CT21823_21827_21832_21871_21883`) |
+| `p_3608587.html` | 31/10/2026 12:55:02 | CT-21223, PEDMARQSI, avis du 28/05/2025 : le libellé de l'avis dit CT21123, le reste de la page CT21223 ; rejetée |
+
+`p_4072400.extrait.json` et `c_2027377.extrait.json` (palier 1) ne sont pas des
+réponses : ce sont les **extractions de référence** de deux pages, relues à la
+main contre la page, que `tests/test_has_extraction.py` exige à l'identique
+(blocs, ordre, empreinte). En v2 de l'extracteur, seuls leurs champs
+`extracteur` et `empreinte` ont changé ; le test garde l'empreinte de la v1.
+
+Les corps sont gardés **à l'octet**, tels que reçus (décompressés par
+`httpx`), et leur sha256 est au journal du §0 ou au manifeste du passage. Une page porte un jeton CSRF et un
+horodatage propres à chaque réponse : deux requêtes de la même page ne
+donnent pas les mêmes octets. **Seule retouche** : la valeur du cookie de
+session `JSESSIONID` est remplacée par `<retiré>` dans les `.headers` ; les
+corps ne contiennent aucun cookie.
+
+Contenus de la Haute Autorité de santé, réutilisés selon ses mentions légales
+(article du 01/10/2015, lu le 26/10/2026 et relu le 31/10/2026, ADR 0004) :
+reproduits en intégralité, sans altération, avec la source et la date.
+Document de la Haute Autorité de santé, disponible sur
+<https://www.has-sante.fr>, pages consultées le 31/10/2026 ; la date de mise
+en ligne de chaque avis est dans la page (« Mis en ligne le … »).
+
 ## `openmedic/` — <https://www.data.gouv.fr>
 
 | Fichier | URL | Extrait |

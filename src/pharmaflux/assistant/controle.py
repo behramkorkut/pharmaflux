@@ -172,9 +172,25 @@ def sans_etiquettes(texte: str, declarees: Collection[int]) -> str:
     return _ETIQUETTES.sub(blanchir, texte)
 
 
+# Une URL, ou un nom de domaine des sources (has-sante.fr, ansm.sante.fr, gouv.fr…).
+# La ponctuation finale (« ). ») n'est pas de l'adresse.
+ADRESSE = re.compile(
+    r"(?:https?://|www\.)[^\s()<>«»\"]*[^\s()<>«»\".,;:!?]"
+    r"|\b[\w-]+(?:\.[\w-]+)*\.(?:fr|com|org|eu|net)\b",
+    re.IGNORECASE,
+)
+
+
 def controler(texte: str, appuis: Sequence[str], question: str) -> str | None:
     """``None`` si chaque nombre et chaque date du texte s'appuient sur les citations ou la
-    question ; sinon le premier élément non vérifié (le motif de l'abstention technique)."""
+    question ; sinon le premier élément non vérifié (le motif de l'abstention technique).
+
+    Avant les nombres, les adresses (mission 09) : le LLM ne voit aucune URL, le code rend les
+    liens ; une adresse écrite par le LLM serait inventée ou recopiée d'ailleurs.
+    """
+    adresse = ADRESSE.search(texte)
+    if adresse is not None:
+        return f"une adresse (« {adresse[0]} ») dans le texte rédigé : seul le code rend les liens"
     nombres_appui: set[str] = set()
     dates_appui: set[tuple[int, int, int]] = set()
     mois_appui: set[tuple[int, int]] = set()

@@ -53,6 +53,8 @@ class Encodeur(Protocol):
 
     def requete(self, texte: str) -> Vecteurs: ...
 
+    def liberer(self) -> None: ...
+
 
 def charger(nom: str, racine: Path | None = None) -> Encodeur:
     """L'encodeur ``nom`` : ``test``, ou un modèle épinglé dont les fichiers sont vérifiés."""
@@ -79,21 +81,36 @@ class E5Onnx:
     dimension = 384
 
     def __init__(self, dossier: Path, empreinte: str) -> None:
-        import onnxruntime
         from sentencepiece import SentencePieceProcessor
 
         self.empreinte = empreinte
+        self._dossier = dossier
         self._jetons = SentencePieceProcessor(model_file=str(dossier / "sentencepiece.bpe.model"))
-        options = onnxruntime.SessionOptions()
-        options.log_severity_level = 3
-        options.enable_cpu_mem_arena = False  # l'arène gardait le pic du plus long lot
-        options.enable_mem_pattern = False  # un motif mémoire par forme de lot
-        self._session = onnxruntime.InferenceSession(
-            str(dossier / "onnx" / "model_quantized.onnx"),
-            options,
-            providers=["CPUExecutionProvider"],
-        )
-        self._entrees = {e.name for e in self._session.get_inputs()}
+        self._session_: Any = None  # chargée au premier encodage, libérable (mission 09)
+        self._entrees: set[str] = set()
+
+    @property
+    def _session(self) -> Any:
+        """La session ONNX, chargée au premier besoin : une construction tout en cache ne la
+        charge pas, et une construction qui encode la libère avant d'écrire (``liberer``)."""
+        if self._session_ is None:
+            import onnxruntime
+
+            options = onnxruntime.SessionOptions()
+            options.log_severity_level = 3
+            options.enable_cpu_mem_arena = False  # l'arène gardait le pic du plus long lot
+            options.enable_mem_pattern = False  # un motif mémoire par forme de lot
+            self._session_ = onnxruntime.InferenceSession(
+                str(self._dossier / "onnx" / "model_quantized.onnx"),
+                options,
+                providers=["CPUExecutionProvider"],
+            )
+            self._entrees = {e.name for e in self._session_.get_inputs()}
+        return self._session_
+
+    def liberer(self) -> None:
+        """Rend la mémoire du modèle ; il se rechargera si un texte reste à encoder."""
+        self._session_ = None
 
     def passages(self, textes: Sequence[str]) -> Vecteurs:
         return self._encoder([PREFIXE_PASSAGE + t for t in textes])
@@ -141,9 +158,10 @@ class E5Onnx:
                     ids[ligne, : len(tous[i])] = tous[i]
                     masque[ligne, : len(tous[i])] = 1
                 entrees = {"input_ids": ids, "attention_mask": masque}
+                session = self._session
                 if "token_type_ids" in self._entrees:
                     entrees["token_type_ids"] = np.zeros_like(ids)
-                etats = self._session.run(None, entrees)[0][: len(rangs)]
+                etats = session.run(None, entrees)[0][: len(rangs)]
                 poids = masque[: len(rangs), :, None].astype(np.float32)
                 moyennes = (etats * poids).sum(axis=1) / np.maximum(poids.sum(axis=1), 1.0)
                 sortie[rangs] = normer(moyennes)
@@ -162,6 +180,9 @@ class EncodeurTest:
 
     def requete(self, texte: str) -> Vecteurs:
         return self.passages([texte])[0:1].reshape(-1)
+
+    def liberer(self) -> None:
+        pass
 
     def _brut(self, texte: str) -> npt.NDArray[np.float64]:
         graine = int.from_bytes(hashlib.sha256(texte.encode("utf-8")).digest()[:8], "little")

@@ -17,8 +17,10 @@ from __future__ import annotations
 # palier 2). Les tests mesurent ainsi la mémoire comme la ligne de commande la consomme.
 import pharmaflux.silver  # noqa: F401  # isort: skip
 
+import ipaddress
 import os
 import re
+import socket
 import uuid
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
@@ -52,6 +54,53 @@ from pharmaflux.demo.jeu import JEU_PAR_DEFAUT
 from pharmaflux.evenements import rejeu
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+class ReseauInterdit(RuntimeError):  # noqa: N818 (nom français voulu)
+    """Un test a voulu joindre un hôte qui n'est pas cette machine."""
+
+
+def hote_local(hote: str | bytes | None) -> bool:
+    """Cette machine : ``localhost``, ou une adresse de bouclage (Redpanda, Qdrant)."""
+    if hote is None:
+        return True
+    nom = hote.decode() if isinstance(hote, bytes) else hote
+    if nom == "localhost" or nom.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(nom.strip("[]")).is_loopback
+    except ValueError:
+        return False
+
+
+@pytest.fixture(scope="session", autouse=True)
+def reseau_coupe() -> Iterator[None]:
+    """Aucun test ne joint le réseau (``CLAUDE.md``, mission 09) : toute résolution de nom ou
+    connexion vers un hôte qui n'est pas cette machine lève ``ReseauInterdit``, quel que soit le
+    client (httpx, urllib…). Les services locaux (Redpanda, Qdrant) restent joignables, et
+    ``tests/test_reseau.py`` vérifie que la garde tient."""
+    vraie_resolution = socket.getaddrinfo
+    vraie_connexion = socket.socket.connect
+
+    def resolution(hote: str | bytes | None, *args: object, **kwargs: object) -> object:
+        if not hote_local(hote):
+            raise ReseauInterdit(f"un test a voulu résoudre {hote!r}")
+        return vraie_resolution(hote, *args, **kwargs)  # type: ignore[arg-type]
+
+    def connexion(self: socket.socket, adresse: object) -> None:
+        if isinstance(adresse, tuple) and not hote_local(str(adresse[0])):
+            raise ReseauInterdit(f"un test a voulu joindre {adresse!r}")
+        vraie_connexion(self, adresse)  # type: ignore[arg-type]
+
+    socket.getaddrinfo = resolution  # type: ignore[assignment]
+    socket.socket.connect = connexion  # type: ignore[method-assign]
+    try:
+        yield
+    finally:
+        socket.getaddrinfo = vraie_resolution
+        socket.socket.connect = vraie_connexion  # type: ignore[method-assign]
+
+
 EN_TETES_IGNORES = {"transfer-encoding", "content-length", "content-encoding"}
 
 # Une réponse scénarisée : (statut, contenu, en-têtes) ou une exception à lever.

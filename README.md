@@ -51,18 +51,30 @@ devient des fragments datés et prudents, encodés par un modèle local épingl�
 depuis le silver, et vérifié contre sa reconstruction complète ; `make index`
 (ADR 0011).
 
-**Mission 08 en cours** : l'assistant gouverné. La recherche devient hybride
-(le sens et les mots). Claude rédige à partir des seuls fragments, et le code
-contrôle chaque citation, chaque nombre et chaque date. L'assistant
+**Mission 08 fusionnée** (PR #9) : l'assistant gouverné. La recherche devient
+hybride (le sens et les mots). Claude rédige à partir des seuls fragments, et
+le code contrôle chaque citation, chaque nombre et chaque date. L'assistant
 s'abstient quand il ne sait pas et refuse le conseil médical. Un jeu de
-88 questions le note sans juge LLM, sous un plafond de 20 $ (ADR 0012).
+88 questions le note sans juge LLM : 44 bonnes réponses sur 49, aucune
+citation invalide, aucun conseil médical, 1,03 $ (ADR 0012).
+
+**Mission 09 en cours** : le corpus des avis de la HAS. Une collecte polie des
+pages d'avis de la Commission de la transparence (722 pages, avis depuis 2024),
+leur texte extrait mot pour mot et indexé à côté des fiches. L'assistant cite
+une page d'avis : son lien, la date de l'avis et la date de consultation sont
+rendus par le code, jamais écrits par le LLM. Une page d'avis ne se rattache
+qu'aux fiches du référentiel des spécialités : 121 pages sur 721 (16,8 %),
+liées seulement à des médicaments absents du référentiel, restent dans
+l'archive mais hors de l'index. Un jeu v2 de 144 questions mesure le texte des
+avis et les correctifs de la mission 08, sur des questions figées avant eux
+(ADR 0013).
 
 | Lot | Contenu | État |
 |---|---|---|
 | 0 | archivage des sources, profilage, décisions d'architecture | fait |
 | 1 | collecte, détection des changements, flux d'événements (Redpanda) | fait sur le Mac ; le VPS reste |
 | 2 | lakehouse Iceberg + DuckDB, historique, voyage dans le temps | fait |
-| 3 | assistant gouverné (sources citées, abstention) | en cours : l'index fait (mission 07), l'assistant (mission 08) |
+| 3 | assistant gouverné (sources citées, abstention) | en cours : l'index (mission 07) et l'assistant (mission 08) faits ; les avis de la HAS (mission 09) |
 | 4 | volet assurance : dépense exposée aux ruptures (Open Medic) | à venir |
 | 5 | observabilité, objectifs de service, incidents provoqués | à venir |
 
@@ -321,8 +333,9 @@ contrôle et cite :**
   chaque nombre et chaque date du texte s'y retrouvent. Un échec donne une
   abstention, jamais une réponse non vérifiée ;
 - **le code rend lui-même** les sources, leurs dates et l'instant de l'index ;
-- chaque appel est compté dans un journal local, sous un plafond de 20 $. Une
-  question déjà posée sur le même index ne repaie pas.
+- chaque appel est compté dans un journal local, sous le plafond de la
+  mission (20 $ à la mission 08, 10 $ à la mission 09). Une question déjà
+  posée sur le même index ne repaie pas.
 
 Deux sorties réelles, celles de la démonstration du 30/10/2026. La clé de
 l'API n'est donnée qu'au processus lancé par `infra/agents/avec-cle.sh`.
@@ -376,6 +389,40 @@ réponses justes. Ce défaut est corrigé, puis l'évaluation est renotée sur l
 mêmes réponses, en cache, sans nouvel appel. Les cinq échecs qui restent sont
 réels : un fragment d'avis que la recherche n'a pas ramené, et quatre dates
 omises.
+
+**Le texte des avis de la HAS** (mission 09,
+[ADR 0013](docs/adr/0013-corpus-has-collecte-extraction-fragments-liens.md)). La
+page d'un avis de la Commission de la transparence est collectée poliment,
+son texte extrait mot pour mot et indexé à côté de la fiche. Le LLM ne voit
+aucune adresse. **Le code rend la page sous la réponse, avec la date de
+l'avis, sa mise en ligne et sa consultation**, comme la licence de la HAS le
+demande, et les deux horloges de l'index. Une sortie réelle de la
+démonstration du 31/10/2026 :
+
+```bash
+sh infra/agents/avec-cle.sh uv run pharmaflux assistant demander \
+  "Quel SMR la Commission de la transparence a-t-elle rendu pour MOUNJARO dans le dossier CT-21681 ?"
+```
+
+```text
+Réponse :
+Selon l'avis de la Commission de la transparence du 2026-05-06 (dossier CT-21681, « MOUNJARO (tirzépatide) - Diabète de type 2 »), le service médical rendu est indiqué ainsi : « SMR : Modéré ». Il s'agit d'une évaluation collective, qui ne s'applique pas à une personne en particulier. Le fragment fourni donne ce niveau sans le texte qui le précise (fiche partielle). Dans le même avis, la Commission considère que MOUNJARO (tirzépatide) n'apporte pas d'amélioration du service médical rendu (ASMR V) par rapport à TRULICITY (dulaglutide), et indique « Dans les autres situations de l'AMM : sans objet ».
+  [3] CIS 68186732, avis_has — has.avis (source du 2026-05-06, observée depuis le 2026-10-31T12:45:53Z)
+      lien : avis de la Commission de la transparence du 2026-05-06 : https://www.has-sante.fr/jcms/p_4072400 (page mise en ligne le 2026-06-12, consultée le 2026-10-31)
+  [6] CIS 68186732, avis_has — has.avis (source du 2026-05-06, observée depuis le 2026-10-31T12:45:53Z)
+      lien : avis de la Commission de la transparence du 2026-05-06 : https://www.has-sante.fr/jcms/p_4072400 (page mise en ligne le 2026-06-12, consultée le 2026-10-31)
+état de l'index : BDPM au 2026-10-27T00:17:12Z ; pages d'avis de la HAS collectées jusqu'au 2026-10-31T13:07:40Z
+coût : 0.0234 $
+```
+
+Contenu de la Haute Autorité de santé, disponible sur <https://www.has-sante.fr>,
+page consultée le 31/10/2026.
+
+**Mesuré le 31/10/2026** sur le [jeu v2](evaluation/README.md) (144 questions,
+dont 56 nouvelles) : 88 réponses correctes sur 91, aucune citation invalide,
+aucun conseil médical, la page d'avis rendue sous les 26 réponses qui
+l'attendent. La mission a dépensé 3,82 $ en tout, dont 1,62 $ pour la relance
+de la v1 et de la v2 après le rattachement aux seules fiches du référentiel.
 
 ### Les commandes
 

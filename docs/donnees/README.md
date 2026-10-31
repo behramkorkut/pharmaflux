@@ -150,3 +150,10 @@ UTF-8 sont valides en cp1252).
   (version figée ; outil de lecture, pas une dépendance).
 - Les contrats : `src/pharmaflux/contrats/bdpm/*.toml`, format et types
   dans l'ADR 0002.
+
+## Les pages d'avis de la HAS (mission 09)
+
+Le profil de la page d'avis de la Commission de la transparence (structure, tailles, sections,
+dates, rejets, coquilles gardées telles quelles) est dans [`has.pages_avis.md`](has.pages_avis.md),
+mesuré sur les 722 pages de la première étape du corpus.
+

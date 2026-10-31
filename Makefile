@@ -30,9 +30,12 @@ FICHE_OPTIONS ?= --format texte
 # make index [INDEX_MODELE=test] : le modèle épinglé par défaut ; « test » pour l'encodeur de test
 # (la CI, sans téléchargement).
 INDEX_MODELE ?= e5-small-int8
-INDEX_OPTIONS = --entrepot $(ENTREPOT_DEMO) --modele $(INDEX_MODELE)
+# --archive-has : les pages d'avis de la HAS du jeu (mission 09), section avis_has de l'index.
+INDEX_OPTIONS = --entrepot $(ENTREPOT_DEMO) --modele $(INDEX_MODELE) --archive-has $(JEU)
 # make evaluer [EVALUER_OPTIONS=--estimer] : --estimer chiffre la porte budgétaire, sans clé ni appel.
 EVALUER_OPTIONS ?=
+# make evaluer JEU_QUESTIONS=evaluation/questions-reference-v2.toml : la v2, après la v1 (cache).
+JEU_QUESTIONS ?= evaluation/questions-reference-v1.toml
 
 .PHONY: help prerequis up demo verifier suivre console down rebatir verifications silver etat \
 	gold fiche index evaluer
@@ -106,7 +109,7 @@ index:
 # Jamais enchaînée par une autre cible ; la clé vient de infra/agents/avec-cle.sh (beko seul) :
 #   sh infra/agents/avec-cle.sh make evaluer
 evaluer:
-	$(PHARMAFLUX) assistant evaluer --questions evaluation/questions-reference-v1.toml \
+	$(PHARMAFLUX) assistant evaluer --questions $(JEU_QUESTIONS) \
 		--modele $(INDEX_MODELE) $(EVALUER_OPTIONS)
 
 fiche:

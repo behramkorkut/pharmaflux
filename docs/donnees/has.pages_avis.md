@@ -59,5 +59,9 @@ ne voit pas la page qui l'écrit autrement.
   d'ADEMPAS : l'avis de 2024 et une décision de 2025 sans SMR). Une page peut aussi dater d'avant
   la date du dossier dans la BDPM (une page de 2023).
 - **Une ligne de texte** peut faire 1 781 caractères : l'index la coupe entre deux phrases.
+- **Une page peut n'être liée qu'à des CIS absents du référentiel** des spécialités : c'est le
+  cas de 121 pages sur 721 (16,8 %, 1 111 fragments). 151 pages portent au moins un tel CIS, dont
+  30 sont mixtes. L'index ne rattache une page qu'aux fiches du référentiel (ADR 0013) : ces 121
+  pages restent dans l'archive, mais hors de l'index, comptées et listées.
 - **Le texte d'un avis cite parfois une adresse** (`http://lecrat.fr/`, 3 fragments du jeu) :
   elle reste dans l'index, et elle est masquée pour le LLM.

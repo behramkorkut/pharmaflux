@@ -461,7 +461,9 @@ la demande. Aucun appel réseau vers les sources.
   refuse. `has extraire --verifier` : non-altération par un second lecteur, empreinte du texte
   contre le manifeste, statuts changés d'une version à l'autre, contrôles de dossier
   impossibles.
-- **L'index au format 3** : section `avis_has`, un fragment par (page, CIS, partie), texte de la
+- **L'index au format 4** : section `avis_has`, rattachée aux seules fiches du référentiel
+  (les pages sans fiche du référentiel sont comptées et listées), un fragment par (page, CIS,
+  partie), texte de la
   page sans URL ; avgdl 55,44 ; deux horloges dans l'état (silver, position du manifeste HAS) ;
   `--archive-has` pour `index fragments`, `construire`, `mettre-a-jour`, `verifier` (la démo :
   `demo/archive`, que `make index` passe). L'encodage précède l'écriture et le modèle se rend :

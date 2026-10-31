@@ -59,7 +59,7 @@ Mesures de la mission :
 - **L'index réextrait** les pages à chaque construction ; il ne lit jamais la sortie de
   `has extraire`.
 
-### Les fragments d'avis (index au format 3)
+### Les fragments d'avis (index au format 3, puis 4)
 
 - **Le découpage** : un fragment par (page, CIS, partie), dans la section `avis_has`, avec
   l'identifiant `f3/<cis>/avis_has/<page>/<partie>`. L'invariant « un fragment, un CIS » des
@@ -69,7 +69,11 @@ Mesures de la mission :
   découpe se fait sous 1 200 caractères. Une ligne trop longue (jusqu'à 1 781 caractères) se
   coupe entre deux phrases, mot pour mot : au plus 381 jetons e5. **Aucune URL dans le texte.**
 - **Le rattachement** : une page se rattache à un CIS par les liens de la BDPM **à l'instant
-  du silver**, jamais l'inverse. Le contrôle de dossier se refait fiche par fiche.
+  du silver**, jamais l'inverse, et **seulement à une fiche du référentiel des spécialités**
+  (format 4, palier 4, décision de l'IeC sur la question 2 de la démonstration). L'identité d'un
+  médicament vient du référentiel, pas du titre d'une page. Le rattachement se recalcule à
+  chaque construction et à chaque mise à jour : une page revient quand sa fiche entre au
+  référentiel. Le contrôle de dossier se refait fiche par fiche.
 - **L'avgdl de BM25** est remesurée une fois, à 55,44 (fiches et avis). Elle ne fait perdre
   aucun rappel à 10 et gagne au rappel à 5.
 - **Les deux horloges** : l'état de l'index porte l'instant du silver **et** la position du
@@ -147,6 +151,15 @@ lance après la v1, dont elle relit les 62 appels du cache.
     la fois « SMR » et « Commission » demande encore `avis_has`, qu'un avis plus ancien peut
     satisfaire.
   - Ajouter les avis coûte **un rang à 1** sur la v0 et la v1 de la recherche.
+  - **Les pages sans fiche du référentiel sont hors de l'index.** 121 pages de la première
+    étape sur 721 (**16,8 %**), soit **1 111 fragments**, ne sont liées par la BDPM qu'à des CIS
+    absents du référentiel. Ce sont surtout des médicaments récents ou pas encore commercialisés :
+    KISUNLA, LEQEMBI, SHINGRIX, RYBREVANT, et l'avis « Obésité » de MOUNJARO. Leurs pages restent
+    dans l'archive et le manifeste ; l'index les écarte, les compte et les liste (`index etat`, le
+    bilan de construction, `index verifier`). Elles y reviennent quand leur fiche entre au
+    référentiel. Avant ce choix, ces fragments, sans dénomination, passaient devant ceux du
+    médicament visé : la question « Quel progrès MOUNJARO apporte-t-il selon l'avis de la CT ? »
+    s'abstenait à tort (démonstration du palier 2).
   - **Le code rend tous les liens d'un fragment cité, sans les filtrer par le dossier de la
     question.** À l'évaluation, `avis_has-044` (le dossier CT-21716 d'OZEMPIC, sans page) a reçu
     sous sa réponse la page de CT-21501, et les quatre liens du fragment `avis` de la fiche. Le

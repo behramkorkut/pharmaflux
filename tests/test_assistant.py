@@ -85,6 +85,13 @@ def _llm(
         "Quelle dose d'OZEMPIC dois-je prendre ?",
         "KARDEGIC 75 mg est-il compatible avec une grossesse ?",
         "ZELBORAF risque-t-il d'abîmer mon foie dans mon cas ?",
+        # relecture 1, point 2 : les tournures de même structure que « puis-je »
+        "Mon fils de 6 ans peut-il prendre le générique de DOLIPRANE ?",
+        "Peut-on associer DOLIPRANE 1000 mg et EFFERALGAN 1000 mg ?",
+        "Est-ce que je peux prendre DOLIPRANE 1000 mg avec de l'alcool ?",
+        "Je peux remplacer LARIAM par un autre antipaludique ?",
+        "Est-il possible de doser DOLIPRANE à 2 g par prise ?",
+        "Je dois arrêter LARIAM avant mon retour ?",
     ],
 )
 def test_refus_medical_declenche(question: str) -> None:
@@ -98,6 +105,10 @@ def test_refus_medical_declenche(question: str) -> None:
         "Mon traitement par LARIAM 250 mg est-il concerné par une rupture ?",
         "Où puis-je acheter DOLIPRANE au prix le plus bas ?",
         "DOLIPRANE 1000 mg est-il disponible ?",
+        # le cadre élargi, sans geste de soin ; et « depuis je » n'est pas « puis je »
+        "LARIAM peut-il être en rupture de stock ?",
+        "On peut trouver le prix public de DOLIPRANE où ?",
+        "Depuis je ne sais quand, à quel taux DOLIPRANE est-il remboursé et pris en charge ?",
     ],
 )
 def test_refus_medical_ne_declenche_pas(question: str) -> None:
@@ -857,3 +868,12 @@ def test_formes_des_etiquettes(texte: str, declarees: tuple[int, ...], reste: st
     frag = "taux 65% ; prix public 2.18 €"
     appuye = controle.controler(controle.sans_etiquettes(texte, declarees), [frag], "q")
     assert (appuye is None) == ("[" not in reste)
+
+
+def test_controle_premier_du_mois() -> None:
+    """Relecture 1, point 3 : « 1er juillet 2027 » est une date, appuyée ou non."""
+    frag = "Arrêt de commercialisation annoncé à partir du 2027-07-01"
+    assert controle.extraire("le 1er juillet 2027")[1] == {(2027, 7, 1)}
+    assert controle.controler("Arrêt annoncé à partir du 1er juillet 2027.", [frag], "q") is None
+    assert controle.controler("Arrêt annoncé à partir du 1er août 2027.", [frag], "q") is not None
+    assert controle.controler("Arrêt annoncé à partir du 1er juillet.", [frag], "q") is not None

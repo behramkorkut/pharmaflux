@@ -18,9 +18,31 @@ from __future__ import annotations
 
 from pharmaflux.index import lexical
 
-# Le cadre d'une demande de décision (« puis-je … ? », « dois-je … ? », « faut-il … ? »). Le
-# tokenizer de l'index déplie « puis-je » en « puis je » : on cherche la suite aplatie.
-_CADRE_DECISION = ("puis je", "dois je", "faut il")
+# Le cadre d'une demande de décision : « puis-je … ? », « dois-je … ? », « faut-il … ? », et les
+# tournures de même structure (« peut-on », « mon fils peut-il », « je peux », « est-ce que
+# je … », « est-il possible de », relecture 1, point 2). Le tokenizer de l'index déplie
+# « puis-je » en « puis je » : on cherche la suite aplatie, en mots entiers (« depuis je » n'est
+# pas « puis je »).
+_CADRE_DECISION = (
+    "puis je",
+    "dois je",
+    "faut il",
+    "peut on",
+    "peut il",
+    "peut elle",
+    "peuvent ils",
+    "peuvent elles",
+    "je peux",
+    "on peut",
+    "doit on",
+    "doit il",
+    "doit elle",
+    "je dois",
+    "on doit",
+    "est il possible de",
+    "est ce que je",
+    "est ce qu on",
+)
 # Les verbes d'un geste de soin : la question demande quoi faire d'un médicament.
 _VERBES_SOIN = frozenset(
     {
@@ -64,7 +86,7 @@ def refus_medical(question: str) -> str | None:
             return f"situation de santé individuelle ({marqueur})"
     mots = set(flux.split())
     gestes = mots & _VERBES_SOIN
-    if gestes and any(cadre in flux for cadre in _CADRE_DECISION):
+    if gestes and any(f" {cadre} " in f" {flux} " for cadre in _CADRE_DECISION):
         return f"la question demande une décision de soin (« {sorted(gestes)[0]} »)"
     return None
 

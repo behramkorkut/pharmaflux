@@ -812,3 +812,22 @@ Il reste cinq constats, pour la mission 09 : le rappel de l'avis d'OZEMPIC, quat
 omises, et `disponibilite-005`. Celle-ci compte fausse, car le jeu se contredit avec
 `avis_has-005` et on ne le touche pas après avoir vu le résultat. La mission a dépensé
 1,0309 $ sur 20 $.
+
+**Mission 08, relecture 1** (31/10). Claude Fable 5.1, sur `98cdb69` : **CONFORME, 0
+bloquant**, six points non bloquants, tous corrigés.
+
+En `50ff304`, ceux qui ne touchent ni le chemin ni la notation :
+- le test « clé absente » bloque aussi le réseau ;
+- une assertion de test qui ne pouvait pas échouer est corrigée ;
+- le budget : l'entrée est minorée d'un facteur 2, et la sortie entière la couvre ;
+- le miroir de D2 pour les abstentions dures ;
+- les remarques de rendu.
+
+Puis, sur décision de l'IeC, les deux qui changent le chemin après l'évaluation (sa règle vise
+les ajustements tirés des réponses de Claude, et ces défauts viennent de la relecture du code) :
+- le cadre du refus médical connaît « peut-on », « mon fils peut-il », « je peux »… L'exemple
+  du §0 D de l'ordre partait au LLM ;
+- « 1er juillet 2027 » est une date.
+
+La renotation sur le cache a été faite avant le commit : 0 appel, journal inchangé, 44/49 et
+82/88, et une sortie identique à l'octet à celle du commit de clôture.

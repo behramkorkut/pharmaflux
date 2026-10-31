@@ -70,9 +70,11 @@ ses questions avant le premier appel.
 
 1. **Le refus médical**, en tête et hors du LLM (`regles.py`). Il est
    réservé au **conseil**, c'est-à-dire à une demande de décision (« puis-je /
-   dois-je / faut-il » suivi d'un geste de soin : prendre, arrêter,
-   remplacer, doser, associer…) ou à une situation individuelle (grossesse,
-   « dans mon cas »). « Mon traitement » sans décision n'est pas un refus :
+   dois-je / faut-il », et les tournures de même structure : « peut-on »,
+   « mon fils peut-il », « je peux », « est-il possible de »…, suivies d'un
+   geste de soin : prendre, arrêter, remplacer, doser, associer…) ou à une
+   situation individuelle (grossesse, « dans mon cas »). Le cadre se cherche
+   en mots entiers. « Mon traitement » sans décision n'est pas un refus :
    l'assistant donne le fait, sourcé et daté, sans conseil.
 2. **Les abstentions dures**, hors du LLM : une question de dépense (Open
    Medic, au Lot 4), le tarif d'une complémentaire, un conseil d'achat, les
@@ -138,8 +140,8 @@ abstention.
 - **Chaque nombre et chaque date** du texte se retrouvent, après
   normalisation, dans le texte ou les dates des sources d'un fragment cité,
   ou dans la question. « 65 % » vaut « 65% », « 1 000 » vaut « 1000 », et
-  « 09/09/2026 », « 9 septembre 2026 » et « 2026-09-09 » désignent la même
-  date. Les dates se lisent de 1900 à 2099. L'année d'une date d'appui
+  « 09/09/2026 », « 9 septembre 2026 » (ou « 1er juillet 2027 ») et
+  « 2026-09-09 » désignent la même date. Les dates se lisent de 1900 à 2099. L'année d'une date d'appui
   devient un nombre appuyé, et un mois sans jour se vérifie contre les mois
   des dates d'appui. Le jour et le mois sans année ne sont jamais appuyés.
   La forme compacte « 20260909 » ne se lit que dans une valeur attendue du

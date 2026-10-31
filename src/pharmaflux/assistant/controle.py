@@ -56,7 +56,8 @@ _ISO = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _JMA = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
 _COMPACT = re.compile(r"\b(\d{4})(\d{2})(\d{2})\b")
 _NOMS_MOIS = "|".join(sorted(_MOIS, key=len, reverse=True))
-_EN_LETTRES = re.compile(r"\b(\d{1,2})\s+(" + _NOMS_MOIS + r")\s+(\d{4})\b", re.IGNORECASE)
+# Le jour peut porter l'ordinal du premier du mois (« 1er juillet 2027 », relecture 1, point 3).
+_EN_LETTRES = re.compile(r"\b(\d{1,2})(?:er)?\s+(" + _NOMS_MOIS + r")\s+(\d{4})\b", re.IGNORECASE)
 # Un mois sans jour (« juin 2026 »), cherché après les dates entières, qui sont déjà blanchies.
 _MOIS_ANNEE = re.compile(r"\b(" + _NOMS_MOIS + r")\s+(\d{4})\b", re.IGNORECASE)
 # Un nombre : des milliers séparés par une espace (fine, insécable ou ordinaire) ou non, suivis

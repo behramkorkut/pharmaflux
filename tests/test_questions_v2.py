@@ -35,6 +35,10 @@ EMPREINTE_NEUVES = "c11886b22076f341478140a5c2d89a29e8d7c1e1bfe066e6c03a5c0a20fb
 TABLE = [f"avis_has-{n:03d}" for n in range(19, 24)]
 EMPREINTE_TABLE = "33890d4817f17b46d53288005cc8d6263554787d6425b649f7d9f2f8efc8b93f"
 CHANGEES = {"disponibilite-005", "avis_has-004", "avis_has-009"}
+# Palier 4 : les questions qui mesurent le rattachement des pages aux seules fiches du
+# référentiel, tirées par evaluation/choisir_neuves_v2_rattachement.py et figées avant lui.
+RATTACHEMENT = [f"avis_has-{n:03d}" for n in range(51, 57)]
+EMPREINTE_RATTACHEMENT = "bdfcaff782040057626e5fd638fb308eae315f1f45870d6e1376a1451bc9a287"
 
 
 def _brutes(chemin: Path) -> list[dict[str, object]]:
@@ -65,11 +69,12 @@ def test_la_v2_se_charge_et_reprend_la_v1_a_l_identique() -> None:
 def test_la_v2_complete() -> None:
     jeu = questions.charger(V2, charger_tous())
     ids = [q.id for q in jeu.questions]
-    assert len(ids) == len(set(ids)) == 138
+    assert len(ids) == len(set(ids)) == 144
     texte = [q for q in jeu.questions if q.attendu_has is not None]
-    assert len(texte) == 20  # 19 tirées par la règle, et le piège d'ADEMPAS
+    assert len(texte) == 24  # 19 tirées par la règle, le piège d'ADEMPAS, 4 pages mixtes
     assert all(q.lien_attendu == q.attendu_has.url for q in texte if q.attendu_has)
-    assert all(q.section_attendue == "avis_has" for q in texte)
+    # Les pages mixtes du rattachement se notent par la page rendue, sans CIS attendu.
+    assert all(q.section_attendue == "avis_has" for q in texte if q.id not in RATTACHEMENT)
 
 
 def test_les_questions_neuves_sont_figees() -> None:
@@ -89,6 +94,17 @@ def test_les_questions_de_la_table_sont_figees() -> None:
     assert hashlib.sha256(brut.encode()).hexdigest() == EMPREINTE_TABLE
 
 
+def test_les_questions_du_rattachement_sont_figees() -> None:
+    brutes = _brutes(V2)
+    debut = [q["id"] for q in brutes].index(RATTACHEMENT[0])
+    rattachement = brutes[debut : debut + len(RATTACHEMENT)]
+    assert [q["id"] for q in rattachement] == RATTACHEMENT
+    brut = json.dumps(
+        rattachement, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":")
+    )
+    assert hashlib.sha256(brut.encode()).hexdigest() == EMPREINTE_RATTACHEMENT
+
+
 def test_le_script_de_choix_n_est_importe_par_aucun_test() -> None:
     for fichier in Path(__file__).parent.rglob("*.py"):
         for noeud in ast.walk(ast.parse(fichier.read_text(encoding="utf-8"))):
@@ -99,5 +115,9 @@ def test_le_script_de_choix_n_est_importe_par_aucun_test() -> None:
             else:
                 continue
             assert not any("choisir_" in m for m in modules), fichier
-    for nom in ("choisir_neuves_v2_table.py", "choisir_texte_v2.py"):
+    for nom in (
+        "choisir_neuves_v2_table.py",
+        "choisir_texte_v2.py",
+        "choisir_neuves_v2_rattachement.py",
+    ):
         assert SCRIPT.with_name(nom).is_file()

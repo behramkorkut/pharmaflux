@@ -103,7 +103,7 @@ def jeu_v2() -> questions.Jeu:
 def test_les_pages_d_avis_de_la_v2_se_verifient_sans_gold(jeu_v2: questions.Jeu) -> None:
     avec_page = replace(jeu_v2, questions=tuple(q for q in jeu_v2.questions if q.attendu_has))
     bilan = verifier_jeu(avec_page, JEU, charger_tous())
-    assert len(bilan.resultats) == 20
+    assert len(bilan.resultats) == 24  # dont les 4 pages mixtes du rattachement (palier 4)
     assert {r.verdict for r in bilan.resultats} == {Verdict.CONFORME}, bilan.echecs
 
 

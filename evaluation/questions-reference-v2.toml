@@ -2353,3 +2353,97 @@ comportement = "abstention"
 motif = "La question compare deux médicaments : l'assistant en traite un à la fois (G3), et la comparaison serait tirée d'un avis qui ne la fait pas forcément."
 orientation = "Poser la question pour chacun des deux médicaments."
 
+# ===========================================================================
+# Le rattachement des pages d'avis (mission 09, palier 4) — tirées par la règle
+# d'evaluation/choisir_neuves_v2_rattachement.py (decision-question-2.md et sa suite), figées
+# avant le changement : une page ne se rattache qu'aux fiches que le référentiel nomme. La
+# question 2 de la démonstration (MOUNJARO) a servi à trouver le défaut et n'en fait pas partie.
+# ===========================================================================
+
+[[questions]]
+id = "avis_has-051"
+categorie = "avis_has"
+question = "Quel progrès PEDISMOF 2 apporte-t-il selon l'avis de la Commission de la transparence ?"
+comportement = "abstention"
+motif = "PEDISMOF 2 n’est pas dans le référentiel des spécialités : la page de son avis (p_4336375, dossier CT-21635) est dans l’archive, mais l’index ne la rattache à aucune fiche (ADR 0013). L’identité d’un médicament vient du référentiel."
+orientation = "La Haute Autorité de santé, qui publie l'avis de la Commission de la transparence."
+
+[[questions]]
+id = "avis_has-052"
+categorie = "avis_has"
+question = "Quel progrès LYVDELZI apporte-t-il selon l'avis de la Commission de la transparence ?"
+comportement = "abstention"
+motif = "LYVDELZI n’est pas dans le référentiel des spécialités : la page de son avis (p_3636962, dossier CT-21339) est dans l’archive, mais l’index ne la rattache à aucune fiche (ADR 0013). L’identité d’un médicament vient du référentiel."
+orientation = "La Haute Autorité de santé, qui publie l'avis de la Commission de la transparence."
+
+[[questions]]
+id = "avis_has-053"
+categorie = "avis_has"
+question = "Quel progrès SKYRIZI apporte-t-il selon l'avis de la Commission de la transparence ?"
+comportement = "reponse"
+prudence = "Page mixte : p_3826273 est liée à 2 fiche(s) du référentiel et à 1 CIS absent(s). La réponse cite la page par une fiche du référentiel."
+lien_attendu = "https://www.has-sante.fr/jcms/p_3826273"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3826273/20261031T124954Z__49321aa48045.html.gz"
+sha256 = "49321aa480454332586895592df33b4362bd1a5cc4630228d5a1c519f6596c50"
+url = "https://www.has-sante.fr/jcms/p_3826273"
+dossier = "CT-21345"
+date_avis = "2025-12-10"
+mis_en_ligne = "2026-01-23"
+nature_demande = "Extension d'indication"
+extrait = "Pas de progrès dans la prise en charge de la recto-colite hémorragique"
+
+[[questions]]
+id = "avis_has-054"
+categorie = "avis_has"
+question = "Quel progrès GARDASIL 9 apporte-t-il selon l'avis de la Commission de la transparence ?"
+comportement = "reponse"
+prudence = "Page mixte : p_3634549 est liée à 1 fiche(s) du référentiel et à 1 CIS absent(s). La réponse cite la page par une fiche du référentiel."
+lien_attendu = "https://www.has-sante.fr/jcms/p_3634549"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3634549/20261031T125442Z__b74c8a457f67.html.gz"
+sha256 = "b74c8a457f6730b56d79e766372160ffde72aef62307afe7c3a2373b09d6804f"
+url = "https://www.has-sante.fr/jcms/p_3634549"
+dossier = "CT-21266"
+date_avis = "2025-06-11"
+mis_en_ligne = "2025-07-03"
+nature_demande = "Réévaluation SMR et ASMR"
+extrait = "Un progrès thérapeutique dans la stratégie de prise en charge."
+
+[[questions]]
+id = "avis_has-055"
+categorie = "avis_has"
+question = "Quel progrès ALHEMO apporte-t-il selon l'avis de la Commission de la transparence ?"
+comportement = "reponse"
+prudence = "Page mixte : p_3658189 est liée à 2 fiche(s) du référentiel et à 2 CIS absent(s). La réponse cite la page par une fiche du référentiel."
+lien_attendu = "https://www.has-sante.fr/jcms/p_3658189"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3658189/20261031T125228Z__2f2c6c88ebac.html.gz"
+sha256 = "2f2c6c88ebacd2cc35e3dab40ad16b89ef6546ecf3a640438c368640fb343f94"
+url = "https://www.has-sante.fr/jcms/p_3658189"
+dossier = "CT-21238"
+date_avis = "2025-09-02"
+mis_en_ligne = "2025-09-12"
+nature_demande = "Inscription"
+extrait = "Pas de progrès en l’état actuel des données."
+
+[[questions]]
+id = "avis_has-056"
+categorie = "avis_has"
+question = "Quel progrès XALKORI apporte-t-il selon l'avis de la Commission de la transparence ?"
+comportement = "reponse"
+prudence = "Page mixte : p_3892357 est liée à 2 fiche(s) du référentiel et à 3 CIS absent(s). La réponse cite la page par une fiche du référentiel."
+lien_attendu = "https://www.has-sante.fr/jcms/p_3892357"
+
+[questions.attendu_has]
+archive = "bronze/has/pages/p_3892357/20261031T124741Z__6e550020fa27.html.gz"
+sha256 = "6e550020fa27a01228a4b8ec31bfd1c7a5d6c5cc0cb4281d20287cb2e5e3fbd6"
+url = "https://www.has-sante.fr/jcms/p_3892357"
+dossier = "CT-21340"
+date_avis = "2026-02-18"
+mis_en_ligne = "2026-03-09"
+nature_demande = "Inscription"
+extrait = "Pas de progrès des nouvelles présentations de XALKORI 20, 50 et 150"

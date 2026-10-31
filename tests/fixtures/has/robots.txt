@@ -1,0 +1,3 @@
+User-agent: *
+Disallow: /jcms/fc_2875171/
+Disallow: /plugins/ScopeSantePlugin/jsp/export/exportSearchEtab.jsp

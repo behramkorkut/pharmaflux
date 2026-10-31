@@ -1,0 +1,25 @@
+HTTP/1.1 200 OK
+server: nginx
+date: Sat, 31 Oct 2026 10:42:46 GMT
+content-type: application/pdf
+content-length: 631564
+connection: keep-alive
+x-id-fe: parf20-hw-edge-or0002
+x-shard: parf20-shard0-default
+access-control-allow-origin: *
+age: 0
+etag: W/"631564-1781256600859"
+feature-policy: accelerometer 'none'; autoplay 'none'; camera *; geolocation 'self'; gyroscope 'none'; magnetometer 'none'; microphone *; midi 'none'; payment 'none'; usb 'none';
+last-modified: Fri, 12 Jun 2026 09:30:00 GMT
+permissions-policy: accelerometer=(), autoplay=(), camera=*, geolocation=(self), gyroscope=(), magnetometer=(), microphone=*, midi=(), payment=(), usb=()
+referrer-policy: strict-origin-when-cross-origin
+set-cookie: JSESSIONID=<retiré>; Path=/; Secure; HttpOnly
+strict-transport-security: max-age=31536000
+x-content-type-options: nosniff
+x-ogo-cache: MISS
+x-varnish: 292749027
+x-xss-protection: 1
+x-id: parf20-hw-edge-or0001
+cache: MISS
+accept-ranges: bytes
+traceparent: 00-f2933b3973db8d075c5b7823f310c552-d56bceb31de8f04b-01

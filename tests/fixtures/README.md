@@ -108,6 +108,42 @@ archives (le test les écrit sous les noms cités, horodatage figé
 `bdpm/` change, le sha256 cité change aussi : c'est le vérificateur qui le
 dit (`sha256 différent`).
 
+## `has/` — <https://www.has-sante.fr> (mission 09, §0)
+
+**Date : 31/10/2026, entre 10:41:23 et 10:43:24 UTC.** Les douze requêtes du
+§0 de la mission 09, les seules permises à l'agent : en série, deux secondes
+au moins entre deux, le `User-Agent` de la collecte de la BDPM
+(`pharmaflux/0.1.0 (+https://github.com/behramkorkut/pharmaflux)`), aucune
+redirection suivie. Elles sont faites par `requetes_s0.py` (ce dossier), qui
+tient le journal en ajout seul `journal-s0.jsonl` (heure, méthode, URL,
+statut, taille, sha256, en-têtes utiles) et refuse la treizième. Le détail et
+ce que chaque réponse apprend : `docs/rapports/mission-09/points-a-trancher.md`.
+
+| Fichier | URL | Ce que c'est |
+|---|---|---|
+| `robots.txt` | `/robots.txt` | 109 octets, deux chemins interdits (`/jcms/fc_2875171/`, un export de Scope Santé) : ni les pages d'avis, ni `/upload/` |
+| `p_4072400.html` | `/jcms/p_4072400` | CT-21681, MOUNJARO, avis du 06/05/2026 : 12 spécialités, deux SMR et deux ASMR |
+| `p_3590639.html` | `/jcms/p_3590639` | CT-21088, IMFINZI - LYNPARZA, avis du 15/01/2025 : un dossier, deux marques |
+| `p_3577036.html` | `/jcms/p_3577036` | CT-21030, KALYDECO, avis du 18/12/2024 (questions `avis_has-002`, `-008`, `-009` de la v1) |
+| `p_3500927.html` | `/jcms/p_3500927` | CT-20568, ADEMPAS, avis du 28/02/2024, premier des deux liens du dossier |
+| `p_3741668.html` | `/jcms/p_3741668` | CT-20568, second lien : une autre décision, du 10/11/2025, sans SMR ni document |
+| `c_2027377.html` | `/jcms/c_2027377` | CT-14040, DOLIPRANE, avis du 01/04/2015 : la forme `c_N`, 20 spécialités |
+| `doc1-saut1.headers` … `doc1-saut4-pdf.headers` | le document d'avis de MOUNJARO, saut par saut | 302 vers `doXiti.jsp`, page de mesure d'audience (`doc1-saut3-doXiti.html`, rafraîchissement vers le PDF), puis le PDF en `HEAD` (631 564 octets) |
+| `doc2-saut1.headers` | le document d'avis de DOLIPRANE (2015) | 302 vers `doXiti.jsp`, comme en 2026 |
+
+Les corps sont gardés **à l'octet**, tels que reçus (décompressés par
+`httpx`), et leur sha256 est au journal. Une page porte un jeton CSRF et un
+horodatage propres à chaque réponse : deux requêtes de la même page ne
+donnent pas les mêmes octets. **Seule retouche** : la valeur du cookie de
+session `JSESSIONID` est remplacée par `<retiré>` dans les `.headers` ; les
+corps ne contiennent aucun cookie.
+
+Contenus de la Haute Autorité de santé, réutilisés selon ses mentions légales
+(article du 01/10/2015, lu le 26/10/2026, ADR 0004) : sans altération, avec
+la source et la date. Document de la Haute Autorité de santé, disponible sur
+<https://www.has-sante.fr>, pages consultées le 31/10/2026 ; la date de mise
+en ligne de chaque avis est dans la page (« Mis en ligne le … »).
+
 ## `openmedic/` — <https://www.data.gouv.fr>
 
 | Fichier | URL | Extrait |

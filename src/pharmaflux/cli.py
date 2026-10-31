@@ -16,6 +16,8 @@ observations, à la cadence accélérée. ``silver construire`` / ``etat`` /
 (mission 05), dont les bibliothèques ne s'importent que dans ces commandes.
 ``gold etat`` / ``qualite`` / ``sql`` : l'état typé du silver à un instant et
 ses contrôles de qualité (mission 06), sous la même règle d'import.
+``has collecter`` / ``has extraire`` : les pages d'avis de la HAS (mission 09), collectées
+poliment et extraites mot pour mot.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import json
 import logging
 import os
 import sys
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -95,6 +98,10 @@ fabriquer_transport_registre: Callable[[], httpx.BaseTransport | None] = (  # no
     lambda: None
 )
 fabriquer_lecteur_silver: Callable[[str], LecteurSilver | None] = lambda _courtier: None  # noqa: E731
+# La collecte des pages de la HAS (mission 09) : les tests simulent le site, jamais le réseau,
+# et ne dorment pas les deux secondes de pause.
+fabriquer_transport_has: Callable[[], httpx.BaseTransport | None] = lambda: None  # noqa: E731
+dormir_has: Callable[[float], None] = time.sleep
 # Les tests simulent Qdrant de la même façon (mission 07).
 fabriquer_transport_qdrant: Callable[[], httpx.BaseTransport | None] = (  # noqa: E731
     lambda: None
@@ -892,6 +899,169 @@ def _racine(racine: Path | None) -> Path:
         return racine
     variable = os.environ.get(VARIABLE_RACINE)
     return Path(variable) if variable else RACINE_PAR_DEFAUT
+
+
+# --- has (mission 09) -------------------------------------------------------------------------
+
+has = typer.Typer(
+    name="has",
+    help="Les pages d'avis de la HAS (mission 09, ADR 0004) : collecter, extraire.",
+    no_args_is_help=True,
+)
+application.add_typer(has)
+
+
+@has.command("collecter")
+def has_collecter(
+    plafond: Annotated[
+        int | None,
+        typer.Option(
+            "--plafond",
+            help="Requêtes au plus, réessais, robots.txt et mentions légales compris. Obligatoire"
+            " pour un passage réel ; --simuler en conseille un.",
+        ),
+    ] = None,
+    depuis: Annotated[
+        str,
+        typer.Option(
+            "--depuis", help="Les dossiers dont un avis SMR ou ASMR date de ce jour ou après."
+        ),
+    ] = "2024-01-01",
+    dossier: Annotated[
+        list[str] | None,
+        typer.Option("--dossier", help="Restreindre à ce dossier (CT-21030), répétable."),
+    ] = None,
+    pause: Annotated[
+        float,
+        typer.Option("--pause", help="Secondes entre deux requêtes, deux au moins."),
+    ] = 2.0,
+    simuler: Annotated[
+        bool,
+        typer.Option(
+            "--simuler",
+            help="Dire ce qui serait demandé (URL, nombre, durée), sans aucune requête.",
+        ),
+    ] = False,
+    reessayer_erreurs: Annotated[
+        bool,
+        typer.Option("--reessayer-erreurs", help="Redemander aussi les pages en erreur."),
+    ] = False,
+    racine: OptionRacine = None,
+) -> None:
+    """Un passage de collecte des pages d'avis : robots.txt, mentions légales, pages.
+
+    Une page archivée n'est jamais redemandée ; une relance reprend ce qui manque. Codes de
+    sortie : 0 tout est archivé ; 1 des pages en erreur ; 2 refus (option, archive de la BDPM
+    ou robots.txt illisibles) ; 3 arrêt net (429, 5xx répété, plafond).
+    """
+    from pharmaflux.has import collecte as collecte_has
+    from pharmaflux.has.client import PAUSE_MINIMALE, ClientHas
+    from pharmaflux.has.perimetre import PerimetreIllisible, calculer
+
+    configurer_journal()
+    racine_ = _racine(racine)
+    if pause < PAUSE_MINIMALE:
+        typer.echo(f"--pause {pause} : {PAUSE_MINIMALE} s au moins", err=True)
+        raise typer.Exit(code=2)
+    try:
+        jour = datetime.strptime(depuis, "%Y-%m-%d").date()
+    except ValueError as exc:
+        typer.echo(f"--depuis {depuis} : une date AAAA-MM-JJ est attendue", err=True)
+        raise typer.Exit(code=2) from exc
+    try:
+        perimetre = calculer(racine_, depuis=jour, dossiers=dossier)
+        plan = collecte_has.planifier(racine_, perimetre, reessayer_erreurs=reessayer_erreurs)
+    except (PerimetreIllisible, manifeste.ManifesteCorrompu) as exc:
+        typer.echo(f"refus : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if simuler:
+        _echo_simulation(plan, pause, plafond)
+        raise typer.Exit(code=0)
+    if plafond is None:
+        typer.echo(
+            "--plafond est obligatoire pour un passage réel (--simuler en conseille un)", err=True
+        )
+        raise typer.Exit(code=2)
+    with ClientHas(
+        plafond=plafond, pause=pause, transport=fabriquer_transport_has(), dormir=dormir_has
+    ) as client:
+        bilan = collecte_has.executer(racine_, plan, client)
+    typer.echo(bilan.resume())
+    raise typer.Exit(code=bilan.code_sortie)
+
+
+def _echo_simulation(plan: Any, pause: float, plafond: int | None) -> None:
+    perimetre = plan.perimetre
+    typer.echo("simulation : aucune requête envoyée")
+    for source in perimetre.sources:
+        typer.echo(f"  {source.identifiant:15} {source.archive} (sha256 {source.sha256[:12]}…)")
+    typer.echo(
+        f"dossiers avec un avis SMR ou ASMR depuis le {perimetre.depuis.isoformat()} :"
+        f" {perimetre.dossiers}, dont {perimetre.dossiers_avec_lien} avec un lien et"
+        f" {len(perimetre.dossiers_sans_lien)} sans lien ; {len(perimetre.pages)} page(s)"
+    )
+    if perimetre.liens_hors_forme:
+        typer.echo(f"liens hors forme, écartés : {', '.join(perimetre.liens_hors_forme)}")
+    etat = plan.etat
+    typer.echo(
+        f"déjà archivées : {len(etat.archivees)} ; archives orphelines à reprendre :"
+        f" {len(etat.orphelines)} ; en erreur, non redemandées : {plan.erreurs_ecartees}"
+    )
+    duree = plan.duree_estimee(pause)
+    typer.echo(
+        f"requêtes : {plan.requetes} (robots.txt, mentions légales et {len(plan.a_demander)}"
+        f" page(s)) ; durée estimée ≈ {int(duree // 60)} min {int(duree % 60):02d} s à {pause} s"
+        f" de pause ; plafond conseillé : {plan.plafond_conseille}"
+    )
+    if plafond is not None and plafond < plan.requetes:
+        typer.echo(f"--plafond {plafond} : le passage s'arrêterait avant la fin")
+    typer.echo(f"liste des URL (sha256 {perimetre.empreinte_liste()[:12]}…), dans l'ordre :")
+    for page in plan.a_demander:
+        typer.echo(f"  {page.date_avis} {','.join(page.dossiers)} {page.url}")
+
+
+@has.command("extraire")
+def has_extraire(
+    verifier: Annotated[
+        bool,
+        typer.Option(
+            "--verifier",
+            help="Non-altération (second lecteur), déterminisme et empreintes du manifeste.",
+        ),
+    ] = False,
+    sortie: Annotated[
+        Path | None,
+        typer.Option("--sortie", help="Écrire chaque page en JSON Lines, pour la lire."),
+    ] = None,
+    page: Annotated[
+        list[Path] | None,
+        typer.Option("--page", help="Une page (.html ou .html.gz) hors archive, répétable."),
+    ] = None,
+    racine: OptionRacine = None,
+) -> None:
+    """L'extraction rejouée sur les pages archivées : bilan des rejets, vérification.
+
+    L'index ne lit jamais sa sortie. Codes : 0 conforme ; 1 un écart ou une divergence ;
+    2 aucune page.
+    """
+    from pharmaflux.has import inspection
+
+    try:
+        pages = (
+            inspection.pages_de_fichiers(page)
+            if page
+            else inspection.pages_archivees(_racine(racine))
+        )
+    except manifeste.ManifesteCorrompu as exc:
+        typer.echo(f"refus : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if sortie is not None:
+        with sortie.open("w", encoding="utf-8") as flux:
+            bilan = inspection.extraire(pages, verifier=verifier, sortie=flux)
+    else:
+        bilan = inspection.extraire(pages, verifier=verifier)
+    typer.echo(bilan.resume())
+    raise typer.Exit(code=bilan.code_sortie)
 
 
 # --- silver (mission 05) -----------------------------------------------------------------------

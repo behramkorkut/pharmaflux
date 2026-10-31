@@ -1,0 +1,255 @@
+{
+ "extracteur": 1,
+ "empreinte": "7b0c06f8f57b699a669961284411ecdd10fe56a132c8c43cab4ebdd3cfbec46b",
+ "titre": "MOUNJARO (tirzépatide) - Diabète de type 2",
+ "date_avis": "2026-05-06",
+ "mis_en_ligne": "2026-06-12",
+ "mis_a_jour": null,
+ "lignes": [
+  [
+   "demande",
+   "nature",
+   "Inscription"
+  ],
+  [
+   "L'essentiel",
+   "intertitre",
+   "L'essentiel"
+  ],
+  [
+   "L'essentiel",
+   "paragraphe",
+   "Avis favorable au remboursement uniquement « chez les adultes pour le traitement du diabète de type 2 insuffisamment contrôlé en complément d’un régime alimentaire et d’une activité physique :"
+  ],
+  [
+   "L'essentiel",
+   "element",
+   "en bithérapie avec la metformine,"
+  ],
+  [
+   "L'essentiel",
+   "element",
+   "en trithérapie avec la metformine et un sulfamide hypoglycémiant,"
+  ],
+  [
+   "L'essentiel",
+   "element",
+   "en trithérapie avec la metformine et une insuline basale »."
+  ],
+  [
+   "L'essentiel",
+   "paragraphe",
+   "Avis défavorable au remboursement dans les autres situations couvertes par l’indication AMM."
+  ],
+  [
+   "Quel progrès ?",
+   "intertitre",
+   "Quel progrès ?"
+  ],
+  [
+   "Quel progrès ?",
+   "paragraphe",
+   "Pas de progrès par rapport à TRULICITY (dulaglutide) pour le traitement du diabète de type 2 insuffisamment contrôlé en complément d’un régime alimentaire et d’une activité physique :"
+  ],
+  [
+   "Quel progrès ?",
+   "element",
+   "en bithérapie avec la metformine,"
+  ],
+  [
+   "Quel progrès ?",
+   "element",
+   "en trithérapie avec la metformine et un sulfamide hypoglycémiant,"
+  ],
+  [
+   "Quel progrès ?",
+   "element",
+   "en trithérapie avec la metformine et une insuline basale."
+  ],
+  [
+   "Quelle place dans la stratégie thérapeutique ?",
+   "intertitre",
+   "Quelle place dans la stratégie thérapeutique ?"
+  ],
+  [
+   "Quelle place dans la stratégie thérapeutique ?",
+   "intertitre",
+   "Dans le périmètre du remboursement :"
+  ],
+  [
+   "Quelle place dans la stratégie thérapeutique ?",
+   "paragraphe",
+   "La Commission estime que la place de MOUNJARO (tirzépatide), agoniste des récepteurs du GIP et du GLP-1, dans la stratégie thérapeutique du diabète de type 2 n’est pas modifiée, compte tenu :"
+  ],
+  [
+   "Quelle place dans la stratégie thérapeutique ?",
+   "element",
+   "de la démonstration dans l’étude SURPASS-CVOT de la non-infériorité, mais pas la supériorité, du tirzépatide à la dose maximale tolérée par rapport au dulaglutide 1,5 mg/semaine, en termes de réduction du risque de survenue d’événements cardiovasculaires majeurs, évaluée sur le critère composite MACE-3 (incluant le décès d’origine cardiovasculaire, l’infarctus du myocarde non fatal et l’AVC non fatal) chez des patients atteints de DT2, avec une maladie cardiovasculaire établie (prévention secondaire),"
+  ],
+  [
+   "Quelle place dans la stratégie thérapeutique ?",
+   "element",
+   "des nombreuses limites de cette étude atténuant la portée de ce résultat et ne permettant pas d’établir avec robustesse un bénéfice cardio-vasculaire du tirzépatide, en raison notamment du choix du comparateur dulaglutide à la dose de 1,5 mg/semaine (cf. rubrique 4 : Synthèse et discussion)."
+  ],
+  [
+   "Quelle place dans la stratégie thérapeutique ?",
+   "paragraphe",
+   "A ce jour, deux analogues du GLP-1, le dulaglutide dans l’étude REWIND et le liraglutide dans l’étude LEADER ont démontré une réduction du critère 3P-MACE par rapport au placebo."
+  ],
+  [
+   "Quelle place dans la stratégie thérapeutique ?",
+   "paragraphe",
+   "En complément du régime alimentaire et de l’exercice physique, socle de la prise en charge du diabète de type 2, MOUNJARO (tirzépatide), est une option thérapeutique du diabète de type 2 de l’adulte uniquement en 2ème ligne ou 3ème ligne de traitement médicamenteux, dans des situations particulières, à savoir si l’écart à l’objectif est > 1% d’HbA1c et si l’IMC ≥ 30 kg/m² ou si la prise de poids sous insuline ou la survenue d’hypo-glycémies sont préoccupants et que la maladie est insuffisamment contrôlée par une monothérapie par la metformine ou une bithérapie. Compte tenu des données cliniques disponibles, l’efficacité du tirzépatide a été démontrée uniquement en association :"
+  ],
+  [
+   "Quelle place dans la stratégie thérapeutique ?",
+   "element",
+   "en bithérapie avec la metformine,"
+  ],
+  [
+   "Quelle place dans la stratégie thérapeutique ?",
+   "element",
+   "en trithérapie avec la metformine et un sulfamide hypoglycémiant,"
+  ],
+  [
+   "Quelle place dans la stratégie thérapeutique ?",
+   "element",
+   "en trithérapie avec la metformine et une insuline basale."
+  ],
+  [
+   "Quelle place dans la stratégie thérapeutique ?",
+   "intertitre",
+   "Dans le périmètre inclus dans l’AMM mais non retenu pour le remboursement :"
+  ],
+  [
+   "Quelle place dans la stratégie thérapeutique ?",
+   "paragraphe",
+   "En l’absence de données cliniques pertinentes, MOUNJARO (tirzépatide) n’a pas de place dans la stratégie thérapeutique en monothérapie quand l’utilisation de la metformine est considérée comme inappropriée en raison d'une intolérance ou de contre-indications. Son efficacité a été démontrée uniquement dans les associations mentionnées ci-dessus."
+  ],
+  [
+   "Recommandations particulières",
+   "intertitre",
+   "Recommandations particulières"
+  ],
+  [
+   "Recommandations particulières",
+   "paragraphe",
+   "Compte tenu du constat de mésusage des analogues du GLP-1 qui ont l’AMM dans le diabète de type 2 et pour certains dans le traitement de l’obésité ou du surpoids, mais qui sont utilisés pour la perte de poids à des fins esthétiques et des risques associés à ce mésusage, la Commission de la Transparence estime qu’il est important de mettre en place des mesures d’encadrement de la prescription et de la délivrance des analogues du GLP-1 ainsi que du tirzépatide qui est un agoniste des récepteurs du GLP-1 et du GIP indiqué dans le DT2 et le contrôle du poids."
+  ],
+  [
+   "smr",
+   "intertitre",
+   "Service Médical Rendu (SMR)"
+  ],
+  [
+   "smr",
+   "niveau",
+   "Modéré"
+  ],
+  [
+   "smr",
+   "paragraphe",
+   "Le service médical rendu par MOUNJARO 2,5 mg, 5 mg, 7,5 mg, 10 mg, 12,5 mg, 15 mg (tirzépatide), solution injectable en stylo pré-rempli, reste modéré uniquement chez les adultes pour le traitement du diabète de type 2 insuffisamment contrôlé en complément d’un régime alimentaire et d’une activité physique :"
+  ],
+  [
+   "smr",
+   "element",
+   "en bithérapie avec la metformine,"
+  ],
+  [
+   "smr",
+   "element",
+   "en trithérapie avec la metformine et un sulfamide hypoglycémiant,"
+  ],
+  [
+   "smr",
+   "element",
+   "en trithérapie avec la metformine et une insuline basale."
+  ],
+  [
+   "smr",
+   "niveau",
+   "Insuffisant"
+  ],
+  [
+   "smr",
+   "paragraphe",
+   "Le service médical rendu par MOUNJARO 2,5 mg, 5 mg, 7,5 mg, 10 mg, 12,5 mg, 15 mg (tirzépatide), solution injectable en stylo pré-rempli, reste insuffisant pour justifier d’une prise en charge par la solidarité nationale au regard des alternatives disponibles dans les autres situations de l’AMM."
+  ],
+  [
+   "asmr",
+   "intertitre",
+   "Amélioration du service médical rendu (ASMR)"
+  ],
+  [
+   "asmr",
+   "niveau",
+   "V (absence)"
+  ],
+  [
+   "asmr",
+   "paragraphe",
+   "Traitement du diabète de type 2 insuffisamment contrôlé en complément d’un régime alimentaire et d’une activité physique :"
+  ],
+  [
+   "asmr",
+   "element",
+   "en bithérapie avec la metformine,"
+  ],
+  [
+   "asmr",
+   "element",
+   "en trithérapie avec la metformine et un sulfamide hypoglycémiant,"
+  ],
+  [
+   "asmr",
+   "element",
+   "en trithérapie avec la metformine et une insuline basale."
+  ],
+  [
+   "asmr",
+   "paragraphe",
+   "Compte tenu :"
+  ],
+  [
+   "asmr",
+   "element",
+   "des données initiales d’efficacité du tirzépatide reposant sur un critère de jugement biologique intermédiaire de variation de l’HbA1c et sur un critère de jugement de perte de poids, uniquement en association avec la metformine, avec la metformine et un sulfamide hypoglycémiant, avec la metformine et une insuline basale,"
+  ],
+  [
+   "asmr",
+   "element",
+   "des résultats de l’étude SURPASS-CVOT ayant démontré la non-infériorité, mais pas la supériorité du tirzépatide à la dose maximale tolérée par rapport au dulaglutide 1,5 mg/semaine en termes de réduction du risque de survenue d’événements cardiovasculaires majeurs, évaluée sur le critère composite MACE-3 (incluant le décès d’origine cardiovasculaire, l’infarctus du myocarde non fatal et l’AVC non fatal), avec une marge de non-infériorité de 1,05, chez des patients atteints de DT2, avec une maladie cardiovasculaire établie (analyse sur la population ITTm),"
+  ],
+  [
+   "asmr",
+   "element",
+   "des limites de cette démonstration qui ne permettent pas d’établir avec robustesse un bénéfice cardio-vasculaire du tirzépatide, en raison notamment du choix du comparateur dulaglutide à la dose de 1,5 mg/semaine alors que la dose maximale est de 4,5 mg/semaine, de l’analyse de non-infériorité uniquement sur une population ITTm, des modalités de détermination de la marge de non-infériorité non optimales, et du fait que le dulaglutide a démontré un bénéfice cardiovasculaire chez des patients majoritairement en prévention primaire dans l’étude REWIND,"
+  ],
+  [
+   "asmr",
+   "element",
+   "de l’absence de mise en évidence de supériorité du tirzépatide par rapport au dulaglutide utilisé à une posologie non optimale qui questionne dans la mesure où le tirzépatide a démontré un bénéfice sur l’HbA1c ainsi que sur la perte de poids,"
+  ],
+  [
+   "asmr",
+   "element",
+   "du profil de tolérance du tirzépatide, caractérisé par des troubles gastro-intestinaux, sans mise en évidence de nouveau signal pour cette molécule à composante agoniste des récepteurs du GLP-1 ainsi que du GIP,"
+  ],
+  [
+   "asmr",
+   "paragraphe",
+   "la Commission considère que MOUNJARO (tirzépatide) n’apporte pas d’amélioration du service médical rendu (ASMR V) par rapport à TRULICITY (dulaglutide)."
+  ],
+  [
+   "asmr",
+   "niveau",
+   "Sans objet"
+  ],
+  [
+   "asmr",
+   "paragraphe",
+   "Dans les autres situations de l’AMM : sans objet."
+  ]
+ ]
+}

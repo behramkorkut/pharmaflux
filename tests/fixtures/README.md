@@ -131,6 +131,11 @@ ce que chaque réponse apprend : `docs/rapports/mission-09/points-a-trancher.md`
 | `doc1-saut1.headers` … `doc1-saut4-pdf.headers` | le document d'avis de MOUNJARO, saut par saut | 302 vers `doXiti.jsp`, page de mesure d'audience (`doc1-saut3-doXiti.html`, rafraîchissement vers le PDF), puis le PDF en `HEAD` (631 564 octets) |
 | `doc2-saut1.headers` | le document d'avis de DOLIPRANE (2015) | 302 vers `doXiti.jsp`, comme en 2026 |
 
+`p_4072400.extrait.json` et `c_2027377.extrait.json` (palier 1) ne sont pas des
+réponses : ce sont les **extractions de référence** de deux pages, relues à la
+main contre la page, que `tests/test_has_extraction.py` exige à l'identique
+(blocs, ordre, empreinte) tant que la version de l'extracteur ne change pas.
+
 Les corps sont gardés **à l'octet**, tels que reçus (décompressés par
 `httpx`), et leur sha256 est au journal. Une page porte un jeton CSRF et un
 horodatage propres à chaque réponse : deux requêtes de la même page ne

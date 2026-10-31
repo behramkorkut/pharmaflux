@@ -1,0 +1,35 @@
+{
+ "extracteur": 1,
+ "empreinte": "d352d8a3904632361bef2e0970f20243f698c55448882b8c0394406f158ba17f",
+ "titre": "DOLIPRANE - GELUPRANE - PARACETAMOL ZENTIVA (paracétamol)",
+ "date_avis": "2015-04-01",
+ "mis_en_ligne": "2015-05-07",
+ "mis_a_jour": null,
+ "lignes": [
+  [
+   "demande",
+   "nature",
+   "Renouvellement d'inscription"
+  ],
+  [
+   "demande",
+   "paragraphe",
+   "Maintien du remboursement dans les mêmes conditions"
+  ],
+  [
+   "smr",
+   "intertitre",
+   "Service Médical Rendu (SMR)"
+  ],
+  [
+   "smr",
+   "niveau",
+   "Important"
+  ],
+  [
+   "smr",
+   "paragraphe",
+   "Le service médical rendu par les spécialités DOLIPRANE, GELUPRANE et PARACETAMOL ZENTIVA reste important dans les indications de l’AMM."
+  ]
+ ]
+}

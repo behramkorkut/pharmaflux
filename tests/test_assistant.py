@@ -107,6 +107,10 @@ def test_refus_medical_declenche(question: str) -> None:
         "DOLIPRANE 1000 mg est-il disponible ?",
         # le cadre élargi, sans geste de soin ; et « depuis je » n'est pas « puis je »
         "LARIAM peut-il être en rupture de stock ?",
+        "LARIAM peut-il être en rupture ?",
+        "Est-il possible de connaître le taux de remboursement de DOLIPRANE 1000 mg ?",
+        "Peut-on savoir si DOLIPRANE 1000 mg est commercialisé ?",
+        "Est-ce que je peux trouver la date de l'avis de LEVOTHYROX ?",
         "On peut trouver le prix public de DOLIPRANE où ?",
         "Depuis je ne sais quand, à quel taux DOLIPRANE est-il remboursé et pris en charge ?",
     ],
@@ -535,6 +539,14 @@ def test_v1_aucune_autre_question_n_est_refusee(jeu_v1: Jeu) -> None:
     assert faux == []
 
 
+def test_v0_refus_sans_oubli_ni_faux_refus() -> None:
+    """D2 sur la v0 aussi (relecture 1, point 2) : le cadre élargi refuse chaque ``medical`` et
+    aucune autre question."""
+    jeu_v0 = charger_jeu(Path("evaluation/questions-reference-v0.toml"), charger_tous())
+    refus = {q.id: regles.refus_medical(q.question) is not None for q in jeu_v0.questions}
+    assert [i for i, r in refus.items() if r != i.startswith("medical-")] == []
+
+
 def test_v1_aucune_reponse_attendue_n_est_abstenue_par_les_regles(jeu_v1: Jeu) -> None:
     """Le miroir de D2 pour les abstentions dures (relecture 1, point 6) : aucune réponse attendue
     n'est abstenue par ``regles.abstention`` ; les dix ``depense`` le sont toutes."""
@@ -877,3 +889,4 @@ def test_controle_premier_du_mois() -> None:
     assert controle.controler("Arrêt annoncé à partir du 1er juillet 2027.", [frag], "q") is None
     assert controle.controler("Arrêt annoncé à partir du 1er août 2027.", [frag], "q") is not None
     assert controle.controler("Arrêt annoncé à partir du 1er juillet.", [frag], "q") is not None
+    assert controle.extraire("le 1er du mois")[1] == frozenset()  # « 1er » sans mois : pas une date

@@ -17,14 +17,16 @@ from pharmaflux.index.fragments import SECTIONS_INDEX
 @pytest.mark.parametrize(
     ("question", "sections"),
     [
-        ("Quel est le SMR de KALYDECO ?", ("avis", "avis_has")),
-        ("Que dit l'avis de la Commission de la transparence sur MOUNJARO ?", ("avis", "avis_has")),
+        ("Quel est le SMR de KALYDECO ?", ("avis",)),
+        ("Quel est le dernier avis de SMR rendu sur OZEMPIC ?", ("avis",)),
+        ("Que dit l'avis de la Commission de la transparence sur MOUNJARO ?", ("avis_has", "avis")),
+        ("Que dit l'avis sur MOUNJARO ?", ()),
         ("OZEMPIC est-il en rupture de stock ?", ("disponibilite",)),
         ("LARIAM est-il d'intérêt thérapeutique majeur ?", ("disponibilite",)),
         ("Quel est le prix de la boîte de DOLIPRANE ?", ("presentations",)),
         ("Y a-t-il une information importante sur la DEPAKINE ?", ("informations",)),
         ("Qui est le titulaire de LARIAM ?", ("identite",)),
-        ("Le prix et le SMR de KALYDECO ?", ("avis", "avis_has", "presentations")),
+        ("Le prix et le SMR de KALYDECO ?", ("avis", "presentations")),
         ("Bonjour", ()),
     ],
 )

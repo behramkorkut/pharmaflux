@@ -19,6 +19,10 @@ from __future__ import annotations
 from pharmaflux.index import lexical
 
 # (mots ou expressions de la question, sections de l'index), dans l'ordre de lecture.
+# Changée une fois, au palier 3 (controle-palier-2.md, question 1), et la dernière : le dernier
+# SMR ou ASMR d'un médicament est toujours dans le fragment ``avis`` de la BDPM, alors qu'une page
+# d'avis peut être plus ancienne. « SMR » et « ASMR » demandent donc ``avis`` seul, et le mot
+# « avis », trop général, ne demande plus rien. Mesurée sur avis_has-019 à -023, figées avant.
 TABLE: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (
         (
@@ -26,12 +30,12 @@ TABLE: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
             "asmr",
             "service medical rendu",
             "amelioration du service medical rendu",
-            "commission de la transparence",
-            "avis",
-            "has",
-            "haute autorite de sante",
         ),
-        ("avis", "avis_has"),
+        ("avis",),
+    ),
+    (
+        ("commission de la transparence", "has", "haute autorite de sante"),
+        ("avis_has", "avis"),
     ),
     (
         (

@@ -13,10 +13,11 @@ touche à aucun chemin réservé, hormis les trois contrôles de l'IeC, committ�
   sont dans `docs/relectures/mission-08/`.
 - **Le commit de clôture**, sur lequel l'évaluation est notée : `2891e98`.
 - **La relecture 1** (Claude Fable 5.1, sur `98cdb69`) est **CONFORME, 0 bloquant**. Ses
-  six points non bloquants sont corrigés, en `50ff304` et dans le commit qui porte cette
-  description (`reponse-relecture-1.md`). Les points 2 et 3 changent le chemin après
-  l'évaluation : sur décision de l'IeC, ils sont traités ici, et la renotation sur le cache
-  redonne les mêmes chiffres, à l'octet. Il n'y a pas de tour 2.
+  six points non bloquants sont corrigés en `50ff304`, `3a102db` et `a87a883`
+  (`reponse-relecture-1.md`). Les points 2 et 3 sont corrigés après la mesure, sur relecture,
+  sans effet sur les indicateurs : sur décision de l'IeC, la recette de `make evaluer`, relancée
+  sur le cache au sommet `a87a883`, redonne les mêmes chiffres, à l'octet. Il n'y a pas de
+  tour 2.
 - **À venir** : la revue finale de l'IeC.
 - **Aucun appel réel n'est parti d'une session d'agent.** Les tests passent tous par un double du
   client. La démonstration et l'évaluation complète ont été lancées par beko, avec la clé de son
@@ -145,7 +146,7 @@ ici :
 **La dépense de la mission** : 65 appels pour **1,0309 $**, soit la démonstration (0,0432 $) et
 l'évaluation (0,9877 $). Il reste **18,9691 $** sur 20 $ (`pharmaflux assistant depenses`).
 
-## Vérifications locales (commit testé : `2891e98`, le commit de clôture ; puis le sommet, après la relecture 1)
+## Vérifications locales (commit testé : `2891e98`, le commit de clôture ; puis `a87a883`, le sommet après la relecture 1)
 
 Redpanda, Qdrant et les fichiers du modèle présents sur le Mac.
 
@@ -153,7 +154,7 @@ Redpanda, Qdrant et les fichiers du modèle présents sur le Mac.
 |---|---|
 | `uv run ruff check .` / `ruff format --check .` | All checks passed / 289 files already formatted |
 | `uv run mypy src` | Success: no issues found in 78 source files |
-| `GITHUB_ACTIONS=true uv run pytest -q -rE -rs` | **719 passed** en 6 min 06 à `2891e98` (601 au départ de la mission), puis **730 passed** en 6 min 05 au sommet, après la relecture 1 ; intégration et modèle compris, aucun saut ; session verte |
+| `GITHUB_ACTIONS=true uv run pytest -q -rE -rs` | **719 passed** en 6 min 06 à `2891e98` (601 au départ de la mission), puis **735 passed** en 6 min 41 au sommet `a87a883`, après la relecture 1 ; intégration et modèle compris, aucun saut ; session verte |
 | `sh infra/git-hooks/test-crochets.sh` / `python3 infra/agents/test_garde_fou.py` | tout est conforme / OK (21 tests) |
 | simulation du `Makefile` | `make -n evaluer`, `make -n rebatir` : voir `palier-3.md` |
 | `demo verifier` | conforme |
@@ -164,7 +165,7 @@ Redpanda, Qdrant et les fichiers du modèle présents sur le Mac.
 | `index verifier` (séquence de beko) | conforme, cosinus minimal 0,9964 |
 | `assistant evaluer --estimer` (vrai index, sans clé) | 62 appels, 5,3985 $ prudent, 0,8919 $ probable ; 439 à 462 Mo, 11 s |
 | la recette de `make evaluer` au commit de clôture | 0 appel ; conditions dures tenues ; 44/49 |
-| la même recette après les points 2 et 3 de la relecture (sur le cache) | 0 appel, journal inchangé ; 44/49 et 82/88, sortie identique à l'octet à celle de `2891e98` |
+| la même recette au sommet `a87a883`, après les points 2 et 3 de la relecture (sur le cache) | 0 appel, journal inchangé ; 44/49 et 82/88, sortie identique à l'octet à celle de `2891e98` |
 | `pharmaflux assistant depenses` | mission 8 : 65 appel(s), 1,0309 $ ; reste 18,9691 $ |
 
 **La mémoire** (seuil de 512 Mo, ADR 0009) : un seul processus suffit.

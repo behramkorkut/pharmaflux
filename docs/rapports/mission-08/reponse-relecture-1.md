@@ -4,14 +4,18 @@ Relecture 1 (Claude Fable 5.1, sur `98cdb69`) : **CONFORME, 0 bloquant**. Les si
 bloquants sont corrigés, ainsi que cinq des remarques. Le fichier de la relecture est committé
 tel quel, en `50ff304`.
 
-Il y a deux commits :
+Il y a trois commits, et cette réponse est complétée dans un quatrième :
 - **`50ff304`** porte les points 1, 4, 5 et 6, et les remarques de rendu. Aucun ne touche le
   chemin ni la notation.
-- **Le commit de cette réponse** porte les points 2 et 3. Ils changent le chemin après
-  l'évaluation, et **l'IeC a décidé de les traiter dans cette mission**. Sa règle « rien ne
-  change après le résultat » sert à empêcher d'ajuster l'assistant sur les réponses de Claude ;
-  ces deux défauts viennent de la relecture du code. Sa condition était de prouver que les
-  scores ne bougent pas : c'est fait, voir plus bas.
+- **`3a102db`** porte les points 2 et 3, et la première version de cette réponse.
+- **`a87a883`** porte les cas de test que l'IeC a demandés pour ces deux points, sans changer
+  le code.
+
+**Les points 2 et 3 sont corrigés après la mesure, sur relecture, sans effet sur les
+indicateurs (preuve jointe).** L'IeC a décidé de les traiter dans cette mission. Sa règle
+« rien ne change après le résultat » sert à empêcher d'ajuster l'assistant sur les réponses de
+Claude, et ces deux défauts viennent de la relecture du code. Le point 2 est même un écart à
+l'ordre, puisque l'exemple de son propre §0 D n'était pas refusé. La preuve est plus bas.
 
 ## À corriger
 
@@ -25,7 +29,9 @@ Il y a deux commits :
    `ANTHROPIC_API_KEY` et répond avant tout import du SDK. Le vrai client n'est jamais construit
    sans clé.
 
-2. **Le cadre du refus médical** : corrigé (le commit de cette réponse, `regles.py`). En plus de
+2. **Le cadre du refus médical** : **corrigé après la mesure, sur relecture, sans effet sur
+   les indicateurs (preuve jointe)** (`3a102db`, `regles.py` ; cas de test en `a87a883`). En
+   plus de
    « puis-je / dois-je / faut-il », il connaît les tournures de même structure :
    - « peut-on », « peut-il », « peut-elle », « peuvent-ils », « peuvent-elles » ;
    - « je peux », « on peut » ;
@@ -38,19 +44,25 @@ Il y a deux commits :
    Les tests vont dans les deux sens :
    - **refusées** : les quatre questions de la relecture, dont « Mon fils de 6 ans peut-il
      prendre le générique de DOLIPRANE ? », l'exemple du §0 D de l'ordre ;
-   - **non refusées** : « LARIAM peut-il être en rupture de stock ? » et « On peut trouver le
-     prix public de DOLIPRANE où ? », faute de geste de soin, et « Depuis je ne sais
-     quand… ».
+   - **non refusées**, faute de geste de soin (les cas demandés par l'IeC) :
+     - « LARIAM peut-il être en rupture ? » ;
+     - « Est-il possible de connaître le taux de remboursement de DOLIPRANE 1000 mg ? » ;
+     - « Peut-on savoir si DOLIPRANE 1000 mg est commercialisé ? » ;
+     - « Est-ce que je peux trouver la date de l'avis de LEVOTHYROX ? » ;
+     - « On peut trouver le prix public de DOLIPRANE où ? » ;
+     - et « Depuis je ne sais quand… ».
 
-   Les deux tests D2 sur la v1 entière restent verts : aucune question `medical` oubliée, aucun
-   faux refus. La v0 ne change pas non plus.
+   D2 reste vert **sur la v1 et sur la v0**, avec un test pour chacune : chaque question
+   `medical` est refusée, et aucune autre (zéro faux refus, zéro oubli).
 
-3. **« 1er juillet 2027 » n'était pas une date** : corrigé (le commit de cette réponse,
-   `controle.py`). `_EN_LETTRES` accepte l'ordinal « 1er ». Le test va dans les deux sens :
-   - « 1er juillet 2027 » est appuyé par « 2027-07-01 » ;
-   - « 1er août 2027 » ne l'est pas ;
-   - « 1er juillet », sans année, ne l'est pas non plus, puisque le jour et le mois sans année
-     ne s'appuient jamais.
+3. **« 1er juillet 2027 » n'était pas une date** : **corrigé après la mesure, sur relecture,
+   sans effet sur les indicateurs (preuve jointe)** (`3a102db`, `controle.py` ; cas de test en
+   `a87a883`). `_EN_LETTRES` accepte l'ordinal « 1er ». Le test va dans les deux sens :
+   - « 1er juillet 2027 », appuyé par « 2027-07-01 », est accepté ;
+   - « 1er août 2027 », non appuyé, donne une abstention ;
+   - « 1er juillet », sans année, ne s'appuie pas non plus, puisque le jour et le mois sans année
+     ne s'appuient jamais ;
+   - « 1er » sans mois (« le 1er du mois ») ne devient pas une date.
 
    Aucune des réponses réelles de l'évaluation n'a écrit « 1er ».
 
@@ -77,11 +89,16 @@ Il y a deux commits :
 
 ## La preuve que les scores ne bougent pas (condition de l'IeC)
 
-J'ai lancé la recette de `make evaluer`, toute en cache, **avant** de committer les points 2
-et 3. Il n'y a eu aucun appel, et le journal des dépenses n'a pas bougé : même empreinte
-(`fd9f7d50…`) et 65 lignes, avant comme après. Les chiffres sont **44/49 et 82/88**, exactement
-ceux du commit de clôture. La sortie entière, hors la ligne qui nomme le fichier de détail, est
-**identique à l'octet** à celle de `2891e98`.
+La recette de `make evaluer` (telle que `make -n` l'affiche), toute en cache, a été lancée deux
+fois : **avant** de committer les points 2 et 3, puis **au nouveau sommet `a87a883`**, sur
+l'arbre propre. Les deux fois :
+- aucun appel ;
+- un journal des dépenses inchangé, de même empreinte (`fd9f7d50…`) et de 65 lignes, avant comme
+  après ;
+- **44/49 et 82/88**, exactement les chiffres du commit de clôture, et 0 citation invalide, 0
+  conseil médical ;
+- une sortie entière **identique à l'octet** à celle de `2891e98`, hors la ligne qui nomme le
+  fichier de détail.
 
 Rien d'autre ne pouvait bouger :
 - toutes les questions `medical` de la v1 étaient déjà refusées par les règles, et D2 garantit

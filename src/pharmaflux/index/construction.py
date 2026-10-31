@@ -115,6 +115,28 @@ def vecteurs_de(
     return [connus[e] for e in empreintes], len(a_encoder)
 
 
+def remplir_cache(
+    encodeur: Encodeur, cache: Cache, fragments: Fragments, journal: Any = None
+) -> int:
+    """Encode d'abord les textes absents du cache, par lots, avant toute écriture dans Qdrant.
+
+    Le pic de l'encodage (le modèle et ses lots de 512 jetons, la prose des avis) et celui de
+    l'écriture (vecteurs creux, charges) ne s'additionnent plus : mesuré à la mission 09, une
+    construction qui encodait 1 543 fragments d'avis en écrivant passait de 418 à 586 Mo.
+    """
+    encodes = 0
+    lot: list[dict[str, Any]] = []
+    for fragment in fragments.lire():
+        lot.append({"empreinte_texte": fragment["empreinte_texte"], "texte": fragment["texte"]})
+        if len(lot) == LOT:
+            encodes += vecteurs_de(encodeur, cache, lot)[1]
+            lot = []
+    encodes += vecteurs_de(encodeur, cache, lot)[1] if lot else 0
+    if journal is not None and encodes:
+        journal(f"{encodes} texte(s) encodé(s) dans le cache, avant l'écriture")
+    return encodes
+
+
 # --- les fragments, par le sous-processus du gold ----------------------------------------------
 
 
@@ -128,6 +150,8 @@ class Fragments:
     touches: tuple[str, ...] | None = None  # les CIS touchés, pour une mise à jour
     par_version: int = 0
     par_bascule: int = 0
+    has: dict[str, Any] | None = None  # la seconde horloge : la position du manifeste HAS lue
+    par_has: int = 0  # CIS touchés par une page arrivée, et par rien d'autre
 
     def lire(self) -> Iterator[dict[str, Any]]:
         with self.fichier.open(encoding="utf-8") as entree:
@@ -142,9 +166,16 @@ def calculer_fragments(
     *,
     a: str | None = None,
     depuis: str | None = None,
+    archive_has: Path | None = None,
+    has_lignes: int | None = None,
+    has_depuis: int | None = None,
 ) -> Fragments:
     """Les fragments, calculés dans un sous-processus (le gold) : tous, ou ceux des CIS touchés
-    depuis ``depuis`` ; à l'instant ``a``, par défaut la dernière observation du silver."""
+    depuis ``depuis`` ; à l'instant ``a``, par défaut la dernière observation du silver.
+
+    ``archive_has`` : les pages d'avis de la HAS, lues jusqu'à ``has_lignes`` (tout le
+    manifeste par défaut) ; ``has_depuis`` touche les CIS des pages arrivées après.
+    """
     travail.mkdir(parents=True, exist_ok=True)
     sortie = travail / "fragments.jsonl"
     commande = [
@@ -153,6 +184,9 @@ def calculer_fragments(
         *(x for c in cis for x in ("--cis", c)),
         *(("--a", a) if a else ()),
         *(("--depuis", depuis) if depuis else ()),
+        *(("--archive-has", str(archive_has)) if archive_has else ()),
+        *(("--has-lignes", str(has_lignes)) if has_lignes is not None else ()),
+        *(("--has-depuis", str(has_depuis)) if has_depuis is not None else ()),
     ]  # fmt: skip
     resultat = subprocess.run(commande, capture_output=True, text=True, check=False)
     if resultat.returncode != 0:
@@ -170,6 +204,8 @@ def calculer_fragments(
         None if touches is None else tuple(touches),
         bilan.get("par_version", 0),
         bilan.get("par_bascule", 0),
+        bilan.get("has"),
+        bilan.get("par_has", 0),
     )
 
 
@@ -220,9 +256,11 @@ def construire(
     collection = nom_collection(qdrant.espace, encodeur, fragments.instant)
     if collection == ancienne:  # reconstruire au même instant : l'autre nom, l'index reste lisible
         collection += "-bis"
+    encodes = remplir_cache(encodeur, cache, fragments, journal)
+    encodeur.liberer()  # tout est au cache : l'écriture n'a plus besoin du modèle
     qdrant.supprimer_collection(collection)
     qdrant.creer_collection(collection, encodeur.dimension)
-    encodes = ecrits = 0
+    ecrits = 0
     lot: list[dict[str, Any]] = []
     for fragment in fragments.lire():
         lot.append(fragment)
@@ -249,6 +287,7 @@ def construire(
             "fiches": fragments.fiches if reduit else fragments.fiches_total or fragments.fiches,
             "fragments": ecrits,
             "cis_reduits": sorted(reduit) or None,
+            "has": fragments.has,
         }
     )
     for perimee in sorted({str(c) for c in (ancienne, decrite) if c and c != collection}):
@@ -405,6 +444,7 @@ class BilanMiseAJour:
     cis_touches: int
     par_version: int
     par_bascule: int
+    par_has: int
     ajoutes: int
     remplaces: int
     retires: int
@@ -441,6 +481,11 @@ def mettre_a_jour(
         raise IndexRefuse("une mise à jour demande les CIS touchés (index fragments --depuis)")
     if fragments.instant < etat["instant"]:
         raise IndexRefuse(f"le silver ({fragments.instant}) est en arrière de l'index")
+    if (etat.get("has") is None) != (fragments.has is None):
+        raise IndexRefuse(
+            "l'index et ces fragments ne lisent pas tous deux les pages d'avis de la HAS"
+            " (--archive-has) : reconstruire l'index, ou garder la même option"
+        )
     collection, depuis, reprise = etat["collection"], etat["instant"], etat["vise"] is not None
     qdrant.ecrire_etat(etat | {"vise": fragments.instant})
     comptes = {"ajoutes": 0, "remplaces": 0, "retires": 0, "inchanges": 0, "encodes": 0}
@@ -467,6 +512,7 @@ def mettre_a_jour(
             "vise": None,
             "fiches": fragments.fiches_total,
             "fragments": total,
+            "has": fragments.has,
         }
     )
     return BilanMiseAJour(
@@ -476,6 +522,7 @@ def mettre_a_jour(
         len(touches),
         fragments.par_version,
         fragments.par_bascule,
+        fragments.par_has,
         fragments=total,
         duree_s=time.monotonic() - debut,
         **comptes,
@@ -566,6 +613,11 @@ def verifier(
     encodeur_de_l_index(etat, encodeur)
     if fragments.instant != etat["instant"]:
         raise IndexRefuse(f"fragments à {fragments.instant}, index à {etat['instant']}")
+    if fragments.has != etat.get("has"):
+        raise IndexRefuse(
+            "les pages d'avis de la HAS relues ne sont pas celles que l'index a lues :"
+            f" {_position(fragments.has)} contre {_position(etat.get('has'))}"
+        )
     rapport = Verification(etat["instant"], etat["collection"])
     if etat["vise"]:
         rapport.suspens = etat["vise"]
@@ -574,22 +626,29 @@ def verifier(
     tries = sorted(attendus)
     pas = max(1, len(tries) // ECHANTILLON)
     echantillon = set(tries[::pas][:ECHANTILLON])
-    a_reencoder: list[tuple[str, Vecteurs]] = []
+    # L'échantillon se réencode d'abord, depuis les fragments attendus, puis le modèle est rendu :
+    # son pic et celui de la lecture des points ne s'additionnent pas (mission 09 : 534 Mo sinon).
+    textes = {
+        f["identifiant"]: f["texte"] for f in fragments.lire() if f["identifiant"] in echantillon
+    }
+    ordre = sorted(textes)
+    reencodes = dict(zip(ordre, encodeur.passages([textes[i] for i in ordre]), strict=True))
+    encodeur.liberer()
+    a_reencoder: list[tuple[Vecteurs, Vecteurs]] = []
     vus: set[str] = set()
     page: list[dict[str, Any]] = []
     for point in qdrant.parcourir(etat["collection"], vecteurs=True):
         page.append(point)
         if len(page) == LOT_PARCOURS:
-            _verifier_page(page, attendus, encodeur, cache, echantillon, a_reencoder, vus, rapport)
+            _verifier_page(page, attendus, encodeur, cache, reencodes, a_reencoder, vus, rapport)
             page = []
-    _verifier_page(page, attendus, encodeur, cache, echantillon, a_reencoder, vus, rapport)
+    _verifier_page(page, attendus, encodeur, cache, reencodes, a_reencoder, vus, rapport)
     rapport.manquants = sorted(set(attendus) - vus)
     if a_reencoder:
-        textes = [t for t, _ in a_reencoder]
-        nouveaux = encodeur.passages(textes)
+        nouveaux = np.stack([n for n, _ in a_reencoder])
         indexes = np.stack([v for _, v in a_reencoder])
         rapport.cosinus_minimal = float((nouveaux * indexes).sum(axis=1).min())
-        rapport.echantillon = len(textes)
+        rapport.echantillon = len(a_reencoder)
     return rapport
 
 
@@ -598,8 +657,8 @@ def _verifier_page(
     attendus: dict[str, bytes],
     encodeur: Encodeur,
     cache: Cache,
-    echantillon: set[str],
-    a_reencoder: list[tuple[str, Vecteurs]],
+    reencodes_echantillon: dict[str, Vecteurs],
+    a_reencoder: list[tuple[Vecteurs, Vecteurs]],
     vus: set[str],
     rapport: Verification,
 ) -> None:
@@ -634,8 +693,33 @@ def _verifier_page(
             and identifiant not in rapport.vecteurs_differents[-1:]
         ):
             rapport.vecteurs_differents.append(identifiant)
-        if identifiant in echantillon:
-            a_reencoder.append((point["payload"]["texte"], vecteur))
+        if identifiant in reencodes_echantillon:
+            a_reencoder.append((reencodes_echantillon[identifiant], vecteur))
+
+
+def _position(has: dict[str, Any] | None) -> str:
+    return "aucune page" if has is None else f"ligne {has['position']} ({has['empreinte'][:12]}…)"
+
+
+def exiger_has(etat: dict[str, Any], archive_has: Path | None) -> None:
+    """Avant une mise à jour : la même archive HAS, le même extracteur, un préfixe inchangé."""
+    from pharmaflux.has.extraction import VERSION_EXTRACTEUR
+    from pharmaflux.index import pages_has
+
+    has = etat.get("has")
+    if has is None:
+        return
+    if archive_has is None:
+        raise IndexRefuse("l'index lit les pages d'avis de la HAS : --archive-has est attendu")
+    if has["extracteur"] != VERSION_EXTRACTEUR:
+        raise IndexRefuse(
+            f"l'index a extrait les pages en v{has['extracteur']}, ce code extrait en"
+            f" v{VERSION_EXTRACTEUR} : reconstruire l'index"
+        )
+    try:
+        pages_has.exiger_prefixe(archive_has, pages_has.Position(has["position"], has["empreinte"]))
+    except pages_has.PositionRefusee as exc:
+        raise IndexRefuse(str(exc)) from exc
 
 
 def _empreinte(texte: str) -> bytes:

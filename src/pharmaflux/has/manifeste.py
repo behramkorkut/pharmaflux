@@ -12,6 +12,7 @@ Il est séparé de ``collecte.jsonl``, que ``evenements`` lit et qui ne change d
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, fields
 from enum import StrEnum
 from pathlib import Path
@@ -83,7 +84,12 @@ def ajouter(racine: Path, ligne: LigneHas) -> None:
 
 def lire(racine: Path) -> list[LigneHas]:
     """Les lignes lisibles du manifeste, dans l'ordre ; rien s'il n'existe pas."""
-    return [ligne for _, ligne in parcourir_lignes(chemin_manifeste(racine), _decoder)]
+    return [ligne for _, ligne in parcourir_brut(racine)]
+
+
+def parcourir_brut(racine: Path) -> Iterator[tuple[bytes, LigneHas]]:
+    """Chaque ligne lisible et ses octets, dans l'ordre : pour la recopier à l'identique."""
+    yield from parcourir_lignes(chemin_manifeste(racine), _decoder)
 
 
 def _decoder(octets: bytes) -> LigneHas:

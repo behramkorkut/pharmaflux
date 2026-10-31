@@ -22,7 +22,14 @@ from typer.testing import CliRunner
 
 from pharmaflux import cli
 from pharmaflux.assistant import chemin, evaluation, notation
-from pharmaflux.assistant.budget import PLAFOND, BudgetDepasse, Journal, Ligne, Usage
+from pharmaflux.assistant.budget import (
+    MISSION,
+    PLAFOND,
+    BudgetDepasse,
+    Journal,
+    Ligne,
+    Usage,
+)
 from pharmaflux.assistant.cache import CacheReponses
 from pharmaflux.assistant.client import ClientClaude, ReponseLLM
 from pharmaflux.cli import application
@@ -387,7 +394,9 @@ def test_porte_budgetaire_avant_le_premier_appel(
     """Addendum 1 G2 : l'estimation de toute l'évaluation est faite avant le premier appel ; si
     elle dépasse le reste, aucun appel ne part (aucune évaluation ne s'arrête au milieu)."""
     journal, cache = donnees
-    journal.ajouter(Ligne("2026-10-30T00:00:00Z", 8, "q", "m", "low", 0, 0, 0, 0, PLAFOND - 0.05))
+    journal.ajouter(
+        Ligne("2026-10-30T00:00:00Z", MISSION, "q", "m", "low", 0, 0, 0, 0, PLAFOND - 0.05)
+    )
     prepares = evaluation.preparer_jeu(index, EncodeurTest(), _jeu(*_QUESTIONS))
     estimation = evaluation.estimer(prepares, journal, cache)
     assert not estimation.accordee  # 0,05 $ de reste < max_tokens entier (0,08 $)
@@ -509,7 +518,7 @@ def test_cli_evaluer_code_0(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
         ],
     )
     assert resultat.exit_code == 0, resultat.output
-    assert "réponses correctes (F2)" in resultat.output and "dépenses de la mission 8" in (
+    assert "réponses correctes (F2)" in resultat.output and "dépenses de la mission 9" in (
         resultat.output
     )
     assert list((tmp_path / "a" / "evaluations").glob("evaluation-*.jsonl"))

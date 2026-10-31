@@ -305,6 +305,37 @@ def test_robots_txt_decide(racine: Path, site: ServeurSimule) -> None:
     assert statuts["p_3577036"] == "interdit_robots"
 
 
+@pytest.mark.parametrize(
+    ("directive", "pause"),
+    [
+        ("Crawl-delay: 5", 5.0),
+        ("Crawl-delay: 2.5", 3.0),  # décimal : ignoré par urllib.robotparser, arrondi au-dessus
+        ("Crawl-delay: 1", 2.0),  # plus court que la pause du client : sans effet
+    ],
+)
+def test_un_crawl_delay_allonge_la_pause(
+    racine: Path, site: ServeurSimule, directive: str, pause: float
+) -> None:
+    # Le fichier ne finit pas par un saut de ligne.
+    robots = (PAGES / "robots.txt").read_bytes() + f"\n{directive}\n".encode()
+    site.scenariser(URL_ROBOTS, (200, robots, {"Content-Type": "text/plain"}))
+    pauses = Pauses()
+    bilan = passage(racine, site, pauses=pauses)
+    assert bilan.code_sortie == 0, bilan.resume()
+    # Six pauses entre sept requêtes, mentions légales comprises : toutes au délai demandé.
+    assert len(pauses) == 6
+    assert all(pause - 0.1 < attendue <= pause for attendue in pauses)
+    assert ("Crawl-delay" in bilan.robots) == (pause > 2.0)
+
+
+def test_un_crawl_delay_d_un_autre_robot_ne_compte_pas(racine: Path, site: ServeurSimule) -> None:
+    robots = (PAGES / "robots.txt").read_bytes() + b"\nUser-agent: Googlebot\nCrawl-delay: 30\n"
+    site.scenariser(URL_ROBOTS, (200, robots, {"Content-Type": "text/plain"}))
+    pauses = Pauses()
+    passage(racine, site, pauses=pauses)
+    assert all(1.9 < attendue <= 2.0 for attendue in pauses)
+
+
 def test_robots_txt_illisible_refuse_tout(racine: Path, site: ServeurSimule) -> None:
     site.scenariser(URL_ROBOTS, (404, b"", {"Content-Type": "text/html"}))
     bilan = passage(racine, site)

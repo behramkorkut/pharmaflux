@@ -10,6 +10,9 @@ l'ordre, rien n'est jamais écrit dans l'archive source. C'est la seule
 donnée admise dans le dépôt (``CLAUDE.md``) : elle vient d'un service
 public, elle est figée, et ``verifier`` la contrôle sur un clone neuf.
 
+Depuis la mission 09, le jeu a une seconde partie figée : des pages d'avis de la HAS, avec leur
+manifeste à part (``demo.has``). ``verifier`` contrôle les deux.
+
 Comme ``pharmaflux.bronze``, tout nom qui commence par un point est ignoré
 (``.DS_Store`` d'un Mac, dossier d'un rapatriement coupé) : il n'entre pas
 dans « rien d'autre n'est présent ».
@@ -29,6 +32,7 @@ from pathlib import Path
 from pharmaflux.bronze import DOSSIER_BRONZE, MOTIF_NOM
 from pharmaflux.collecte import manifeste
 from pharmaflux.collecte.manifeste import Enregistrement, ManifesteCorrompu, Statut
+from pharmaflux.demo import has
 
 JEU_PAR_DEFAUT = Path("demo/archive")  # relatif à la racine du dépôt
 MOTIF_PASSAGE = re.compile(r"^\d{8}T\d{6}Z$")
@@ -64,6 +68,7 @@ class Bilan:
     premier_passage: str | None = None
     dernier_passage: str | None = None
     anomalies: list[str] = field(default_factory=list)
+    has: has.BilanHas = field(default_factory=has.BilanHas)  # la partie HAS (mission 09)
 
     @property
     def conforme(self) -> bool:
@@ -159,7 +164,7 @@ def verifier(racine: Path) -> Bilan:
     chemin_manifeste = manifeste.chemin_manifeste(racine)
     if not chemin_manifeste.is_file():
         bilan.anomalies.append(f"{chemin_manifeste} absent")
-        return bilan
+        return _avec_has(racine, bilan, set())
     cites: dict[str, int] = {}
     passages: set[str] = set()
     entites: set[str] = set()
@@ -209,7 +214,14 @@ def verifier(racine: Path) -> Bilan:
     bilan.passages = len(passages)
     if passages:
         bilan.premier_passage, bilan.dernier_passage = min(passages), max(passages)
-    bilan.anomalies.extend(_verifier_arborescence(racine, set(cites)))
+    return _avec_has(racine, bilan, set(cites))
+
+
+def _avec_has(racine: Path, bilan: Bilan, cites: set[str]) -> Bilan:
+    """La partie HAS, puis l'arborescence : rien d'autre que ce que les deux manifestes citent."""
+    bilan.has = has.verifier(racine)
+    bilan.anomalies.extend(bilan.has.anomalies)
+    bilan.anomalies.extend(_verifier_arborescence(racine, cites | bilan.has.cites))
     return bilan
 
 

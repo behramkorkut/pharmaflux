@@ -2,7 +2,8 @@
 
 Opus 5.5, grille du 2026-10 (documentation de l'API Claude) : 4,00 $/Mt en entrée,
 20,00 $/Mt en sortie, 0,20 $/Mt en lecture de cache ; l'écriture de cache éphémère coûte
-1,25 fois l'entrée (5,00 $/Mt). Le plafond de la mission est **20 $** (PRD §7.5).
+1,25 fois l'entrée (5,00 $/Mt). Le plafond de la mission est **10 $** (mission 09, PRD §7.5 ;
+il était de 20 $ à la mission 08), sur le même journal.
 
 Avant chaque appel, une **estimation locale** (jamais ``count_tokens``, qui est une requête
 payante) : les jetons d'entrée estimés par le compte de caractères, **plus ``max_tokens``
@@ -20,9 +21,9 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-MISSION = 8
+MISSION = 9
 MODELE = "claude-opus-5-5"
-PLAFOND = 20.0  # $, constante de la mission (PRD §7.5, sur les 100 $ du Lot 3)
+PLAFOND = 10.0  # $, constante de la mission (PRD §7.5, sur les 100 $ du Lot 3)
 
 # Grille du 2026-10, vérifiée dans la documentation de l'API (addendum 1). Dollars par million
 # de jetons. L'écriture de cache (5,00) est le tarif standard 1,25 fois l'entrée du cache
@@ -34,14 +35,14 @@ PRIX_SORTIE = 20.00
 PRIX_CACHE_LECTURE = 0.20
 PRIX_CACHE_ECRITURE = 5.00
 
-# 3,8 caractères par jeton : l'estimation du §0, pour un texte français. Le contenu envoyé est
-# fait de codes, de dates et de nombres, et il en compte moins : sur les 62 appels de
-# l'évaluation, l'entrée réelle a été de 3 612 jetons par appel, contre 1 768 estimés. **L'entrée
-# est donc minorée, d'un facteur 2.** La porte reste prudente par la sortie, comptée à
-# ``max_tokens`` entier (4 000 jetons, contre 259 en moyenne et 661 au plus) : 0,087 $ estimés
-# par appel, contre 0,016 $ réels (relecture 1, point 5). La constante n'est pas changée après la
-# mesure.
-CARACTERES_PAR_JETON = 3.8
+# 1,7 caractère par jeton (mission 09, addendum 1 I1). La mission 08 estimait à 3,8, et minorait
+# l'entrée d'un facteur 2,04 : le contenu envoyé est fait de codes, de dates et de nombres. Recalée
+# sur les 65 appels du journal de la mission 08, dont l'entrée a été reconstituée sans API (les 62
+# clés de cache de l'évaluation retrouvées) : 1,858 caractère par jeton réel en moyenne, de 1,731
+# à 2,081. À 1,7, aucun des 65 appels n'est sous-estimé (+9 % en moyenne). La prose des avis de
+# la HAS se découpe sans doute mieux : la constante reste prudente, à vérifier sur les appels de
+# la démonstration du palier 2.
+CARACTERES_PAR_JETON = 1.7
 
 NOM_JOURNAL = "depenses.jsonl"
 

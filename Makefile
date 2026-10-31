@@ -30,7 +30,8 @@ FICHE_OPTIONS ?= --format texte
 # make index [INDEX_MODELE=test] : le modèle épinglé par défaut ; « test » pour l'encodeur de test
 # (la CI, sans téléchargement).
 INDEX_MODELE ?= e5-small-int8
-INDEX_OPTIONS = --entrepot $(ENTREPOT_DEMO) --modele $(INDEX_MODELE)
+# --archive-has : les pages d'avis de la HAS du jeu (mission 09), section avis_has de l'index.
+INDEX_OPTIONS = --entrepot $(ENTREPOT_DEMO) --modele $(INDEX_MODELE) --archive-has $(JEU)
 # make evaluer [EVALUER_OPTIONS=--estimer] : --estimer chiffre la porte budgétaire, sans clé ni appel.
 EVALUER_OPTIONS ?=
 

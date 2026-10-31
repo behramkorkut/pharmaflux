@@ -16,7 +16,7 @@ import hashlib
 import re
 from collections import defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
@@ -64,6 +64,8 @@ class Perimetre:
     dossiers_sans_lien: tuple[str, ...]
     liens_hors_forme: tuple[str, ...]  # URL qui ne sont pas une page d'avis /jcms/p_N ou c_N
     sources: tuple[SourceLue, ...]
+    # Les CIS de chaque dossier retenu, d'après le SMR et l'ASMR : le choix du jeu de démo.
+    cis_par_dossier: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def empreinte_liste(self) -> str:
         """Le sha256 de la liste des URL, une par ligne, dans l'ordre : pour la citer."""
@@ -103,13 +105,16 @@ def calculer(
     seuil = depuis.strftime("%Y%m%d")
     retenus = set(dossiers) if dossiers is not None else None
     date_par_dossier: dict[str, str] = {}
+    cis_par_dossier: dict[str, set[str]] = defaultdict(set)
     for identifiant in ("bdpm.smr", "bdpm.asmr"):
         contrat = contrats[identifiant]
         i_dossier, i_date = contrat.index("code_dossier_has"), contrat.index("date_avis")
+        i_cis = contrat.index("code_cis")
         for valeurs in lignes[identifiant]:
             dossier, date_avis = valeurs[i_dossier], valeurs[i_date]
             if date_avis >= seuil and (retenus is None or dossier in retenus):
                 date_par_dossier[dossier] = max(date_par_dossier.get(dossier, ""), date_avis)
+                cis_par_dossier[dossier].add(valeurs[i_cis])
 
     contrat_liens = contrats["bdpm.liens_ct"]
     i_dossier, i_lien = contrat_liens.index("code_dossier_has"), contrat_liens.index("lien_avis")
@@ -140,6 +145,7 @@ def calculer(
         dossiers_sans_lien=tuple(sorted(set(date_par_dossier) - avec_lien)),
         liens_hors_forme=tuple(hors_forme),
         sources=tuple(sources),
+        cis_par_dossier={d: tuple(sorted(c)) for d, c in sorted(cis_par_dossier.items())},
     )
 
 

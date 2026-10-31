@@ -5,9 +5,12 @@ hors périmètre, hors LLM), **deux médicaments** (abstention « un à la fois 
 hybride**, **porte structurelle** (aucun fragment du médicament visé → abstention), puis le
 **LLM** (sous le plafond, caché), et enfin le **contrôle** du code : citations parmi les
 fragments fournis, nombres et dates du texte retrouvés dans les fragments cités ou la
-question. Un échec devient une abstention. Les sources, leurs dates et l'instant de l'index
-sont **rendus par le code**, pas par le LLM. Une abstention ou un refus rendus par le LLM
-passent le même contrôle ; un refus prend toujours la forme du code.
+question. Un échec devient une abstention. Les sources, leurs dates, **leurs liens** et
+l'instant de l'index sont **rendus par le code**, pas par le LLM (mission 09) : le LLM ne voit
+aucune URL, et une adresse dans son texte le rend non vérifiable. Une page d'avis de la HAS se
+rend avec sa date d'avis, sa mise en ligne et sa consultation (la licence, ADR 0004) ; l'index
+donne ses deux horloges, la BDPM et la dernière collecte des pages d'avis. Une abstention ou
+un refus rendus par le LLM passent le même contrôle ; un refus prend toujours la forme du code.
 
 Le chemin se joue en deux temps : ``preparer`` va jusqu'au seuil du LLM sans rien appeler ni
 dépenser (une décision des règles ou des portes, ou l'``Appel`` à faire), puis ``conclure``
@@ -78,6 +81,7 @@ SYSTEME = (
 
 # Les textes que le code écrit lui-même : le refus (des règles ou du LLM, même forme), et les
 # motifs qui remplacent ceux du LLM quand ils ne passent pas le contrôle des nombres et des dates.
+ADRESSE_MASQUEE = "[adresse non transmise]"
 TEXTE_REFUS = "Cette question appelle une décision de soin : l'assistant ne la prend pas."
 MOTIF_REFUS_LLM = "le modèle a reconnu une demande de conseil de soin"
 MOTIF_ABSTENTION_LLM = "les fragments fournis ne permettent pas de répondre à cette question"
@@ -94,6 +98,23 @@ class Citation:
     dans_referentiel: bool
     sources: str
     source_datee: bool  # au moins une de ses sources porte une date
+    liens: tuple[str, ...] = ()  # rendus par le code, jamais vus du LLM (mission 09)
+    page: dict[str, Any] | None = None  # avis_has : l'URL et les dates de la page d'avis
+
+    def liens_rendus(self) -> list[str]:
+        """Ce que le code écrit sous la réponse pour ce fragment : la page d'avis et ses trois
+        dates (avis, mise en ligne ou mise à jour, consultation), ou les liens de la fiche."""
+        if self.page is not None:
+            maj = self.page.get("mis_a_jour")
+            mise = (
+                f"mise à jour le {maj}" if maj else f"mise en ligne le {self.page['mis_en_ligne']}"
+            )
+            consultee = str(self.page["collectee_le"])[:10]
+            return [
+                f"avis de la Commission de la transparence du {self.page['date_avis']} :"
+                f" {self.page['url']} (page {mise}, consultée le {consultee})"
+            ]
+        return list(self.liens)
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +136,16 @@ class Reponse:
     usage: Usage | None
     effort: str
     trace: dict[str, Any] = field(default_factory=dict)
+    collecte_has: str | None = None  # la seconde horloge de l'index (mission 09)
+
+    def horloges(self) -> str:
+        """L'instant de l'index, tel que le code le rend sous la réponse."""
+        if self.collecte_has is None:
+            return f"état de l'index au {self.instant_index}"
+        return (
+            f"état de l'index : BDPM au {self.instant_index} ; pages d'avis de la HAS"
+            f" collectées jusqu'au {self.collecte_has}"
+        )
 
 
 def _maintenant() -> str:
@@ -153,7 +184,9 @@ def _contenu(instant: str, resultats: Sequence[construction.Resultat], question:
             f" section {charge['section']}{hors}"
         )
         for ligne in str(charge["texte"]).splitlines():
-            lignes.append(f"    {ligne}")
+            # Le LLM ne voit aucune adresse (mission 09) : le texte d'un avis en cite parfois une
+            # (« http://lecrat.fr/ », 3 fragments du jeu). L'index garde le texte mot pour mot.
+            lignes.append(f"    {controle.ADRESSE.sub(ADRESSE_MASQUEE, ligne)}")
     lignes += ["<<<FIN>>>", "", f"Question : {question}"]
     return "\n".join(lignes)
 
@@ -168,6 +201,8 @@ def _citation(resultat: construction.Resultat, etiquette: int) -> Citation:
         dans_referentiel=bool(charge["dans_referentiel"]),
         sources=construction.citer(charge),
         source_datee=any(s["date_source"] for s in charge["sources"]),
+        liens=tuple(charge.get("liens") or ()),
+        page=charge.get("page"),
     )
 
 
@@ -188,6 +223,7 @@ class Appel:
     cle: str
     resultats: tuple[construction.Resultat, ...]
     trace: dict[str, Any]
+    collecte_has: str | None = None
 
     @property
     def estimation(self) -> float:
@@ -212,17 +248,18 @@ def preparer(
     etat = construction.etat_exige(qdrant)
     construction.encodeur_de_l_index(etat, encodeur)
     instant = str(etat["instant"])
+    collecte = (etat.get("has") or {}).get("collecte")
     trace: dict[str, Any] = {"question": question, "identifiant": identifiant}
 
     motif = regles.refus_medical(question)
     if motif is not None:
         trace["regle"] = "refus_medical"
-        return _refus(motif, instant, effort, trace)
+        return _refus(motif, instant, effort, trace, collecte)
 
     motif = regles.abstention(question)
     if motif is not None:
         trace["regle"] = "abstention"
-        return _abstention(motif, "abstention_regle", instant, effort, trace)
+        return _abstention(motif, "abstention_regle", instant, effort, trace, collecte)
 
     dictionnaire = dictionnaire or charger_dictionnaire(qdrant)
     repere_ = repere.reperer(question, dictionnaire)
@@ -236,6 +273,7 @@ def preparer(
             instant,
             effort,
             trace,
+            collecte,
         )
 
     _, resultats = construction.chercher(qdrant, encodeur, question, k)
@@ -253,6 +291,7 @@ def preparer(
             instant,
             effort,
             trace,
+            collecte,
         )
 
     systeme, contenu = SYSTEME, _contenu(instant, resultats, question)
@@ -267,6 +306,7 @@ def preparer(
         cle=cle_cache(systeme, contenu, MODELE, effort, max_tokens, SCHEMA),
         resultats=tuple(resultats),
         trace=trace,
+        collecte_has=collecte,
     )
 
 
@@ -310,6 +350,7 @@ def conclure(appel: Appel, client: ClientLLM, journal: Journal, cache: CacheRepo
         cout_,
         depuis_cache,
         appel.trace,
+        appel.collecte_has,
     )
 
 
@@ -362,6 +403,7 @@ def _apres_llm(
     cout_: float,
     depuis_cache: bool,
     trace: dict[str, Any],
+    collecte_has: str | None = None,
 ) -> Reponse:
     """Le contrôle du code après le LLM : abstention technique, citations, nombres et dates."""
 
@@ -388,6 +430,7 @@ def _apres_llm(
             usage=llm.usage,
             effort=effort,
             trace=trace,
+            collecte_has=collecte_has,
         )
 
     if llm.technique:
@@ -454,7 +497,9 @@ def _apres_llm(
     return fini(REPONSE, llm.texte, llm.motif, llm.orientation, llm.reserve, citations, "llm")
 
 
-def _refus(motif: str, instant: str, effort: str, trace: dict[str, Any]) -> Reponse:
+def _refus(
+    motif: str, instant: str, effort: str, trace: dict[str, Any], collecte: str | None = None
+) -> Reponse:
     return Reponse(
         comportement=REFUS_MEDICAL,
         texte=TEXTE_REFUS,
@@ -469,11 +514,17 @@ def _refus(motif: str, instant: str, effort: str, trace: dict[str, Any]) -> Repo
         usage=None,
         effort=effort,
         trace=trace,
+        collecte_has=collecte,
     )
 
 
 def _abstention(
-    motif: str, decision: str, instant: str, effort: str, trace: dict[str, Any]
+    motif: str,
+    decision: str,
+    instant: str,
+    effort: str,
+    trace: dict[str, Any],
+    collecte: str | None = None,
 ) -> Reponse:
     return Reponse(
         comportement=ABSTENTION,
@@ -489,4 +540,5 @@ def _abstention(
         usage=None,
         effort=effort,
         trace=trace,
+        collecte_has=collecte,
     )

@@ -67,7 +67,7 @@ def test_construire_ecrit_tous_les_fragments_puis_l_alias_puis_l_etat(
     frags = ecrire_fragments(tmp_path, trois_fiches())
     bilan = construire(simule, tmp_path, frags)
     assert bilan.fragments == frags.nombre == 7 and bilan.encodes == 7
-    assert bilan.collection == "pharmaflux-f2-test-20261027T001712Z"
+    assert bilan.collection == "pharmaflux-f3-test-20261027T001712Z"
     assert simule.alias == {ALIAS: bilan.collection}
     attendus = {f["identifiant"]: f for f in frags.lire()}
     points = simule.points(ALIAS)
@@ -84,13 +84,14 @@ def test_construire_ecrit_tous_les_fragments_puis_l_alias_puis_l_etat(
             "collection": bilan.collection,
             "instant": INSTANT,
             "vise": None,
-            "format": 2,
+            "format": 3,
             "modele": "test",
             "empreinte_modele": "test@1",
             "dimension": 32,
             "fiches": 3,
             "fragments": 7,
             "cis_reduits": None,
+            "has": None,  # construit sans --archive-has
         }
     ]
     assert simule.collections[COLLECTION_ETAT]["dimension"] is None, "l'état n'a pas de vecteur"

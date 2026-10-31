@@ -30,13 +30,16 @@ from collections import Counter
 import numpy as np
 
 # BM25, figés (addendum 1 A2). ``LONGUEUR_MOYENNE`` est la moyenne du nombre de jetons par
-# fragment, mesurée une fois sur les 72 296 fragments du jeu de démo (instant
-# 2026-10-27T00:17:12Z) par le tokenizer ci-dessous, puis figée : jamais recalculée, pour que la
-# valeur d'un fragment ne dépende que de son texte. |d| et cette moyenne se comptent de la même
-# façon (jetons, répétitions comprises). Voir ADR 0012.
+# fragment, mesurée une fois sur les fragments du jeu de démo (instant 2026-10-27T00:17:12Z) par
+# le tokenizer ci-dessous, puis figée : jamais recalculée, pour que la valeur d'un fragment ne
+# dépende que de son texte. |d| et cette moyenne se comptent de la même façon (jetons,
+# répétitions comprises). Voir ADR 0012. Format 2 : 53,29 sur les 72 296 fragments des fiches.
+# Format 3 (mission 09, addendum 1 F2) : 55,44 sur 73 839, dont 1 543 fragments d'avis de la HAS
+# (155,88 jetons en moyenne) ; « index evaluer » v0 et v1 ne perd aucun rappel à 10 et gagne au
+# rappel à 5 (rapport du palier 2).
 K1 = 1.2
 B = 0.75
-LONGUEUR_MOYENNE = 53.29
+LONGUEUR_MOYENNE = 55.44
 
 # Indices des termes dans Qdrant : 31 bits (positifs, bien dans les u32 de Qdrant). Les
 # collisions sont acceptées — leurs valeurs s'additionnent — et il n'y en a aucune sur le jeu

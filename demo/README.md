@@ -1,17 +1,27 @@
-# Jeu de démo figé : `demo/archive`
+# Jeu de démo : `demo/archive`, deux parties figées
 
-Une archive Pharmaflux comme les autres (`bronze/…`, `manifeste/collecte.jsonl`),
+Le jeu a **deux parties figées**, chacune avec son manifeste, que
+`pharmaflux demo verifier` contrôle ensemble :
+- **la BDPM** (mission 04), décrite d'abord : `manifeste/collecte.jsonl` et
+  `bronze/bdpm/`. Elle n'a pas changé d'un octet depuis : un test
+  (`tests/test_demo_has.py`) le vérifie contre le commit `beba0c8` ;
+- **les pages d'avis de la HAS** (mission 09), décrites
+  [plus bas](#les-pages-davis-de-la-has-mission-09) :
+  `manifeste/has-pages.jsonl` et `bronze/has/pages/`.
+
+La partie BDPM est une archive Pharmaflux comme les autres (`bronze/…`, `manifeste/collecte.jsonl`),
 reprise **à l'octet** de la collecte réelle du 24 au 27 octobre 2026, coupée
 à un passage et réduite aux onze fichiers TSV de la BDPM que `pharmaflux
 evenements` lit. Toute commande qui prend `--racine` marche dessus :
 `etat`, `profil`, `questions verifier`, `evenements`, `verifier-bus --racine`,
 et le rejeu accéléré de la démonstration (`make demo`, mission 04).
 
-C'est la **seule donnée admise dans le dépôt** (`CLAUDE.md`, « Données ») :
-elle vient d'un service public, elle ne contient rien de personnel, elle est
-figée (elle ne grossira pas : un autre jeu serait un autre dossier) et
-`pharmaflux demo verifier` la contrôle sur un clone neuf. Dans `.gitignore`,
-`*.gz` reste exclu partout sauf sous `demo/archive/bronze/`.
+C'est, avec les fixtures des tests, la **seule donnée admise dans le dépôt**
+(`CLAUDE.md`, « Données ») : elle vient de services publics, elle ne contient
+rien de personnel, chaque partie est figée (une partie ne se met pas à jour :
+une autre serait un autre jeu) et `pharmaflux demo verifier` la contrôle sur
+un clone neuf. Dans `.gitignore`, `*.gz` reste exclu partout sauf sous
+`demo/archive/bronze/`.
 
 ## Source et licence
 
@@ -135,3 +145,52 @@ la date que la page de la BDPM annonçait pour le fichier (absente pour
 | 20261027T131708Z | `CIS_InfoImportantes.txt` | — | 4 510 790 | `a27b30e12c837fd709906513fb0fe8e8c16bd008d3d0fab2fd0dea8de46a39ff` |
 
 Le sha256 `e3b0c442…` est celui du contenu vide.
+
+## Les pages d'avis de la HAS (mission 09)
+
+**150 pages** d'avis de la Commission de la transparence, prises dans la
+première étape du corpus (ADR 0004 : les dossiers avec un avis SMR ou ASMR
+daté de 2024 ou après, 722 pages), et reprises **à l'octet** du passage de
+collecte de beko (`20261031T124148Z`, le 31 octobre 2026 entre 12 h 41 et
+13 h 08 UTC) : chaque archive est la page reçue, compressée par le collecteur,
+et sa ligne de manifeste est recopiée telle quelle (extracteur v1, rejet
+compris). Elles pèsent 2 574 863 octets compressés, sous le plafond de 10 Mo
+de l'addendum 1 (E).
+
+**Source et licence.** Haute Autorité de santé, pages
+`https://www.has-sante.fr/jcms/p_N` que donne `HAS_LiensPageCT_bdpm.txt`.
+Contenus réutilisés selon les mentions légales du site (article du
+01/10/2015, relu le 26/10/2026 et le 31/10/2026, ADR 0004) : reproduits en
+intégralité, sans altération, avec la source et la date. Document de la
+Haute Autorité de santé, disponible sur <https://www.has-sante.fr>, pages
+consultées le 31/10/2026 ; la date de mise en ligne de chaque avis est dans
+sa page (« Mis en ligne le … »).
+
+**Le choix**, une règle écrite (`src/pharmaflux/demo/has.py`), appliquée à la
+BDPM du jeu, sans réseau :
+1. **22 pages imposées** : les cinq fixtures du §0 qui sont dans la première
+   étape (MOUNJARO, IMFINZI - LYNPARZA, KALYDECO, les deux pages d'ADEMPAS),
+   et les cas que la collecte a montrés : les deux noms JSON-LD à entité
+   (KEPPRA, XALKORI), les deux avis communs lus par l'extracteur v2 (les cinq
+   vaccins méningococciques, les cinq NICORANDIL), FINLEE / SPEXOTRAS, la
+   page rejetée (PEDMARQSI) et trois pages dont le contrôle de dossier est
+   impossible ;
+2. **3 pages** des CIS visés par une question de la v1 (`cis_attendu`) ;
+3. **125 pages de complément** : les plus petits sha256 de l'URL.
+
+La liste est `demo/has-pages.txt`, une URL et sa raison par ligne. Un test la
+recalcule par la règle et exige la même. Les 572 autres pages, `robots.txt` et
+les mentions légales restent dans l'archive de beko.
+
+**Fabrication**, par les commandes du projet, jamais à la main :
+
+```bash
+uv run pharmaflux demo choisir-has
+uv run pharmaflux demo fabriquer-has --racine ~/pharmaflux-data
+```
+
+La première écrit la liste. La seconde copie la dernière archive de chaque page
+et sa ligne du manifeste HAS, dans l'ordre du manifeste source. Elle n'écrit
+jamais dans la racine, et elle refuse un jeu qui a déjà ses pages.
+`demo verifier` contrôle en plus chaque page : sa place
+(`bronze/has/pages/<page>/`), son nom, son sha256 et sa taille décompressés.

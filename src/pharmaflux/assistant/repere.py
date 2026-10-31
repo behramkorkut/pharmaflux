@@ -43,6 +43,33 @@ _MOTS_VIDES = (
     " leur leurs dans avec sans cette ces que qui quoi dont"
 )
 MOTS_VIDES = frozenset(_MOTS_VIDES.split())
+# Les mots courants (mission 09, addendum 1 G) : premiers mots de dénominations du jeu qui sont
+# aussi des mots de tous les jours ou de chimie (« eau » 13 dénominations, « fer » 5, « huile » 6,
+# « vitamine » 25, « acide » 83, « chlorure » 35…). Seuls, ils ne visent pas un médicament : il
+# faut les deux premiers mots significatifs du nom (« EAU OXYGENEE », « CHLORURE DE SODIUM »).
+# Liste écrite et committée avant les questions neuves de la v2 qui la mesurent ; branchée sur
+# le repérage après leur commit seulement, et éprouvée comme « deux médicaments ».
+MOTS_COURANTS = frozenset(
+    [
+        "eau",
+        "fer",
+        "gel",
+        "huile",
+        "alcool",
+        "charbon",
+        "cuivre",
+        "zinc",
+        "calcium",
+        "magnesium",
+        "vitamine",
+        "acide",
+        "chlorure",
+        "sulfate",
+        "citrate",
+        "glycerine",
+        "vaseline",
+    ]
+)
 # Un groupe générique dans le texte d'un fragment ``identite`` : « - groupe 793 (libellé), type 0 ».
 _GROUPE = re.compile(r"^\s*- groupe \d+ \((.*)\)(?:, type \S+)?$", re.MULTILINE)
 

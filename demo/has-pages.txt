@@ -1,0 +1,158 @@
+# Pages d'avis de la HAS du jeu de démo (mission 09, addendum 1 E). Fichier écrit par
+# « pharmaflux demo choisir-has --questions evaluation/questions-reference-v1.toml », jamais à la main.
+#
+# La règle (src/pharmaflux/demo/has.py, demo/README.md), sur la première étape
+# (avis SMR ou ASMR depuis le 2024-01-01, 722 pages, liste sha256 ed350d4691325418…) :
+# 1. les pages imposées (fixtures du §0, cas de la collecte) ;
+# 2. les pages des CIS visés par une question du jeu ;
+# 3. le complément : les plus petits sha256 de l'URL, jusqu'à 150 pages.
+https://www.has-sante.fr/jcms/p_4072400  # §0 : MOUNJARO, un dossier pour douze spécialités
+https://www.has-sante.fr/jcms/p_3590639  # §0 : IMFINZI - LYNPARZA, un dossier, deux marques
+https://www.has-sante.fr/jcms/p_3577036  # §0 : KALYDECO (avis_has-002, -008, -009 de la v1)
+https://www.has-sante.fr/jcms/p_3500927  # §0 : ADEMPAS, premier des deux liens de CT-20568
+https://www.has-sante.fr/jcms/p_3741668  # §0 : ADEMPAS, second lien de CT-20568, sans document d'avis
+https://www.has-sante.fr/jcms/p_3638197  # collecte : KEPPRA, entité dans le nom JSON-LD
+https://www.has-sante.fr/jcms/p_3892357  # collecte : XALKORI, entité dans le nom JSON-LD
+https://www.has-sante.fr/jcms/p_3686940  # collecte : BEXSERO, avis commun à cinq vaccins (« & »)
+https://www.has-sante.fr/jcms/p_3687274  # collecte : NIMENRIX, avis commun à cinq vaccins (« & »)
+https://www.has-sante.fr/jcms/p_3686928  # collecte : MENQUADFI, avis commun à cinq vaccins (« & »)
+https://www.has-sante.fr/jcms/p_3686943  # collecte : MENVEO, avis commun à cinq vaccins (« & »)
+https://www.has-sante.fr/jcms/p_3686931  # collecte : TRUMENBA, avis commun à cinq vaccins (« & »)
+https://www.has-sante.fr/jcms/p_3530986  # collecte : FINLEE / SPEXOTRAS, avis commun à deux dossiers
+https://www.has-sante.fr/jcms/p_4335961  # collecte : NICORANDIL, avis commun à cinq dossiers (« _ »)
+https://www.has-sante.fr/jcms/p_4335975  # collecte : NICORANDIL, avis commun à cinq dossiers (« _ »)
+https://www.has-sante.fr/jcms/p_4335965  # collecte : NICORANDIL, avis commun à cinq dossiers (« _ »)
+https://www.has-sante.fr/jcms/p_4335969  # collecte : NICORANDIL, avis commun à cinq dossiers (« _ »)
+https://www.has-sante.fr/jcms/p_4335946  # collecte : NICORANDIL, avis commun à cinq dossiers (« _ »)
+https://www.has-sante.fr/jcms/p_3608587  # collecte : PEDMARQSI, rejetée (le document d'avis nomme un autre dossier)
+https://www.has-sante.fr/jcms/p_3534726  # collecte : contrôle de dossier impossible (synthèse seule)
+https://www.has-sante.fr/jcms/p_3639721  # collecte : contrôle de dossier impossible (aucun document)
+https://www.has-sante.fr/jcms/p_3861364  # collecte : contrôle de dossier impossible (réévaluation de classe)
+https://www.has-sante.fr/jcms/p_4461003  # question v1 : CIS 62934770
+https://www.has-sante.fr/jcms/p_3704521  # question v1 : CIS 66018611
+https://www.has-sante.fr/jcms/p_3643890  # question v1 : CIS 63210923
+https://www.has-sante.fr/jcms/p_3639547  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3556165  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3561257  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4014940  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3606289  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3591345  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4014813  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3700800  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3555010  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3597161  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3501973  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3515180  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3498146  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4202261  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3554612  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4460994  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3603357  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3599233  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3515171  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3633450  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3572676  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3562967  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3505850  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3643239  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3531472  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3784589  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3527474  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3502155  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3535158  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3497023  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3491589  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3590636  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3497014  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3745725  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3809128  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3636353  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3806765  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4052286  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3775624  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3893449  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3492683  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3826273  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3527606  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3895436  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4382481  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4336375  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3517563  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3658183  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3574253  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3637592  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3637601  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3517408  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4355472  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4382469  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3590908  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3737643  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3526096  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3516789  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3603177  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3498747  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3859371  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4016918  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3534473  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3658189  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3534482  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3639099  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4174815  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4042347  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4382478  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3685915  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3640558  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4202269  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3891401  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4336362  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3534476  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3534479  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3700637  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4126738  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3562970  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4186857  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3600181  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3538252  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3561111  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3901068  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3689904  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4202271  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4335977  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3633263  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3546940  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3861356  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3610023  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3538225  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3604202  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3538381  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3589751  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3956496  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3517166  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3562976  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3808974  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3636962  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3538936  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3491848  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3634549  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3522395  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3538384  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3639402  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3894237  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3577030  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3639631  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4202282  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4023292  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3826119  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3562964  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3928130  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3785142  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3535833  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3502273  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3704134  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3534494  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3565875  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_4355466  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3742011  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3497035  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3538266  # complément : plus petit sha256 de l'URL
+https://www.has-sante.fr/jcms/p_3574256  # complément : plus petit sha256 de l'URL

@@ -30,9 +30,17 @@ from pharmaflux.contrats.modele import Contrat
 from pharmaflux.tomlstrict import TableStricte
 
 VERSIONS = ("v0", "v1")
-# Les sections d'un fragment (index.fragments.SECTIONS), reprises ici pour valider
-# « section_attendue » sans coupler l'évaluation au paquet de l'index.
-SECTIONS_FRAGMENT = ("identite", "presentations", "avis", "disponibilite", "informations")
+# Les sections d'un fragment (index.fragments.SECTIONS_INDEX), reprises ici pour valider
+# « section_attendue » sans coupler l'évaluation au paquet de l'index ; avis_has depuis la
+# mission 09.
+SECTIONS_FRAGMENT = (
+    "identite",
+    "presentations",
+    "avis",
+    "avis_has",
+    "disponibilite",
+    "informations",
+)
 CATEGORIES = (
     "disponibilite",
     "alternatives",

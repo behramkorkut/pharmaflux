@@ -28,6 +28,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from html import unescape
@@ -239,15 +240,25 @@ def extraire(octets: bytes, *, dossiers: tuple[str, ...] | None = None) -> AvisE
         **_metadonnees(jsonld),
     )
     _controler_niveaux(extrait, jsonld)
-    if dossiers is not None and extrait.dossiers_documents:
-        absents = sorted(set(dossiers) - set(extrait.dossiers_documents))
-        if absents:
-            raise PageRejetee(
-                REJET_DOSSIER,
-                f"le document d'avis nomme {', '.join(extrait.dossiers_documents)},"
-                f" pas {', '.join(absents)}",
-            )
+    if dossiers is not None:
+        controler_dossiers(extrait, dossiers)
     return extrait
+
+
+def controler_dossiers(extrait: AvisExtrait, dossiers: Iterable[str]) -> None:
+    """Chaque dossier qui lie la page est nommé par son document d'avis, s'il en nomme.
+
+    ``PageRejetee`` sinon. L'index l'applique aussi fiche par fiche (``index.fragments``).
+    """
+    if not extrait.dossiers_documents:
+        return
+    absents = sorted(set(dossiers) - set(extrait.dossiers_documents))
+    if absents:
+        raise PageRejetee(
+            REJET_DOSSIER,
+            f"le document d'avis nomme {', '.join(extrait.dossiers_documents)},"
+            f" pas {', '.join(absents)}",
+        )
 
 
 def texte_principal(octets: bytes) -> str | None:

@@ -6,7 +6,8 @@ Le passage, dans l'ordre :
    erreur ne l'est qu'avec ``reessayer_erreurs`` ; une archive orpheline (coupure entre
    l'archive et sa ligne) est adoptée par une ligne ``repris``, sans requête ;
 2. **``robots.txt``** est lu, archivé s'il a changé, et décide de chaque chemin. Illisible ou
-   absent, il arrête le passage avant toute page (code 2) ;
+   absent, il arrête le passage avant toute page (code 2). Un ``Crawl-delay`` qui vise notre
+   ``User-Agent`` allonge la pause du client pour tout le passage (jamais il ne l'abrège) ;
 3. **les mentions légales** sont relues (une requête comptée, addendum 1, C2). L'empreinte de
    leur texte est comparée à la précédente : un texte changé est **signalé en tête du bilan**,
    sans arrêter la collecte ; l'IeC relit alors les conditions avant toute indexation ;
@@ -27,6 +28,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import math
+import re
 import urllib.robotparser
 from collections import Counter
 from collections.abc import Callable
@@ -283,10 +285,29 @@ def _lire_robots(contexte: _Contexte, etat: EtatConnu) -> urllib.robotparser.Rob
         bilan.robots = f"{quoi} ({len(reponse.contenu)} octets, sha256 {sha[:12]}…)"
     contexte.ligne(mf.Role.ROBOTS, URL_ROBOTS, statut, archive=archive, **_mesures(reponse))
     analyseur = urllib.robotparser.RobotFileParser(URL_ROBOTS)
-    analyseur.parse(reponse.contenu.decode("utf-8", errors="replace").splitlines())
+    analyseur.parse(_lignes_robots(reponse.contenu.decode("utf-8", errors="replace")))
     if not analyseur.can_fetch(agent_utilisateur(), f"{URL_SITE}/jcms/p_1"):
         bilan.robots += " ; les pages d'avis sont interdites"
+    delai = analyseur.crawl_delay(agent_utilisateur())
+    if delai is not None and float(delai) > contexte.client.pause:
+        contexte.client.pause = float(delai)
+        bilan.robots += f" ; Crawl-delay {delai} s : la pause passe à {delai} s"
     return analyseur
+
+
+_CRAWL_DELAY_DECIMAL = re.compile(r"^(\s*crawl-delay\s*:\s*)(\d*\.\d+)\s*$", re.IGNORECASE)
+
+
+def _lignes_robots(texte: str) -> list[str]:
+    """Les lignes de ``robots.txt`` ; un ``Crawl-delay`` décimal est arrondi au-dessus.
+
+    ``urllib.robotparser`` ne lit qu'un délai entier et ignore « 2.5 » sans rien dire : on le
+    porte à 3, du côté de la politesse.
+    """
+    return [
+        _CRAWL_DELAY_DECIMAL.sub(lambda m: f"{m[1]}{math.ceil(float(m[2]))}", ligne)
+        for ligne in texte.splitlines()
+    ]
 
 
 def _relire_mentions(

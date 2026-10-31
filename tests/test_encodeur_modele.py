@@ -93,8 +93,8 @@ def test_aucun_fragment_de_l_echantillon_ne_depasse_la_fenetre(
 def test_aucun_fragment_avis_has_du_jeu_ne_depasse_la_fenetre(
     e5: E5Onnx, demo_silver: tuple[Path, Path]
 ) -> None:
-    """Mission 09 : les 1 543 fragments d'avis du jeu, tous (la prose d'un avis se coupe autrement
-    que les codes d'une fiche, et une ligne d'avis peut faire 1 781 caractères)."""
+    """Mission 09 : les fragments d'avis du jeu, tous, 1 255 au format 4 (la prose d'un avis se
+    coupe autrement que les codes d'une fiche, et une ligne d'avis peut faire 1 781 caractères)."""
     _, dossier = demo_silver
     entrepot = Entrepot.ouvrir(dossier)
     instant = derniere_observation(entrepot)

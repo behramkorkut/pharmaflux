@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import json
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from pharmaflux import cli
+from pharmaflux import bronze, cli
 from pharmaflux.cli import application
 from pharmaflux.has import extraction
 from pharmaflux.has import manifeste as mf
@@ -28,6 +29,7 @@ from pharmaflux.index.fragments import (
     SECTIONS_INDEX,
     SOURCE_AVIS_HAS,
     Source,
+    couper_ligne,
     fragments,
     identifiant_avis_has,
 )
@@ -39,6 +41,7 @@ from tests.test_fragments import fiche
 from tests.test_index_maj import construire, contenu, mettre_a_jour, verifier
 
 PAGES = FIXTURES / "has"
+JEU = Path(__file__).resolve().parent.parent / "demo" / "archive"
 SITE = "https://www.has-sante.fr/jcms/"
 COLLECTE = "2026-10-31T12:45:00Z"
 AVANT, APRES = "2026-10-26T00:17:12Z", "2026-10-27T00:17:12Z"
@@ -123,6 +126,67 @@ def test_le_texte_de_la_page_mot_pour_mot() -> None:
                 continue
             repris.append(ligne)
     assert repris == page.extrait.lignes_rendues()[1:]  # le titre est dans l'en-tête
+
+
+def morceaux_verifies(ligne: str, limite: int) -> list[str]:
+    """La découpe d'une ligne, et ce qu'elle doit tenir : la non-altération au niveau de l'index.
+
+    Les morceaux rejoints par une espace redonnent la ligne à l'identique. Chacun tient sous la
+    limite, sauf le dernier quand il commence par un mot plus long qu'elle, laissé entier.
+    """
+    morceaux = couper_ligne(ligne, limite)
+    assert " ".join(morceaux) == ligne
+    assert all(len(m) <= limite for m in morceaux[:-1])
+    assert len(morceaux[-1]) <= limite or len(morceaux[-1].split(" ")[0]) > limite
+    return morceaux
+
+
+@pytest.mark.parametrize("limite", [80, 150, 300])
+def test_couper_ligne_redonne_les_lignes_des_pages_des_fixtures(limite: int) -> None:
+    lignes = [
+        ligne
+        for page in sorted(PAGES.glob("p_*.html"))
+        for ligne in extraction.extraire(page.read_bytes()).lignes_rendues()
+    ]
+    coupees = [ligne for ligne in lignes if len(morceaux_verifies(ligne, limite)) > 1]
+    assert len(lignes) > 150 and coupees, "des lignes réelles, et des coupes"
+
+
+def test_couper_ligne_redonne_la_plus_longue_ligne_du_jeu() -> None:
+    """La ligne de 1 781 caractères de p_3700800, la plus longue des 150 pages du jeu."""
+    manifeste = (JEU / "manifeste" / "has-pages.jsonl").read_text(encoding="utf-8").splitlines()
+    (page,) = [d for d in map(json.loads, manifeste) if d.get("page_id") == "p_3700800"]
+    extrait = extraction.extraire(bronze.lire_archive(JEU / page["archive"]))
+    ligne = max(extrait.lignes_rendues(), key=len)
+    assert len(ligne) == 1781
+    for limite in (300, 600, 1000):
+        assert len(morceaux_verifies(ligne, limite)) > 1
+
+
+def test_couper_ligne_apres_une_fin_de_phrase_sinon_a_une_espace() -> None:
+    assert couper_ligne("court", 300) == ["court"]
+    # une fin de phrase dans la fenêtre l'emporte sur une espace plus loin
+    phrases = (
+        "Le service médical rendu est important. "
+        "La Commission note un progrès modeste dans cette indication."
+    )
+    assert morceaux_verifies(phrases, 60) == [
+        "Le service médical rendu est important.",
+        "La Commission note un progrès modeste dans cette indication.",
+    ]
+    # sans fin de phrase, la dernière espace de la fenêtre
+    sans_fin = "Un avis de la Commission de la transparence sur une spécialité remboursable"
+    assert morceaux_verifies(sans_fin, 30) == [
+        "Un avis de la Commission de la",
+        "transparence sur une",
+        "spécialité remboursable",
+    ]
+
+
+def test_couper_ligne_laisse_entier_un_mot_plus_long_que_la_limite() -> None:
+    mot = "x" * 400
+    assert morceaux_verifies(mot, 300) == [mot]
+    assert morceaux_verifies(f"début {mot} fin", 300) == ["début", f"{mot} fin"]
 
 
 def test_sans_pages_aucun_fragment_avis_has() -> None:

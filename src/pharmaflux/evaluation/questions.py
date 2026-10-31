@@ -29,7 +29,9 @@ from pathlib import Path
 from pharmaflux.contrats.modele import Contrat
 from pharmaflux.tomlstrict import TableStricte
 
-VERSIONS = ("v0", "v1")
+VERSIONS = ("v0", "v1", "v2")
+# Les versions qui notent l'assistant, à l'instant d'un index (la v0 sert à la recherche seule).
+VERSIONS_NOTEES = ("v1", "v2")
 # Les sections d'un fragment (index.fragments.SECTIONS_INDEX), reprises ici pour valider
 # « section_attendue » sans coupler l'évaluation au paquet de l'index ; avis_has depuis la
 # mission 09.
@@ -139,8 +141,10 @@ def charger_octets(octets: bytes, origine: str, contrats: Mapping[str, Contrat])
         raise JeuInvalide(f"{origine} : version « {version} » ; attendu : {attendues}")
     description = racine.texte("description")
     instant = racine.texte_facultatif("instant")
-    if version == "v1" and instant is None:
-        raise JeuInvalide(f"{origine} : la v1 déclare « instant » (l'instant de l'index attendu)")
+    if version in VERSIONS_NOTEES and instant is None:
+        raise JeuInvalide(
+            f"{origine} : la {version} déclare « instant » (l'instant de l'index attendu)"
+        )
     questions = tuple(
         _question(table, contrats, version)
         for table in racine.tables("questions", obligatoire=True)
@@ -227,10 +231,10 @@ def _coherence(
         return
     if motif is None:
         raise JeuInvalide(f"{contexte} : une {comportement.value} exige un « motif »")
-    # La v1 permet à une abstention de porter « calculable_au » : l'assistant s'abstient
-    # aujourd'hui (une dépense, avant le Lot 4), et la valeur deviendra calculable au lot nommé.
-    # La v0 garde la règle stricte, et un refus ne porte jamais « calculable_au ».
-    abstention_differee = comportement is Comportement.ABSTENTION and version == "v1"
+    # La v1 et la v2 permettent à une abstention de porter « calculable_au » : l'assistant
+    # s'abstient aujourd'hui (une dépense, avant le Lot 4), et la valeur deviendra calculable au
+    # lot nommé. La v0 garde la règle stricte, et un refus ne porte jamais « calculable_au ».
+    abstention_differee = comportement is Comportement.ABSTENTION and version in VERSIONS_NOTEES
     if calculable_au is not None and not abstention_differee:
         raise JeuInvalide(f"{contexte} : « calculable_au » n'a de sens que pour une réponse")
     if comportement is Comportement.REFUS_MEDICAL and attendu is not None:

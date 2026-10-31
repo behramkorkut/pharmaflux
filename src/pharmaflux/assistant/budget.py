@@ -34,8 +34,13 @@ PRIX_SORTIE = 20.00
 PRIX_CACHE_LECTURE = 0.20
 PRIX_CACHE_ECRITURE = 5.00
 
-# Un fragment français pèse ≈ 3,8 caractères par jeton (mesuré au §0). L'estimation d'entrée
-# est volontairement prudente : elle majore plutôt qu'elle ne minore.
+# 3,8 caractères par jeton : l'estimation du §0, pour un texte français. Le contenu envoyé est
+# fait de codes, de dates et de nombres, et il en compte moins : sur les 62 appels de
+# l'évaluation, l'entrée réelle a été de 3 612 jetons par appel, contre 1 768 estimés. **L'entrée
+# est donc minorée, d'un facteur 2.** La porte reste prudente par la sortie, comptée à
+# ``max_tokens`` entier (4 000 jetons, contre 259 en moyenne et 661 au plus) : 0,087 $ estimés
+# par appel, contre 0,016 $ réels (relecture 1, point 5). La constante n'est pas changée après la
+# mesure.
 CARACTERES_PAR_JETON = 3.8
 
 NOM_JOURNAL = "depenses.jsonl"
@@ -66,7 +71,8 @@ def cout(usage: Usage) -> float:
 
 
 def jetons_estimes(texte: str) -> int:
-    """Une estimation prudente du nombre de jetons d'un texte d'entrée (au caractère)."""
+    """Une estimation du nombre de jetons d'un texte d'entrée, au caractère. Elle minore le
+    contenu réel (voir ``CARACTERES_PAR_JETON``) ; la prudence de la porte vient de la sortie."""
     return int(len(texte) / CARACTERES_PAR_JETON) + 1
 
 

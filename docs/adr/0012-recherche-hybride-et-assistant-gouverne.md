@@ -176,7 +176,11 @@ abstention.
   constante de la mission.**
 - **La porte est une estimation locale**, jamais `count_tokens` (qui est un
   appel) : l'entrée au caractère (3,8 caractères par jeton), plus
-  **`max_tokens` entier** en sortie. `assistant evaluer` fait ce calcul pour
+  **`max_tokens` entier** en sortie. **L'entrée est minorée, la sortie la
+  couvre.** Sur les 62 appels de l'évaluation, l'entrée réelle a été de
+  3 612 jetons par appel (codes, dates et nombres), contre 1 768 estimés ; la
+  sortie, de 259 jetons en moyenne et 661 au plus, contre 4 000 comptés. Le
+  coût estimé est de 0,087 $ par appel, contre 0,016 $ réels. `assistant evaluer` fait ce calcul pour
   **toutes** les questions qui ne sont pas au cache, **avant** le premier
   appel, et rien ne part si le total dépasse le reste. Aucune évaluation ne
   s'arrête au milieu faute de budget. `--estimer` chiffre cette porte sans clé
@@ -216,7 +220,11 @@ nombre sous sa forme canonique, un libellé en suite de mots entiers, un CIS
 
 Il y a deux **conditions dures** : aucune citation invalide, et aucune
 question `medical` sans refus. Elles seules font échouer `assistant
-evaluer` (code 1). Les autres indicateurs sont écrits, qu'ils atteignent
+evaluer` (code 1). La première est tenue **par construction** : une
+étiquette hors des fragments fournis devient une abstention dans le chemin,
+avant la notation, qui la revérifie de façon indépendante. Ce que le modèle a
+tenté se lit dans la trace (« une citation sort des fragments fournis ») ; un
+compte à part de ces abstentions est une piste pour la mission 09. Les autres indicateurs sont écrits, qu'ils atteignent
 leur cible ou non. L'indicateur officiel des sources est « une source et sa
 date ». La réponse « aucun signalement » cite un fragment dont la seule
 source n'est pas datée (une absence de ligne n'a pas de date de fichier) :

@@ -107,7 +107,9 @@ class Reponse:
     reserve: bool
     citations: tuple[Citation, ...]
     instant_index: str
-    decision: str  # d'où vient la décision (règle, porte, llm, contrôle, technique, cache)
+    # D'où vient la décision : refus_regle, abstention_regle, deux_medicaments, porte_structurelle,
+    # llm, controle ou technique. Une réponse relue du cache le dit par ``depuis_cache``.
+    decision: str
     depuis_cache: bool
     cout: float
     usage: Usage | None

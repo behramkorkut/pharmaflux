@@ -71,6 +71,10 @@ from pharmaflux.evenements import rejeu
 from pharmaflux.silver import ENTREPOT_PAR_DEFAUT, LOT_PAR_DEFAUT, Format, SilverRefuse
 
 if TYPE_CHECKING:  # le silver ne s'importe que dans ses commandes (K.1)
+    from pharmaflux.assistant.chemin import Reponse as Reponse_
+    from pharmaflux.assistant.evaluation import Estimation as Estimation_
+    from pharmaflux.assistant.notation import Indicateurs as Indicateurs_
+    from pharmaflux.assistant.notation import Note as Note_
     from pharmaflux.gold.typage import EntiteTypee as EntiteTypee_
     from pharmaflux.gold.vues import Vues as Vues_
     from pharmaflux.silver.consommation import LecteurSilver
@@ -2032,10 +2036,11 @@ def index_evaluer(
     qdrant: OptionQdrant = None,
     modele_: OptionModele = MODELE_PAR_DEFAUT,
 ) -> None:
-    """Une première mesure de la recherche sur le jeu v0, pour la mission 08 (sans seuil).
+    """La mesure de la recherche, dense seul, creux seul et hybride, côte à côte (sans seuil).
 
-    Rappel à 1, 5 et 10 sur les questions qui nomment un médicament (bon CIS,
-    puis bon CIS et bonne section), rang réciproque moyen, et score du premier
+    Sur un jeu de questions (v0 par défaut, ou la v1 par --questions) : rappel à 1, 5 et 10 sur
+    les questions qui nomment un médicament (bon CIS, puis bon CIS et bonne section), rang
+    réciproque moyen, et score du premier
     résultat des questions hors périmètre ou médicales. Code 0 quelle que soit
     la qualité ; code 2 : pas d'index, modèle, Qdrant, jeu illisible.
     """
@@ -2248,7 +2253,7 @@ _ENTETE_COMPORTEMENT = {
 }
 
 
-def _cout_texte(reponse: Any) -> str:
+def _cout_texte(reponse: Reponse_) -> str:
     if reponse.usage is None:
         return "0 $ (décision hors LLM)"
     if reponse.depuis_cache:
@@ -2256,7 +2261,7 @@ def _cout_texte(reponse: Any) -> str:
     return f"{reponse.cout:.4f} $"
 
 
-def _rendre_reponse(reponse: Any) -> list[str]:
+def _rendre_reponse(reponse: Reponse_) -> list[str]:
     reserve = " avec réserve" if reponse.reserve else ""
     lignes = [_ENTETE_COMPORTEMENT[reponse.comportement] + reserve + " :"]
     if reponse.texte:
@@ -2272,7 +2277,7 @@ def _rendre_reponse(reponse: Any) -> list[str]:
     return lignes
 
 
-def _reponse_json(reponse: Any) -> dict[str, Any]:
+def _reponse_json(reponse: Reponse_) -> dict[str, Any]:
     usage = reponse.usage
     return {
         "comportement": reponse.comportement,
@@ -2330,7 +2335,7 @@ def _pourcent(compte: int, total: int) -> str:
     return f"{compte}/{total} ({100 * compte / total:.1f} %)" if total else f"{compte}/0"
 
 
-def _ligne_note(note: Any) -> str:
+def _ligne_note(note: Note_) -> str:
     """Une ligne par question : attendu → rendu, la note, le coût."""
     if note.correcte is None:
         verdict = "juste" if note.comportement_juste else "FAUX"
@@ -2353,7 +2358,7 @@ def _ligne_note(note: Any) -> str:
     return f"{note.id:<20} {note.attendu} → {note.rendu} ({note.decision}) : {verdict} [{cout}]"
 
 
-def _rendre_estimation(estimation: Any) -> list[str]:
+def _rendre_estimation(estimation: Estimation_) -> list[str]:
     from pharmaflux.assistant.budget import PLAFOND
 
     probable = (
@@ -2373,7 +2378,7 @@ def _rendre_estimation(estimation: Any) -> list[str]:
     ]
 
 
-def _rendre_indicateurs(ind: Any) -> list[str]:
+def _rendre_indicateurs(ind: Indicateurs_) -> list[str]:
     lignes = [
         ("réponses correctes (F2)", _pourcent(ind.reponses_correctes, ind.reponses_attendues)),
         ("  cible", "≥ 85 % (borne basse : une paraphrase compte comme absente)"),
@@ -2500,7 +2505,7 @@ def assistant_evaluer(
             chemin_detail.parent.mkdir(parents=True, exist_ok=True)
             detail = chemin_detail.open("w", encoding="utf-8")
 
-            def au_fil(note: notation.Note, reponse: Any) -> None:
+            def au_fil(note: notation.Note, reponse: Reponse_) -> None:
                 typer.echo(_ligne_note(note))
                 assert detail is not None
                 ligne = note.en_dict() | {"reponse": _reponse_json(reponse)}
@@ -2517,6 +2522,7 @@ def assistant_evaluer(
         BudgetDepasse,
         ErreurAPI,
         evaluation.EvaluationRefusee,
+        notation.ColonneNonClassee,
         construction.IndexRefuse,
         encodeur.ModeleIndisponible,
         QdrantIndisponible,

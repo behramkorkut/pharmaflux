@@ -154,7 +154,9 @@ def test_fusion_rrf_par_rang_et_ex_aequo_tranches_par_identifiant() -> None:
     fusion = construction.fusion_rrf([a, b], 3, constante=60)
     # y paraît dans les deux voies (1/61 + 1/62) ; x au rang 1 de a (1/61) ; z au rang 2 de b.
     assert [p["id"] for p in fusion] == ["y", "x", "z"]
-    assert fusion[0]["payload"] == {"t": "X"} or fusion[0]["id"] == "y"
+    # La charge gardée est celle de la dernière voie où le point paraît (la même, en pratique :
+    # un point a une seule charge) ; x garde la sienne.
+    assert [p["payload"] for p in fusion] == [{}, {"t": "X"}, {}]
     # Deux ex æquo (chacun rang 1 d'une voie) : l'identifiant croissant tranche.
     exaequo = construction.fusion_rrf(
         [[{"id": "b", "score": 1.0, "payload": {}}], [{"id": "a", "score": 1.0, "payload": {}}]], 2

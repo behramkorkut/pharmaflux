@@ -11,6 +11,7 @@ from __future__ import annotations
 import gzip
 import os
 import random
+import socket
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -461,11 +462,23 @@ def test_cli_demander_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert charge["comportement"] == "reponse" and charge["trace"]["decision_controle"] == "vérifié"
 
 
-def test_cli_cle_absente_sans_double(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Addendum 1 J : sans double et sans clé, arrêt propre « clé absente », code 2, sans réseau."""
+def test_cli_cle_absente_sans_double(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Addendum 1 J : sans double et sans clé, arrêt propre « clé absente », code 2, sans réseau.
+
+    Environnement isolé : aucune variable ``ANTHROPIC_*``, un dossier personnel temporaire et vide
+    (aucun profil), toute connexion réseau refusée. Le code ne lit d'ailleurs aucun profil :
+    ``cle_presente`` ne regarde que ``ANTHROPIC_API_KEY`` et répond avant tout import du SDK
+    (relecture 1, point 1)."""
     monkeypatch.setattr(cli, "fabriquer_client_llm", lambda: None)
     for nom in [n for n in os.environ if n.startswith("ANTHROPIC_")]:
         monkeypatch.delenv(nom)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+
+    def interdit(*_: object, **__: object) -> None:
+        raise AssertionError("aucune connexion réseau sans clé")
+
+    monkeypatch.setattr(socket.socket, "connect", interdit)
     assert not cle_presente()
     resultat = CliRunner().invoke(application, ["assistant", "demander", "test ?"])
     assert resultat.exit_code == 2
@@ -509,6 +522,19 @@ def test_v1_aucune_autre_question_n_est_refusee(jeu_v1: Jeu) -> None:
         if q.categorie != "medical" and regles.refus_medical(q.question) is not None
     ]
     assert faux == []
+
+
+def test_v1_aucune_reponse_attendue_n_est_abstenue_par_les_regles(jeu_v1: Jeu) -> None:
+    """Le miroir de D2 pour les abstentions dures (relecture 1, point 6) : aucune réponse attendue
+    n'est abstenue par ``regles.abstention`` ; les dix ``depense`` le sont toutes."""
+    faux = [
+        q.id
+        for q in jeu_v1.questions
+        if q.comportement.value == "reponse" and regles.abstention(q.question) is not None
+    ]
+    assert faux == []
+    depenses = [q for q in jeu_v1.questions if q.categorie == "depense"]
+    assert len(depenses) == 10 and all(regles.abstention(q.question) for q in depenses)
 
 
 @pytest.fixture(scope="module")

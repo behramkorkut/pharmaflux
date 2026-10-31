@@ -147,6 +147,12 @@ lance après la v1, dont elle relit les 62 appels du cache.
     la fois « SMR » et « Commission » demande encore `avis_has`, qu'un avis plus ancien peut
     satisfaire.
   - Ajouter les avis coûte **un rang à 1** sur la v0 et la v1 de la recherche.
+  - **Le code rend tous les liens d'un fragment cité, sans les filtrer par le dossier de la
+    question.** À l'évaluation, `avis_has-044` (le dossier CT-21716 d'OZEMPIC, sans page) a reçu
+    sous sa réponse la page de CT-21501, et les quatre liens du fragment `avis` de la fiche. Le
+    texte disait bien que l'avis demandé n'était pas là, mais un lecteur pressé croirait lire
+    l'avis de CT-21716. Filtrer les liens rendus par le dossier nommé dans la question serait une
+    autre mission, mesurée sur des questions écrites avant.
 - **À surveiller** : un changement de `robots.txt` ou des mentions légales rouvre l'ADR 0004, et
   un changement de structure des pages se voit dans les rejets.
 

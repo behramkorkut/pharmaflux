@@ -832,7 +832,7 @@ les ajustements tirés des réponses de Claude, et ces défauts viennent de la r
 La renotation sur le cache a été faite avant le commit : 0 appel, journal inchangé, 44/49 et
 82/88, et une sortie identique à l'octet à celle du commit de clôture.
 
-**Mission 09, paliers 1 à 3** (31/10 et 01/11). Le corpus des avis de la HAS.
+**Mission 09, paliers 1 à 3** (31/10). Le corpus des avis de la HAS.
 
 - **Palier 1** (`dff0a34`) : `pharmaflux has collecter` et `has extraire`. La collecte de la
   première étape par beko (31/10) : 724 requêtes sur 761, 25 min 56 s, 722 pages, 0 erreur.
@@ -855,3 +855,34 @@ La renotation sur le cache a été faite avant le commit : 0 appel, journal inch
   La première étape entière tient sous 512 Mo : 471 Mo pour `index construire` et 483 Mo pour
   `index verifier`, sur 78 461 fragments.
 
+**Mission 09, les évaluations et le palier 4** (31/10). Ce que la question 2 de la démonstration
+a changé.
+
+- **La première évaluation** (`4dec92b`, index au format 3). beko l'a lancée sur la v1, puis
+  sur la v2 de 138 questions : 48/49 et 84/87 réponses correctes, aucune citation invalide, aucun
+  conseil médical, 2,09 $. Les échecs sont analysés depuis le texte des réponses, sans rien
+  retoucher.
+- **La démonstration** (`92aa78d`). « Quel progrès MOUNJARO apporte-t-il selon l'avis de la
+  CT ? » s'abstenait à tort. Six CIS de MOUNJARO absents du référentiel portaient les
+  fragments de ses pages d'avis, sans dénomination, et prenaient les dix places.
+- **La décision de l'IeC** (`decision-question-2.md` et sa suite, voie C). Une page d'avis ne se
+  rattache qu'aux fiches du référentiel, et la perte est rendue visible : l'identité d'un
+  médicament vient du référentiel.
+- **Le palier 4** :
+  - `9694be7` : la mesure, d'abord. 121 pages sur 721 (16,8 %, 1 111 fragments) n'ont que des
+    CIS absents du référentiel ;
+  - `34dca25` : six questions figées avant le changement ;
+  - `aba5173` : le rattachement seul, au format 4. Les pages sans fiche sont comptées et
+    listées ;
+  - `a1ae12a` : la limite, écrite dans l'ADR 0013.
+- **L'évaluation finale** (`cf04a7e`). La v1 et la v2 sont relancées sur le format 4, parce que
+  leurs messages changent : 1,62 $.
+  - Aucune question perdue ni gagnée contre la première évaluation.
+  - Six questions sur six pour le rattachement.
+  - La v2, de 144 questions, donne 88/91 réponses correctes, 26/26 liens rendus, aucune citation
+    invalide et aucun conseil médical.
+  - La question 2 répond désormais sur l'avis Diabète de MOUNJARO. L'avis Obésité, sans fiche
+    du référentiel, reste hors de l'index.
+  - La mission a dépensé 3,82 $ sur 10 $, en 190 appels. Aucun n'est sous-estimé par la
+    constante 1,7.
+  - `index verifier` monte à 502 Mo chez beko, pour un seuil de 512 Mo.

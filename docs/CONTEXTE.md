@@ -474,7 +474,9 @@ la demande. Aucun appel réseau vers les sources.
   et les deux horloges ; déduplication des pages, rappel par section (`assistant/sections.py`),
   mots courants (`repere.MOTS_COURANTS`), refus de la posologie. Budget de la mission : 10 $,
   1,7 caractère par jeton.
-- **Le jeu v2** (`evaluation/questions-reference-v2.toml`, 138 questions) : la v1 reprise, les
+- **Le jeu v2** (`evaluation/questions-reference-v2.toml`, 144 questions) : la v1 reprise, les
   questions neuves figées avant les retouches, le texte des avis (`attendu_has`, vérifié sans
-  gold), les pièges ; la v2 se lance après la v1.
+  gold), les pièges, le rattachement ; la v2 se lance après la v1. Évaluation finale (31/10,
+  index au format 4) : 88/91 réponses correctes, liens rendus 26/26, aucune citation invalide,
+  aucun conseil médical ; la mission a dépensé 3,82 $ sur 10 $.
 

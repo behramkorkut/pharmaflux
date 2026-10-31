@@ -212,12 +212,12 @@ reprise relit le cache et ne repaie pas.
 ## La v2 : le texte des avis de la HAS et les correctifs mesurés (mission 09)
 
 `questions-reference-v2.toml` est un nouveau fichier, à l'instant de l'index du jeu de démo,
-comme la v1. Ses **138 questions** :
+comme la v1. Ses **144 questions** :
 - **les 88 de la v1**, au même texte. Trois comportements attendus changent, dits dans
   l'en-tête :
   - `disponibilite-005` devient une réponse avec réserve ;
   - `avis_has-004` et `-009` se notent par le lien rendu ;
-- **50 nouvelles**, sous de nouveaux identifiants :
+- **56 nouvelles**, sous de nouveaux identifiants :
   - **18 qui mesurent les correctifs de la mission 08**, figées avant toute retouche
     (`bbb9809`), dont 10 tirées par une règle sans LLM (`choisir_neuves_v2.py`) ;
   - **5 qui mesurent la table des sections**, figées avant son changement
@@ -227,7 +227,10 @@ comme la v1. Ses **138 questions** :
   - **4 pièges** : une décision plus récente que la BDPM, un dossier sans page, un avis hors
     corpus, une page rejetée ;
   - **3 questions qui demandent le PDF** (abstention motivée) et **une comparaison** de deux
-    médicaments (abstention).
+    médicaments (abstention) ;
+  - **6 qui mesurent le rattachement** d'une page d'avis aux seules fiches du référentiel,
+    figées avant lui (`choisir_neuves_v2_rattachement.py`) : quatre pages mixtes, rendues sous
+    la réponse, et deux pages sans fiche du référentiel (abstention).
 
 Les empreintes des questions figées sont fixées par `tests/test_questions_v2.py`. Les questions
 qui ont servi à trouver un défaut ne le mesurent pas : `avis_has-003` et `-014` pour la table,
@@ -243,10 +246,12 @@ La notation y ajoute trois choses : la page doit être **rendue par le code** so
 (`lien_attendu`), et **la date de l'avis** et **l'extrait** sont dus dans le texte.
 
 L'évaluation de la v2 rend ses indicateurs en deux blocs : les **questions nouvelles seules**,
-puis la **v2 entière**. La v1 se note par son propre fichier.
+puis la **v2 entière**. La v1 se note par son propre fichier : c'est le troisième bloc que
+demande l'ordre de mission.
 
-**La porte budgétaire.** Seule, la v2 demande 105 appels (10,55 $ au pire) et passe le plafond
-de 10 $. Lancée **après la v1**, elle relit du cache les 62 appels communs :
+**La porte budgétaire.** Au palier 3, la v2 seule demandait 105 appels (10,55 $ au pire) et
+passait le plafond de 10 $. Elle se lance donc **après la v1**, et relit du cache les appels
+communs :
 
 ```bash
 sh infra/agents/avec-cle.sh make evaluer

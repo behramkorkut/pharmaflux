@@ -6,7 +6,7 @@ Pages HTML d'avis de la HAS, `https://www.has-sante.fr/jcms/p_N`, que donne
 - **Archive** : la première étape du corpus, collectée par beko le 31/10/2026 (passage
   `20261031T124148Z`, 722 pages), sous `bronze/has/pages/` de `~/pharmaflux-data`. Le jeu de démo
   en reprend 150 (`demo/has-pages.txt`).
-- **Lu** par l'extracteur v2 (`src/pharmaflux/has/extraction.py`), sans réseau, le 01/11/2026.
+- **Lu** par l'extracteur v2 (`src/pharmaflux/has/extraction.py`), sans réseau, le 31/10/2026.
 - Contenus de la Haute Autorité de santé, réutilisés selon ses mentions légales (article du
   01/10/2015, relu le 31/10/2026) : document de la Haute Autorité de santé, disponible sur
   <https://www.has-sante.fr>. Les chiffres ci-dessous sont des mesures, pas des extraits.

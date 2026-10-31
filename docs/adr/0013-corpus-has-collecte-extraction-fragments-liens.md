@@ -1,6 +1,6 @@
 # ADR-0013 — Corpus HAS : collecte des pages d'avis, extraction, fragments d'avis, rendu des liens
 
-**Statut :** accepté · **Date :** 2026-11-01 · **Mission :** 09
+**Statut :** accepté · **Date :** 2026-10-31 · **Mission :** 09
 **Remplace / remplacé par :** — · **Complète :** ADR 0004 (le corpus HAS), ADR 0011 (l'index),
 ADR 0012 (l'assistant)
 
@@ -16,8 +16,9 @@ Mesures de la mission :
 - **le passage de beko** (31/10/2026) : 724 requêtes sur un plafond de 761, 25 min 56 s,
   101,5 Mio de résident maximal. 722 pages archivées, 0 erreur ;
 - **l'extracteur v2** : 721 pages extraites, 1 rejetée, 10 contrôles de dossier impossibles ;
-- **le jeu de démo** : 150 de ces pages, 1 543 fragments d'avis ;
-- **la première étape entière** : 6 165 fragments d'avis.
+- **le jeu de démo** : 150 de ces pages, 1 255 fragments d'avis au format 4 (1 543 au format 3,
+  avant le rattachement aux seules fiches du référentiel) ;
+- **la première étape entière** : 5 054 fragments d'avis au format 4 (6 165 au format 3).
 
 ## Décision
 
@@ -84,8 +85,10 @@ Mesures de la mission :
 - **La mémoire** reste sous 512 Mo. Les textes absents du cache sont encodés **avant**
   l'écriture, et le modèle se charge au premier besoin puis se rend. La vérification réencode
   son échantillon **avant** de lire les points. Mesures :
-  - le jeu : `construire` 493 Mo, `verifier` 496 Mo ;
-  - la première étape entière (78 461 fragments) : 471 Mo et 483 Mo.
+  - le jeu, au format 3 : `construire` 493 Mo, `verifier` 496 Mo. Au format 4 : `verifier`
+    488 Mo, et **502 Mo** chez beko le 31/10, soit une marge de 10 Mo ;
+  - la première étape entière : 471 Mo et 483 Mo au format 3 (78 461 fragments) ; 425 Mo et
+    444 Mo au format 4 (77 350 fragments).
 
 ### L'assistant
 
@@ -130,8 +133,9 @@ C'est une mission et une ADR à elles.
 
 `CARACTERES_PAR_JETON = 1,7`, recalé sur les 65 appels de la mission 08, dont l'entrée est
 reconstituée sans API. À cette valeur, aucun appel n'est sous-estimé, avec un écart moyen de
-+9 %. La v2 complète, seule, passerait la porte au pire (10,55 $ estimés, pour 10 $) : elle se
-lance après la v1, dont elle relit les 62 appels du cache.
++9 %. Au palier 3, la v2 complète, seule, passait la porte au pire (10,55 $ estimés, pour
+10 $) : elle se lance après la v1, dont elle relit les appels du cache. Sur les 190 appels de la
+mission 09, reconstitués sans API, aucun n'est sous-estimé, avec un écart moyen de +15 %.
 
 ## Conséquences
 

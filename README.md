@@ -62,9 +62,12 @@ citation invalide, aucun conseil médical, 1,03 $ (ADR 0012).
 pages d'avis de la Commission de la transparence (722 pages, avis depuis 2024),
 leur texte extrait mot pour mot et indexé à côté des fiches. L'assistant cite
 une page d'avis : son lien, la date de l'avis et la date de consultation sont
-rendus par le code, jamais écrits par le LLM. Un jeu v2 de 138 questions
-mesure le texte des avis et les correctifs de la mission 08, sur des questions
-figées avant eux (ADR 0013).
+rendus par le code, jamais écrits par le LLM. Une page d'avis ne se rattache
+qu'aux fiches du référentiel des spécialités : 121 pages sur 721 (16,8 %),
+liées seulement à des médicaments absents du référentiel, restent dans
+l'archive mais hors de l'index. Un jeu v2 de 144 questions mesure le texte des
+avis et les correctifs de la mission 08, sur des questions figées avant eux
+(ADR 0013).
 
 | Lot | Contenu | État |
 |---|---|---|
@@ -415,10 +418,11 @@ coût : 0.0234 $
 Contenu de la Haute Autorité de santé, disponible sur <https://www.has-sante.fr>,
 page consultée le 31/10/2026.
 
-**Mesuré le 31/10/2026** sur le [jeu v2](evaluation/README.md) (138 questions,
-dont 50 nouvelles) : 84 réponses correctes sur 87, aucune citation invalide,
-aucun conseil médical, la page d'avis rendue sous les 22 réponses qui
-l'attendent, 2,09 $ pour la v1 et la v2.
+**Mesuré le 31/10/2026** sur le [jeu v2](evaluation/README.md) (144 questions,
+dont 56 nouvelles) : 88 réponses correctes sur 91, aucune citation invalide,
+aucun conseil médical, la page d'avis rendue sous les 26 réponses qui
+l'attendent. La mission a dépensé 3,82 $ en tout, dont 1,62 $ pour la relance
+de la v1 et de la v2 après le rattachement aux seules fiches du référentiel.
 
 ### Les commandes
 

@@ -48,15 +48,23 @@
 #      dossier sans page, un avis hors du corpus, la page rejetée de PEDMARQSI) ;
 #    - avis_has-047 à -049 : ce que seul le PDF de l'avis dit (abstention motivée, ADR 0013) ;
 #    - avis_has-050 : la comparaison de deux médicaments (G3).
-#    Les trois questions médicales qui ont fait étendre la règle de refus (medical-013, -014,
-#    -016) ont servi à la trouver : elles ne la mesurent pas (controle-palier-2.md).
+#
+# 4. AU PALIER 4, sous de nouveaux identifiants, sans toucher aux précédentes :
+#    - avis_has-051 à -056 : le rattachement d'une page d'avis aux seules fiches du référentiel
+#      (decision-question-2.md et sa suite), tirées par
+#      evaluation/choisir_neuves_v2_rattachement.py et figées avant le changement : quatre pages
+#      mixtes (-053 à -056, la page rendue sous la réponse) et deux pages sans fiche du
+#      référentiel (-051 et -052, abstention).
+#
+# Les trois questions médicales qui ont fait étendre la règle de refus (medical-013, -014, -016)
+# ont servi à la trouver : elles ne la mesurent pas (controle-palier-2.md).
 #
 # `uv run pharmaflux questions verifier --questions evaluation/questions-reference-v2.toml
 #  --racine demo/archive --entrepot data/demo/lakehouse` recalcule chaque attendu depuis
 # l'archive (sha256 + contrat) et depuis le gold, et exige la concordance.
 
 version = "v2"
-description = "Les 88 questions de la v1 et les 50 questions nouvelles de la mission 09 (138), à l'instant de l'index du jeu de démo (2026-10-27T00:17:12Z)."
+description = "Les 88 questions de la v1 et les 56 questions nouvelles de la mission 09 (144), à l'instant de l'index du jeu de démo (2026-10-27T00:17:12Z)."
 instant = "2026-10-27T00:17:12Z"
 
 # ===========================================================================

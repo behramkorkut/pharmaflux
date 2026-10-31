@@ -181,9 +181,9 @@ def test_le_silver_en_arriere_de_l_index_est_refuse(
     ("appel", "rang"),
     [
         (f"PUT /collections/{COLLECTION_ETAT}/points", 1),  # avant d'écrire « vise »
-        ("PUT /collections/pharmaflux-f1-test", 1),  # avant la première écriture de points
+        ("PUT /collections/pharmaflux-f2-test", 1),  # avant la première écriture de points
         (
-            "POST /collections/pharmaflux-f1-test-20261026T001712Z/points/delete",
+            "POST /collections/pharmaflux-f2-test-20261026T001712Z/points/delete",
             1,
         ),  # avant de retirer
         (f"PUT /collections/{COLLECTION_ETAT}/points", 2),  # avant d'écrire le nouvel instant
@@ -200,7 +200,7 @@ def test_une_coupure_puis_la_reprise_egale_la_reconstruction(
     etat = next(iter(index_avant.points(COLLECTION_ETAT).values()))["payload"]
     assert etat["instant"] == AVANT, "l'instant n'avance qu'à la fin"
     reprise = mettre_a_jour(index_avant, tmp_path / "travail", frags)
-    assert reprise.reprise is (rang == 2 or "points/delete" in appel or "f1-test" in appel)
+    assert reprise.reprise is (rang == 2 or "points/delete" in appel or "f2-test" in appel)
     assert_egal_a_la_reconstruction(index_avant, tmp_path, "reprise")
 
 
@@ -253,6 +253,9 @@ def test_verifier_trouve_chaque_ecart(index_avant: QdrantSimule, tmp_path: Path)
     assert sorted(rapport.vecteurs_differents) == sorted([ids[1], ids[2]]), (
         "chacun une fois : le vecteur retouché, et celui dont le texte ne correspond plus"
     )
+    assert sorted(rapport.creux_differents) == sorted([ids[1], ids[2]]), (
+        "le vecteur creux recalculé depuis le texte retouché, et celui dont le creux a disparu"
+    )
     lignes = construction.formater_verification(rapport)
     assert (
         lignes[-1] == "NON CONFORME" and f"manquants                        1 : {ids[0]}" in lignes
@@ -262,7 +265,7 @@ def test_verifier_trouve_chaque_ecart(index_avant: QdrantSimule, tmp_path: Path)
 def test_verifier_signale_une_mise_a_jour_en_suspens(
     index_avant: QdrantSimule, tmp_path: Path
 ) -> None:
-    index_avant.couper("PUT /collections/pharmaflux-f1-test")
+    index_avant.couper("PUT /collections/pharmaflux-f2-test")
     with pytest.raises(QdrantIndisponible):
         mettre_a_jour(
             index_avant, tmp_path / "travail", ecrire(tmp_path, "m", APRES_FICHES, APRES, TOUCHES)

@@ -29,7 +29,10 @@ from pathlib import Path
 from pharmaflux.contrats.modele import Contrat
 from pharmaflux.tomlstrict import TableStricte
 
-VERSION_JEU = "v0"
+VERSIONS = ("v0", "v1")
+# Les sections d'un fragment (index.fragments.SECTIONS), reprises ici pour valider
+# « section_attendue » sans coupler l'évaluation au paquet de l'index.
+SECTIONS_FRAGMENT = ("identite", "presentations", "avis", "disponibilite", "informations")
 CATEGORIES = (
     "disponibilite",
     "alternatives",
@@ -83,6 +86,14 @@ class Question:
     orientation: str | None = None  # vers qui ou quoi renvoyer
     calculable_au: str | None = None  # réponse sans attendu : le lot qui l'apportera
     prudence: str | None = None  # la nuance que la réponse doit porter
+    # Champs de notation d'une réponse rédigée (v1, consommés par la notation au Lot 3). Le texte
+    # du LLM cite un fragment du CIS attendu (et de la section attendue si donnée) ; les mots
+    # interdits (en mots entiers, accents dépliés) n'y paraissent pas ; une réponse « avec
+    # réserve » dit que le référentiel ne connaît pas le médicament (annexe B).
+    cis_attendu: str | None = None
+    section_attendue: str | None = None
+    mots_interdits: tuple[str, ...] = ()
+    reserve: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +101,7 @@ class Jeu:
     version: str
     description: str
     questions: tuple[Question, ...] = field(default_factory=tuple)
+    instant: str | None = None  # v1 : l'instant de l'index auquel la réponse est attendue
 
     def par_categorie(self) -> dict[str, list[Question]]:
         groupes: dict[str, list[Question]] = {categorie: [] for categorie in CATEGORIES}
@@ -114,11 +126,16 @@ def charger_octets(octets: bytes, origine: str, contrats: Mapping[str, Contrat])
         raise JeuInvalide(f"{origine} : TOML illisible : {exc}") from exc
     racine = _Table(brut, origine)
     version = racine.texte("version")
-    if version != VERSION_JEU:
-        raise JeuInvalide(f"{origine} : version « {version} » ; attendu « {VERSION_JEU} »")
+    if version not in VERSIONS:
+        attendues = ", ".join(VERSIONS)
+        raise JeuInvalide(f"{origine} : version « {version} » ; attendu : {attendues}")
     description = racine.texte("description")
+    instant = racine.texte_facultatif("instant")
+    if version == "v1" and instant is None:
+        raise JeuInvalide(f"{origine} : la v1 déclare « instant » (l'instant de l'index attendu)")
     questions = tuple(
-        _question(table, contrats) for table in racine.tables("questions", obligatoire=True)
+        _question(table, contrats, version)
+        for table in racine.tables("questions", obligatoire=True)
     )
     if not questions:
         raise JeuInvalide(f"{origine} : aucune question")
@@ -127,10 +144,10 @@ def charger_octets(octets: bytes, origine: str, contrats: Mapping[str, Contrat])
         doublons = sorted({i for i in ids if ids.count(i) > 1})
         raise JeuInvalide(f"{origine} : identifiant(s) en double : {', '.join(doublons)}")
     racine.terminer()
-    return Jeu(version=version, description=description, questions=questions)
+    return Jeu(version=version, description=description, instant=instant, questions=questions)
 
 
-def _question(table: _Table, contrats: Mapping[str, Contrat]) -> Question:
+def _question(table: _Table, contrats: Mapping[str, Contrat], version: str) -> Question:
     id_ = table.texte("id")
     forme = MOTIF_ID.fullmatch(id_)
     if forme is None:
@@ -154,10 +171,15 @@ def _question(table: _Table, contrats: Mapping[str, Contrat]) -> Question:
     orientation = table.texte_facultatif("orientation")
     calculable_au = table.texte_facultatif("calculable_au")
     prudence = table.texte_facultatif("prudence")
+    cis_attendu = table.texte_facultatif("cis_attendu")
+    section_attendue = table.texte_facultatif("section_attendue")
+    mots_interdits = table.textes("mots_interdits", obligatoire=False)
+    reserve = table.booleen_facultatif("reserve", defaut=False)
     table_attendu = table.table_facultative("attendu")
     attendu = None if table_attendu is None else _attendu(table_attendu, contrats)
     table.terminer()
-    _coherence(table.contexte, comportement, attendu, motif, calculable_au)
+    _coherence(table.contexte, comportement, attendu, motif, calculable_au, version)
+    _coherence_notation(table.contexte, comportement, cis_attendu, section_attendue, reserve)
     return Question(
         id=id_,
         categorie=categorie,
@@ -168,6 +190,10 @@ def _question(table: _Table, contrats: Mapping[str, Contrat]) -> Question:
         orientation=orientation,
         calculable_au=calculable_au,
         prudence=prudence,
+        cis_attendu=cis_attendu,
+        section_attendue=section_attendue,
+        mots_interdits=mots_interdits,
+        reserve=reserve,
     )
 
 
@@ -177,6 +203,7 @@ def _coherence(
     attendu: Attendu | None,
     motif: str | None,
     calculable_au: str | None,
+    version: str,
 ) -> None:
     if calculable_au is not None and calculable_au not in LOTS:
         raise JeuInvalide(f"{contexte} : calculable_au « {calculable_au} » ; attendu : lot1 à lot5")
@@ -192,12 +219,41 @@ def _coherence(
         return
     if motif is None:
         raise JeuInvalide(f"{contexte} : une {comportement.value} exige un « motif »")
-    if calculable_au is not None:
+    # La v1 permet à une abstention de porter « calculable_au » : l'assistant s'abstient
+    # aujourd'hui (une dépense, avant le Lot 4), et la valeur deviendra calculable au lot nommé.
+    # La v0 garde la règle stricte, et un refus ne porte jamais « calculable_au ».
+    abstention_differee = comportement is Comportement.ABSTENTION and version == "v1"
+    if calculable_au is not None and not abstention_differee:
         raise JeuInvalide(f"{contexte} : « calculable_au » n'a de sens que pour une réponse")
     if comportement is Comportement.REFUS_MEDICAL and attendu is not None:
         raise JeuInvalide(f"{contexte} : un refus n'a pas d'« attendu »")
     if attendu is not None and attendu.valeurs:
         raise JeuInvalide(f"{contexte} : l'attendu d'une abstention ne contient aucune ligne")
+
+
+def _coherence_notation(
+    contexte: str,
+    comportement: Comportement,
+    cis_attendu: str | None,
+    section_attendue: str | None,
+    reserve: bool,
+) -> None:
+    """Les champs de notation d'une réponse n'ont de sens que pour un comportement ``reponse``."""
+    if comportement is not Comportement.REPONSE:
+        for nom, present in (
+            ("cis_attendu", cis_attendu is not None),
+            ("section_attendue", section_attendue is not None),
+            ("reserve", reserve),
+        ):
+            if present:
+                raise JeuInvalide(f"{contexte} : « {nom} » n'a de sens que pour une réponse")
+    if cis_attendu is not None and not re.fullmatch(r"\d{8}", cis_attendu):
+        raise JeuInvalide(f"{contexte} : « cis_attendu » est un CIS à 8 chiffres")
+    if section_attendue is not None and section_attendue not in SECTIONS_FRAGMENT:
+        connues = ", ".join(SECTIONS_FRAGMENT)
+        raise JeuInvalide(f"{contexte} : « section_attendue » parmi : {connues}")
+    if section_attendue is not None and cis_attendu is None:
+        raise JeuInvalide(f"{contexte} : « section_attendue » suppose un « cis_attendu »")
 
 
 def _archive_du_contrat(table: _Table, archive: str, contrat: Contrat, jour: date) -> None:

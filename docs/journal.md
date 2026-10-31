@@ -662,3 +662,172 @@ prend le verrou. Pas de tour 2. Non-régression complète rejouée sur
 `50e7533` : 601 tests, `evenements` identique à `98505d3`, `silver verifier`
 22/22, `make gold` sans bloquant et 25 concordantes, l'index du Mac
 conforme. Description de la PR, puis revue finale de l'IeC.
+
+**Mission 08, la CI de la PR #8** (30/10). Les durées que le `pr.md` de la
+mission 07 laissait « à compléter après la publication », relevées sur la CI
+de la PR #8 : les deux `make index` avec l'encodeur de test en 66 s ; le cache
+du modèle absent au premier run, l'installation et la vérification du vrai
+modèle en 3 s, le vrai modèle sur un sous-ensemble en 62 s, la sauvegarde du
+cache en 4 s ; le job `integration` en 6 min 24 s, `verifier` en 5 min 23 s.
+
+**Mission 08, palier 1** (30/10). La recherche hybride et le jeu v1, sans
+aucun appel à l'API. `index/lexical.py` : un tokenizer déterministe
+(minuscules, accents dépliés, CIS et CIP13 entiers, unités de dose ramenées à
+une graphie, ni racinisation ni mots vides) et un vecteur creux BM25.
+L'indice d'un terme vient d'un `blake2b` sur 31 bits (0 collision sur les
+65 363 termes du jeu) ; la valeur est le terme « document » de BM25 (`K1 = 1,2`,
+`B = 0,75`, longueur moyenne **53,29** figée, mesurée une fois sur les 72 296
+fragments), l'IDF restant à Qdrant (`modifier: idf`), si bien que la valeur ne
+dépend que du texte. **Format 2** : chaque point porte un vecteur creux
+`lexical` à côté du `dense` ; la reconstruction relit les 72 296 vecteurs
+denses du cache (0 réencodé, 38 s). La fusion est un RRF **côté client**
+(`k = 60`, 50 candidats par voie, aucun réglage sur le jeu d'évaluation).
+`index evaluer` sort dense seul, creux seul et hybride ; `index verifier`
+compare aussi le vecteur creux au recalcul (indices, valeurs en `float32`).
+Rappel (bon CIS, hybride ≥ dense à 5 et 10, meilleur sur `identite`) : v0,
+dense @5/@10 20/20 → hybride 22/22 ; v1 (47 questions nommant un médicament),
+dense @5/@10 45/45 → hybride 47/47, rang réciproque de 0,680 à 0,747. Deux
+constructions depuis le jeu donnent le même instant `2026-10-27T00:17:12Z`.
+Jeu v1 (`evaluation/questions-reference-v1.toml`, 88 questions, ≥ 10 par
+catégorie), daté à l'instant de l'index, vérifié sans LLM depuis le bronze du
+jeu de démo et depuis le gold (55 conformes, 55 concordent) : `avis_has-005`
+devient une réponse avec réserve, `alternatives-004` est retirée, et s'ajoutent
+les pièges (nom proche, CIS hors référentiel, médicale déguisée, deux
+médicaments) et deux cas limites sans refus.
+
+**Mission 08, palier 2** (30/10). L'assistant gouverné (`pharmaflux.assistant`),
+aucun appel réel depuis ma session : tous les tests passent par le double du
+client, la démonstration des cinq questions est préparée pour beko (addendum 2).
+Le chemin d'une question (`chemin.py`) : refus médical en tête puis abstentions
+dures (hors LLM), repérage et « deux médicaments », recherche hybride, porte
+structurelle (aucun fragment du médicament visé → abstention), LLM sous le
+plafond et caché, enfin le contrôle du code (citations parmi les fragments
+fournis ; nombres et dates du texte retrouvés dans un fragment cité ou la
+question, après normalisation — « 09/09/2026 », « 9 septembre 2026 »,
+« 20260909 » se rejoignent). Les sources, leurs dates et l'instant de l'index
+sont **rendus par le code**. Opus 5.5, sortie structurée, effort `low`,
+`max_tokens` 4 000, pas de repli ; un refus du modèle ou `max_tokens` est une
+abstention technique. Budget : estimation locale avant l'appel (jamais
+`count_tokens`), coût réel après dans `data/assistant/depenses.jsonl`, plafond
+20 $ ; cache des réponses par (prompt, contenu, modèle, effort, schéma). Les
+trois points du contrôle du palier 1 : les dix `depense` de la v1 passent en
+abstention (`calculable_au` gardé, parseur élargi à la v1 seule) ; le RRF côté
+client est déclaré (rapport, et ADR 0012 au palier 3) ; la coupure du registre,
+piste keep-alive examinée (client `httpx` persistant, `keepalive_expiry` 5 s par
+défaut, réessai qui recouvre) mais non confirmée côté serveur (délai de Redpanda
+non documenté), donc client inchangé, règle de la mission 07 gardée. Dépendance
+`anthropic` ajoutée (`uv.lock` au 16/10, sans toucher aux paquets déjà
+verrouillés). Vérifié contre le vrai index avec le double : refus, abstention et
+porte structurelle sans appel ; « LARIAM en rupture ? » rend une réponse citant
+le CIS 65999556 daté. Correctif du contrôle du palier 2 : une sortie illisible
+du modèle (bloc absent, JSON invalide, clé manquante) devient une abstention
+technique journalisée (l'appel payé n'est jamais perdu), et une abstention
+technique n'entre pas au cache (une reprise retente l'appel). Démonstration de
+beko (3 appels réels, 0,0432 $, reste 19,9568 $) : l'abstention de la question 1
+était un faux positif du contrôle des nombres — « CIP13 3400933961688 » lu
+« 13 340 », le « 13 » du label collé au début du CIP —, corrigé dans le
+normaliseur : frontière de début « (?<!\w) » (pas de nombre au milieu d'un code)
+et de fin « (?!\d) » (un chiffre suivant est interdit, mais « 250mg » reste lu,
+pour qu'un nombre inventé collé à son unité ne passe pas inaperçu) ; la réponse
+passe alors le contrôle, vérifié sans appel depuis le cache. Le cache du prompt
+s'avère effectif (923 jetons écrits puis relus). 657 tests verts (intégration et
+modèle compris, 0 réessai du registre).
+
+**Mission 08, palier 3** (30/10, Claude Opus 5.5, session neuve depuis `4f827cb`).
+La notation de l'assistant, entièrement déterministe (`assistant/notation.py`).
+Une réponse attendue est correcte si cinq conditions tiennent : le bon
+comportement ; toutes les valeurs dues présentes dans le texte ; une citation
+valide du CIS et de la section attendus ; aucun mot interdit ; la réserve dite
+quand elle est attendue. Les valeurs dues sont celles des colonnes que le texte
+des fragments rend (les liens, le numéro de tri, les honoraires… ne le sont
+jamais, le LLM ne les voit pas). Elles se comparent par nature : date sous
+toute graphie, nombre canonique, libellé en mots entiers. Deux conditions sont
+dures (aucune citation invalide, aucun `medical` sans refus) et donnent seules
+le code 1. `assistant evaluer` prépare toutes les questions sans LLM, chiffre la
+porte budgétaire avant le premier appel, puis appelle, contrôle et note.
+`--estimer` le chiffre sans clé ni appel. Le chemin est découpé en `preparer`
+et `conclure` pour cela.
+
+`--estimer` sur le vrai index a révélé un défaut du palier 2 : la règle « deux
+médicaments » s'abstenait à tort sur 18 des 54 réponses attendues. Trois causes :
+- « B O P, comprimé enrobé » faisait de « comprime » un nom ;
+- « SUNITINIB EG » s'ajoutait à « SUNITINIB BIOGARAN » ;
+- les questions de groupe nomment par construction la DCI et le princeps.
+
+Correctif, éprouvé hors du jeu d'évaluation (200 médicaments tirés au hasard,
+seuls puis deux par deux, à la demande de l'IeC) :
+- les mots de forme, tirés des dénominations, ne nomment jamais un médicament ;
+- un médicament est nommé quand tous les mots de son nom sont dans la question,
+  et seuls les noms maximaux comptent ;
+- l'exception « groupe » ne vaut que si les noms tiennent dans le libellé d'un
+  même groupe de l'index.
+
+Les décisions de l'IeC, par message :
+- cinq questions de la v1, dont la valeur n'est pas dans le texte des
+  fragments, passent en abstention (49 réponses, 28 abstentions, 11 refus) ;
+- le contrôle lit les dates de 1900 à 2099, et une année ou un mois seuls
+  s'appuient sur les dates citées.
+
+Les remarques du contrôle du palier 2 :
+- une abstention ou un refus rendus par le LLM passent le même contrôle (un
+  refus prend la forme du code) ;
+- une erreur de l'API donne le code 2 et une ligne lisible ;
+- l'override mypy d'`anthropic` est retiré (le SDK porte ses types).
+
+Le reste du palier :
+- les deux tests de l'addendum D2 sur la v1 entière, qui manquaient, sont
+  écrits ;
+- `make evaluer` est ajoutée ;
+- `make rebatir` épargne `data/assistant` (test du `Makefile`) ;
+- le prompt système demande « aucun signalement à cette date », jamais
+  « disponible », et les valeurs telles que les fragments les donnent ;
+- l'ADR 0012 est écrite ;
+- README, `evaluation/README.md` et CONTEXTE sont mis à jour.
+
+L'évaluation complète, chiffrée sans appel : 62 appels, 5,40 $ au pire, environ
+0,89 $ probable, 439 Mo, 11 s. Elle est à lancer par beko.
+
+**Mission 08, clôture du palier 3** (30-31/10). L'IeC accepte le palier. Ses conditions font
+l'objet de deux commits (`f6b1d67`, `37375dd`). Le second éprouve le classement des colonnes
+contre le texte que rend `fragments.py` : les 114 valeurs dues se retrouvent toutes dans le
+texte, et aucune valeur hors texte n'y paraît.
+
+beko a enchaîné la séquence de clôture, toute verte (silver 22/22, gold sans bloquant,
+`index verifier` conforme), puis l'évaluation complète : 62 appels, 0,9877 $. Les deux
+conditions dures tiennent, mais les réponses correctes ne sont qu'à 34/49.
+
+Le diagnostic s'est fait sans aucun appel, depuis le détail et le cache : 12 des 15 échecs
+étaient des faux positifs du contrôle. Le modèle écrit ses étiquettes de citation dans le
+texte (« … 7.06 € [1] »), et le contrôle lisait ce « 1 » comme un nombre sans appui. Ce défaut
+est latent depuis le palier 2 : la réponse DOLIPRANE de la démonstration ne passait que par
+hasard, son fragment portant « Présentations (2) : ».
+
+Le correctif, adopté par l'IeC, retire les étiquettes déclarées par le LLM avant le contrôle
+et la notation (`2891e98`). Aucun autre changement n'a suivi le résultat. La recette de `make
+evaluer`, lancée au commit de clôture sur le cache, donne 44/49, 82/88 questions traitées
+justement, 48/49 réponses à source datée et 22/22 abstentions hors périmètre et médical. Elle
+n'a fait aucun appel, et le journal des dépenses est inchangé.
+
+Il reste cinq constats, pour la mission 09 : le rappel de l'avis d'OZEMPIC, quatre dates
+omises, et `disponibilite-005`. Celle-ci compte fausse, car le jeu se contredit avec
+`avis_has-005` et on ne le touche pas après avoir vu le résultat. La mission a dépensé
+1,0309 $ sur 20 $.
+
+**Mission 08, relecture 1** (31/10). Claude Fable 5.1, sur `98cdb69` : **CONFORME, 0
+bloquant**, six points non bloquants, tous corrigés.
+
+En `50ff304`, ceux qui ne touchent ni le chemin ni la notation :
+- le test « clé absente » bloque aussi le réseau ;
+- une assertion de test qui ne pouvait pas échouer est corrigée ;
+- le budget : l'entrée est minorée d'un facteur 2, et la sortie entière la couvre ;
+- le miroir de D2 pour les abstentions dures ;
+- les remarques de rendu.
+
+Puis, sur décision de l'IeC, les deux qui changent le chemin après l'évaluation (sa règle vise
+les ajustements tirés des réponses de Claude, et ces défauts viennent de la relecture du code) :
+- le cadre du refus médical connaît « peut-on », « mon fils peut-il », « je peux »… L'exemple
+  du §0 D de l'ordre partait au LLM ;
+- « 1er juillet 2027 » est une date.
+
+La renotation sur le cache a été faite avant le commit : 0 appel, journal inchangé, 44/49 et
+82/88, et une sortie identique à l'octet à celle du commit de clôture.

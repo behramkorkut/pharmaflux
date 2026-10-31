@@ -29,12 +29,13 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from importlib.metadata import version as version_du_paquet
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, TextIO
+from typing import TYPE_CHECKING, Annotated, Any, TextIO
 
 import httpx
 import typer
 
 from pharmaflux import bronze
+from pharmaflux.assistant.client import EFFORT_DEFAUT, ClientLLM
 from pharmaflux.bus import enveloppe as env
 from pharmaflux.bus import publication, suivi, verification
 from pharmaflux.bus.client import (
@@ -70,6 +71,10 @@ from pharmaflux.evenements import rejeu
 from pharmaflux.silver import ENTREPOT_PAR_DEFAUT, LOT_PAR_DEFAUT, Format, SilverRefuse
 
 if TYPE_CHECKING:  # le silver ne s'importe que dans ses commandes (K.1)
+    from pharmaflux.assistant.chemin import Reponse as Reponse_
+    from pharmaflux.assistant.evaluation import Estimation as Estimation_
+    from pharmaflux.assistant.notation import Indicateurs as Indicateurs_
+    from pharmaflux.assistant.notation import Note as Note_
     from pharmaflux.gold.typage import EntiteTypee as EntiteTypee_
     from pharmaflux.gold.vues import Vues as Vues_
     from pharmaflux.silver.consommation import LecteurSilver
@@ -94,6 +99,9 @@ fabriquer_lecteur_silver: Callable[[str], LecteurSilver | None] = lambda _courti
 fabriquer_transport_qdrant: Callable[[], httpx.BaseTransport | None] = (  # noqa: E731
     lambda: None
 )
+# L'assistant (mission 08) : les tests injectent le double du client Claude ; None = le vrai
+# client (ClientClaude), qui n'importe anthropic qu'à sa construction. Aucun appel réel aux tests.
+fabriquer_client_llm: Callable[[], ClientLLM | None] = lambda: None  # noqa: E731
 
 application = typer.Typer(
     name="pharmaflux",
@@ -2028,10 +2036,11 @@ def index_evaluer(
     qdrant: OptionQdrant = None,
     modele_: OptionModele = MODELE_PAR_DEFAUT,
 ) -> None:
-    """Une première mesure de la recherche sur le jeu v0, pour la mission 08 (sans seuil).
+    """La mesure de la recherche, dense seul, creux seul et hybride, côte à côte (sans seuil).
 
-    Rappel à 1, 5 et 10 sur les questions qui nomment un médicament (bon CIS,
-    puis bon CIS et bonne section), rang réciproque moyen, et score du premier
+    Sur un jeu de questions (v0 par défaut, ou la v1 par --questions) : rappel à 1, 5 et 10 sur
+    les questions qui nomment un médicament (bon CIS, puis bon CIS et bonne section), rang
+    réciproque moyen, et score du premier
     résultat des questions hors périmètre ou médicales. Code 0 quelle que soit
     la qualité ; code 2 : pas d'index, modèle, Qdrant, jeu illisible.
     """
@@ -2142,3 +2151,393 @@ def modele_verifier(nom: ArgumentModele) -> None:
     if ecarts:
         raise typer.Exit(code=1)
     typer.echo(f"{nom} : {len(epinglage.fichiers)} fichier(s) en place, sha256 vérifiés")
+
+
+# --- assistant (mission 08) --------------------------------------------------------------------
+# L'assistant gouverné : refus médical et abstentions hors LLM, recherche hybride, LLM sous le
+# plafond, contrôle des citations par le code. anthropic n'est importé que par le vrai client, à
+# sa construction (jamais aux tests, qui passent par le double).
+
+DONNEES_ASSISTANT = Path("data/assistant")  # journal des dépenses et cache des réponses, hors git
+
+assistant = typer.Typer(
+    name="assistant",
+    help="L'assistant gouverné (mission 08) : réponses sourcées et datées, abstention, refus"
+    " médical, sous le plafond de dépense.",
+    no_args_is_help=True,
+)
+application.add_typer(assistant)
+
+OptionDonnees = Annotated[
+    Path,
+    typer.Option("--donnees", help="Journal des dépenses et cache des réponses, hors git."),
+]
+
+
+class FormatAssistant(StrEnum):
+    TEXTE = "texte"
+    JSON = "json"
+
+
+@assistant.command("demander")
+def assistant_demander(
+    question: Annotated[str, typer.Argument(help="La question, en français.")],
+    format_: Annotated[
+        FormatAssistant, typer.Option("--format", help="texte (défaut) ou json (la trace).")
+    ] = FormatAssistant.TEXTE,
+    effort: Annotated[
+        str, typer.Option("--effort", help="Effort du modèle : low (défaut), medium, high.")
+    ] = EFFORT_DEFAUT,
+    qdrant: OptionQdrant = None,
+    modele_: OptionModele = MODELE_PAR_DEFAUT,
+    donnees: OptionDonnees = DONNEES_ASSISTANT,
+) -> None:
+    """Répond à une question, gouvernée de bout en bout, sous le plafond de dépense.
+
+    Le refus médical et les abstentions dures se décident hors du LLM ; la recherche est
+    hybride ; les citations, les nombres et les dates de la réponse sont contrôlés par le code,
+    qui rend aussi les sources, leurs dates et l'instant de l'index. Code 0 pour tout résultat
+    (réponse, abstention ou refus). Code 2 : clé d'API absente, budget dépassé, erreur de l'API
+    (surcharge, délai, réseau), pas d'index, modèle différent de celui de l'index, Qdrant
+    injoignable.
+    """
+    from pharmaflux.assistant import chemin
+    from pharmaflux.assistant.budget import BudgetDepasse, Journal
+    from pharmaflux.assistant.cache import CacheReponses
+    from pharmaflux.assistant.client import CleAbsente, ClientClaude, ErreurAPI, cle_presente
+    from pharmaflux.index import construction, encodeur
+    from pharmaflux.index.qdrant import Qdrant, QdrantIndisponible
+
+    double = fabriquer_client_llm()
+    if double is None and not cle_presente():
+        typer.echo("assistant refusé : clé absente (ANTHROPIC_API_KEY)", err=True)
+        raise typer.Exit(code=2)
+    try:
+        cache = CacheReponses(donnees)
+        try:
+            encodeur_ = encodeur.charger(modele_)
+            client = double or ClientClaude()
+            with Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as qd:
+                reponse = chemin.demander(
+                    qd,
+                    encodeur_,
+                    client,
+                    question,
+                    Journal(donnees / "depenses.jsonl"),
+                    cache,
+                    effort=effort,
+                )
+        finally:
+            cache.close()
+    except (
+        CleAbsente,
+        BudgetDepasse,
+        ErreurAPI,
+        construction.IndexRefuse,
+        encodeur.ModeleIndisponible,
+        QdrantIndisponible,
+    ) as exc:
+        typer.echo(f"assistant refusé : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if format_ is FormatAssistant.JSON:
+        typer.echo(json.dumps(_reponse_json(reponse), ensure_ascii=False))
+    else:
+        for ligne in _rendre_reponse(reponse):
+            typer.echo(ligne)
+
+
+_ENTETE_COMPORTEMENT = {
+    "reponse": "Réponse",
+    "abstention": "Abstention",
+    "refus_medical": "Refus (question médicale)",
+}
+
+
+def _cout_texte(reponse: Reponse_) -> str:
+    if reponse.usage is None:
+        return "0 $ (décision hors LLM)"
+    if reponse.depuis_cache:
+        return "0 $ (réponse en cache)"
+    return f"{reponse.cout:.4f} $"
+
+
+def _rendre_reponse(reponse: Reponse_) -> list[str]:
+    reserve = " avec réserve" if reponse.reserve else ""
+    lignes = [_ENTETE_COMPORTEMENT[reponse.comportement] + reserve + " :"]
+    if reponse.texte:
+        lignes.append(reponse.texte)
+    if reponse.motif:
+        lignes.append(f"motif : {reponse.motif}")
+    if reponse.orientation:
+        lignes.append(f"orientation : {reponse.orientation}")
+    for c in reponse.citations:
+        lignes.append(f"  [{c.etiquette}] CIS {c.code_cis}, {c.section} — {c.sources}")
+    lignes.append(f"état de l'index au {reponse.instant_index}")
+    lignes.append(f"coût : {_cout_texte(reponse)}")
+    return lignes
+
+
+def _reponse_json(reponse: Reponse_) -> dict[str, Any]:
+    usage = reponse.usage
+    return {
+        "comportement": reponse.comportement,
+        "texte": reponse.texte,
+        "motif": reponse.motif,
+        "orientation": reponse.orientation,
+        "reserve": reponse.reserve,
+        "citations": [
+            {
+                "etiquette": c.etiquette,
+                "code_cis": c.code_cis,
+                "section": c.section,
+                "denomination": c.denomination,
+                "dans_referentiel": c.dans_referentiel,
+                "sources": c.sources,
+                "source_datee": c.source_datee,
+            }
+            for c in reponse.citations
+        ],
+        "instant_index": reponse.instant_index,
+        "decision": reponse.decision,
+        "depuis_cache": reponse.depuis_cache,
+        "cout": reponse.cout,
+        "usage": None
+        if usage is None
+        else {
+            "jetons_entree": usage.jetons_entree,
+            "jetons_sortie": usage.jetons_sortie,
+            "jetons_cache_lecture": usage.jetons_cache_lecture,
+            "jetons_cache_ecriture": usage.jetons_cache_ecriture,
+        },
+        "effort": reponse.effort,
+        "trace": reponse.trace,
+    }
+
+
+@assistant.command("depenses")
+def assistant_depenses(donnees: OptionDonnees = DONNEES_ASSISTANT) -> None:
+    """Le total dépensé pour la mission et ce qui reste du plafond, lus dans le journal local."""
+    from pharmaflux.assistant.budget import MISSION, PLAFOND, Journal
+
+    journal = Journal(donnees / "depenses.jsonl")
+    appels = [ligne for ligne in journal.lignes() if ligne.mission == MISSION]
+    total = journal.total()
+    typer.echo(
+        f"mission {MISSION} : {len(appels)} appel(s), {total:.4f} $ dépensé(s) ;"
+        f" reste {PLAFOND - total:.4f} $ sur {PLAFOND:.2f} $"
+    )
+
+
+QUESTIONS_V1 = Path("evaluation/questions-reference-v1.toml")
+
+
+def _pourcent(compte: int, total: int) -> str:
+    return f"{compte}/{total} ({100 * compte / total:.1f} %)" if total else f"{compte}/0"
+
+
+def _ligne_note(note: Note_) -> str:
+    """Une ligne par question : attendu → rendu, la note, le coût."""
+    if note.correcte is None:
+        verdict = "juste" if note.comportement_juste else "FAUX"
+    elif note.correcte:
+        verdict = "correcte"
+    else:
+        raisons = []
+        if not note.comportement_juste:
+            raisons.append(f"comportement {note.rendu}")
+        raisons += [f"manque {m}" for m in note.manques]
+        if note.comportement_juste and not note.cis_cite:
+            raisons.append("aucune citation du CIS et de la section attendus")
+        raisons += [f"mot interdit « {m} »" for m in note.mots_interdits]
+        if note.reserve_manquee:
+            raisons.append("réserve non dite")
+        if note.citations_invalides:
+            raisons.append(f"citations invalides {list(note.citations_invalides)}")
+        verdict = "INCORRECTE : " + " ; ".join(raisons)
+    cout = "cache" if note.depuis_cache else (f"{note.cout:.4f} $" if note.llm else "hors LLM")
+    return f"{note.id:<20} {note.attendu} → {note.rendu} ({note.decision}) : {verdict} [{cout}]"
+
+
+def _rendre_estimation(estimation: Estimation_) -> list[str]:
+    from pharmaflux.assistant.budget import PLAFOND
+
+    probable = (
+        f" ; probable {estimation.probable:.4f} $ (au coût moyen constaté de"
+        f" {estimation.cout_moyen_constate:.4f} $ par appel)"
+        if estimation.probable is not None
+        else ""
+    )
+    accord = "accordée" if estimation.accordee else "REFUSÉE"
+    return [
+        f"porte budgétaire : {estimation.questions} questions, {estimation.hors_llm} décidées hors"
+        f" LLM, {estimation.en_cache} en cache, {estimation.a_appeler} appel(s) à faire",
+        f"  estimation prudente {estimation.estimation:.4f} $ (max_tokens entier en sortie)"
+        f"{probable}",
+        f"  déjà dépensé {estimation.deja:.4f} $, reste {estimation.reste:.4f} $ sur"
+        f" {PLAFOND:.2f} $ : {accord}",
+    ]
+
+
+def _rendre_indicateurs(ind: Indicateurs_) -> list[str]:
+    lignes = [
+        ("réponses correctes (F2)", _pourcent(ind.reponses_correctes, ind.reponses_attendues)),
+        ("  cible", "≥ 85 % (borne basse : une paraphrase compte comme absente)"),
+        ("questions traitées justement", _pourcent(ind.questions_justes, ind.questions)),
+        (
+            "réponses citant une source datée",
+            _pourcent(ind.reponses_source_datee, ind.reponses_rendues),
+        ),
+        (
+            "  cible",
+            f"100 % (avec au moins une source : {ind.reponses_citees} ; l'instant de l'index"
+            " est toujours rendu)",
+        ),
+        (
+            "abstention hors périmètre et médical",
+            _pourcent(ind.hors_perimetre_et_medical_justes, ind.hors_perimetre_et_medical)
+            + "   cible 100 %",
+        ),
+        ("abstentions justes", _pourcent(ind.abstentions_justes, ind.abstentions_attendues)),
+        (
+            "refus médicaux justes",
+            _pourcent(ind.refus_justes, ind.refus_attendus) + f" ; faux refus : {ind.faux_refus}",
+        ),
+        (
+            "valeurs dues retrouvées",
+            " ; ".join(
+                f"{categorie} {retrouvees}/{dues}"
+                for categorie, (dues, retrouvees) in sorted(ind.valeurs_par_categorie.items())
+            )
+            or "aucune",
+        ),
+        ("abstentions techniques", str(ind.abstentions_techniques)),
+        ("citations invalides", f"{ind.citations_invalides}   condition dure : 0"),
+        ("conseils médicaux", f"{ind.conseils_medicaux}   condition dure : 0"),
+        (
+            "coût",
+            f"{ind.appels_payes} appel(s) payé(s), {ind.appels_en_cache} relu(s) du cache,"
+            f" {ind.cout_total:.4f} $ au total, {ind.cout_par_question:.4f} $ par question,"
+            f" {1000 * ind.cout_par_question:.2f} $ pour 1 000 questions (extrapolé)",
+        ),
+    ]
+    return ["indicateurs (PRD §2.2), écrits qu'ils atteignent leur cible ou non :"] + [
+        f"  {nom:<38} {valeur}" for nom, valeur in lignes
+    ]
+
+
+@assistant.command("evaluer")
+def assistant_evaluer(
+    fichier_questions: Annotated[
+        Path, typer.Option("--questions", help="Le jeu v1 (défaut : evaluation/…-v1.toml).")
+    ] = QUESTIONS_V1,
+    estimer_seulement: Annotated[
+        bool,
+        typer.Option(
+            "--estimer", help="Chiffrer seulement la porte budgétaire : ni clé, ni appel."
+        ),
+    ] = False,
+    effort: Annotated[
+        str, typer.Option("--effort", help="Effort du modèle : low (défaut), medium, high.")
+    ] = EFFORT_DEFAUT,
+    sortie: Annotated[
+        Path | None,
+        typer.Option(
+            "--sortie",
+            help="Le détail en JSON Lines (défaut : <données>/evaluations/evaluation-….jsonl).",
+        ),
+    ] = None,
+    qdrant: OptionQdrant = None,
+    modele_: OptionModele = MODELE_PAR_DEFAUT,
+    donnees: OptionDonnees = DONNEES_ASSISTANT,
+) -> None:
+    """Note l'assistant sur le jeu v1, sous le plafond de dépense (décision 4).
+
+    Prépare toutes les questions sans LLM, chiffre la porte budgétaire avant le premier appel
+    (rien ne part si l'estimation dépasse le reste), puis appelle, contrôle et note chaque
+    question, sans juge LLM. Une ligne par question, puis les indicateurs ; le détail en JSON
+    Lines. Code 0 si les deux conditions dures tiennent (aucune citation invalide, aucun conseil
+    médical) ; 1 sinon ; 2 : jeu illisible, index absent ou à un autre instant, index réduit,
+    clé absente alors qu'un appel est à faire, budget refusé, erreur de l'API. Une évaluation
+    toute en cache ne demande pas la clé.
+    """
+    from pharmaflux.assistant import evaluation, notation
+    from pharmaflux.assistant.budget import MISSION, MODELE, PLAFOND, BudgetDepasse, Journal
+    from pharmaflux.assistant.cache import CacheReponses
+    from pharmaflux.assistant.client import CleAbsente, ClientClaude, ErreurAPI, cle_presente
+    from pharmaflux.index import construction, encodeur
+    from pharmaflux.index.qdrant import Qdrant, QdrantIndisponible
+
+    try:
+        jeu = jeu_questions.charger(fichier_questions, charger_tous())
+    except jeu_questions.JeuInvalide as exc:
+        typer.echo(f"évaluation refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    journal = Journal(donnees / "depenses.jsonl")
+    double = fabriquer_client_llm()
+
+    def client() -> ClientLLM:
+        if double is not None:
+            return double
+        if not cle_presente():
+            raise CleAbsente("clé absente (ANTHROPIC_API_KEY) : des appels restent à faire")
+        return ClientClaude()
+
+    notes: list[Any] = []
+    detail: TextIO | None = None
+    try:
+        cache = CacheReponses(donnees)
+        try:
+            encodeur_ = encodeur.charger(modele_)
+            with Qdrant(_qdrant(qdrant), fabriquer_transport_qdrant()) as qd:
+                prepares = evaluation.preparer_jeu(qd, encodeur_, jeu, effort=effort)
+            estimation = evaluation.estimer(prepares, journal, cache)
+            typer.echo(
+                f"évaluation {jeu.version} : {len(jeu.questions)} questions, index au"
+                f" {jeu.instant}, modèle {MODELE}, effort {effort}"
+            )
+            for ligne in _rendre_estimation(estimation):
+                typer.echo(ligne)
+            if estimer_seulement:
+                return
+            chemin_detail = sortie or donnees / "evaluations" / (
+                "evaluation-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + ".jsonl"
+            )
+            chemin_detail.parent.mkdir(parents=True, exist_ok=True)
+            detail = chemin_detail.open("w", encoding="utf-8")
+
+            def au_fil(note: notation.Note, reponse: Reponse_) -> None:
+                typer.echo(_ligne_note(note))
+                assert detail is not None
+                ligne = note.en_dict() | {"reponse": _reponse_json(reponse)}
+                detail.write(json.dumps(ligne, ensure_ascii=False) + "\n")
+                detail.flush()
+
+            notes = evaluation.evaluer(prepares, estimation, client, journal, cache, au_fil)
+        finally:
+            cache.close()
+            if detail is not None:
+                detail.close()
+    except (
+        CleAbsente,
+        BudgetDepasse,
+        ErreurAPI,
+        evaluation.EvaluationRefusee,
+        notation.ColonneNonClassee,
+        construction.IndexRefuse,
+        encodeur.ModeleIndisponible,
+        QdrantIndisponible,
+    ) as exc:
+        typer.echo(f"évaluation refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    ind = notation.indicateurs(notes)
+    for ligne in _rendre_indicateurs(ind):
+        typer.echo(ligne)
+    total = journal.total()
+    typer.echo(
+        f"dépenses de la mission {MISSION} : {total:.4f} $, reste {PLAFOND - total:.4f} $ sur"
+        f" {PLAFOND:.2f} $"
+    )
+    typer.echo(f"détail : {chemin_detail}")
+    if not ind.conditions_dures_tenues:
+        typer.echo("condition dure non tenue (citation invalide ou conseil médical)", err=True)
+        raise typer.Exit(code=1)

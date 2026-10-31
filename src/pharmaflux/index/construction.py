@@ -30,6 +30,7 @@ from typing import Any
 
 import numpy as np
 
+from pharmaflux.index import lexical
 from pharmaflux.index.encodeur import Encodeur, Vecteurs
 from pharmaflux.index.fragments import FORMAT
 from pharmaflux.index.qdrant import LOT_PARCOURS, Point, Qdrant, filtre_egal
@@ -270,7 +271,12 @@ def _ecrire_lot(
     qdrant.ecrire(
         collection,
         [
-            Point(str(f["identifiant"]), v.tolist(), charge(f))
+            Point(
+                str(f["identifiant"]),
+                v.tolist(),
+                charge(f),
+                lexical.en_creux(lexical.vecteur_document(f["texte"])),
+            )
             for f, v in zip(lot, vecteurs, strict=True)
         ],
     )
@@ -315,20 +321,60 @@ class Resultat:
     charge: dict[str, Any]
 
 
+# Recherche : dense (sens), lexical (mots), ou hybride (les deux, fusionnées par RRF). Le défaut
+# est l'hybride (addendum 1 A). Fusion côté client, pour fixer la constante : RRF k = 60, 50
+# candidats par voie, aucun réglage sur le jeu d'évaluation.
+MODE_DENSE, MODE_LEXICAL, MODE_HYBRIDE = "dense", "lexical", "hybride"
+RRF_K = 60
+CANDIDATS = 50
+
+
 def chercher(
     qdrant: Qdrant,
     encodeur: Encodeur,
     question: str,
     k: int,
     filtre: dict[str, object] | None = None,
+    mode: str = MODE_HYBRIDE,
 ) -> tuple[dict[str, Any], list[Resultat]]:
-    """L'état de l'index et les ``k`` fragments les plus proches de la question."""
+    """L'état de l'index et les ``k`` fragments les plus proches de la question, selon ``mode``."""
     etat = etat_exige(qdrant)
     encodeur_de_l_index(etat, encodeur)
-    points = qdrant.chercher(qdrant.alias_fragments, encodeur.requete(question).tolist(), k, filtre)
+    alias = qdrant.alias_fragments
+    if mode == MODE_DENSE:
+        points = qdrant.chercher(alias, encodeur.requete(question).tolist(), k, filtre)
+    elif mode == MODE_LEXICAL:
+        creux_requete = lexical.en_creux(lexical.vecteur_requete(question))
+        points = qdrant.chercher_creux(alias, creux_requete, k, filtre)
+    elif mode == MODE_HYBRIDE:
+        creux_requete = lexical.en_creux(lexical.vecteur_requete(question))
+        denses = qdrant.chercher(alias, encodeur.requete(question).tolist(), CANDIDATS, filtre)
+        points_creux = qdrant.chercher_creux(alias, creux_requete, CANDIDATS, filtre)
+        points = fusion_rrf([denses, points_creux], k)
+    else:
+        raise IndexRefuse(f"mode de recherche inconnu : {mode}")
     return etat, [
         Resultat(rang, float(p["score"]), p["payload"]) for rang, p in enumerate(points, start=1)
     ]
+
+
+def fusion_rrf(
+    listes: Sequence[Sequence[dict[str, Any]]], limite: int, constante: int = RRF_K
+) -> list[dict[str, Any]]:
+    """Reciprocal Rank Fusion : un point gagne ``1/(k+rang)`` par voie où il paraît.
+
+    La fusion ne lit que les rangs, pas les scores (hétérogènes entre le dense et le creux). Les
+    ex æquo sont tranchés par identifiant croissant, pour un ordre reproductible.
+    """
+    scores: dict[str, float] = {}
+    charges: dict[str, dict[str, Any]] = {}
+    for liste in listes:
+        for rang, point in enumerate(liste, start=1):
+            identifiant = point["id"]
+            scores[identifiant] = scores.get(identifiant, 0.0) + 1.0 / (constante + rang)
+            charges[identifiant] = point["payload"]
+    ordonnes = sorted(scores, key=lambda i: (-scores[i], i))[:limite]
+    return [{"id": i, "score": scores[i], "payload": charges[i]} for i in ordonnes]
 
 
 def citer(charge_: dict[str, Any]) -> str:
@@ -486,6 +532,7 @@ class Verification:
     orphelins: list[str] = field(default_factory=list)
     differents: list[str] = field(default_factory=list)  # texte ou métadonnées
     vecteurs_differents: list[str] = field(default_factory=list)  # du cache (ou de l'encodeur)
+    creux_differents: list[str] = field(default_factory=list)  # vecteur creux ≠ recalcul (format 2)
     sans_cache: list[str] = field(default_factory=list)
     echantillon: int = 0
     cosinus_minimal: float = 1.0
@@ -498,6 +545,7 @@ class Verification:
             or self.orphelins
             or self.differents
             or self.vecteurs_differents
+            or self.creux_differents
             or self.sans_cache
             or self.suspens
             or self.cosinus_minimal < COSINUS_MINIMAL
@@ -576,6 +624,10 @@ def _verifier_page(
             rapport.sans_cache.append(identifiant)
         elif not np.array_equal(vecteur, en_cache):
             rapport.vecteurs_differents.append(identifiant)
+        if _creux_normalise(point["vector"].get("lexical")) != _creux_normalise(
+            lexical.en_creux(lexical.vecteur_document(point["payload"]["texte"]))
+        ):
+            rapport.creux_differents.append(identifiant)
         if (
             reencodes is not None
             and not np.array_equal(vecteur, reencodes[rang])
@@ -591,6 +643,18 @@ def _empreinte(texte: str) -> bytes:
     return hashlib.sha256(texte.encode("utf-8")).digest()
 
 
+def _creux_normalise(creux: dict[str, Any] | None) -> list[tuple[int, float]]:
+    """Un vecteur creux {indices, values} en (indice, valeur float32) triés, pour l'égalité.
+
+    Qdrant peut rendre les termes dans un autre ordre ; la comparaison ne lit que la valeur
+    stockée (en float32), jamais un score multiplié par l'IDF (addendum 1 A : « verifier »).
+    """
+    if not creux:
+        return []
+    paires = zip(creux["indices"], creux["values"], strict=True)
+    return sorted((int(i), float(np.float32(v))) for i, v in paires)
+
+
 def formater_verification(rapport: Verification) -> list[str]:
     lignes = [
         f"index au {rapport.instant}, collection {rapport.collection} : {rapport.points} points,"
@@ -601,6 +665,7 @@ def formater_verification(rapport: Verification) -> list[str]:
         ("orphelins", rapport.orphelins),
         ("texte ou métadonnées différents", rapport.differents),
         ("vecteurs différents", rapport.vecteurs_differents),
+        ("vecteurs creux différents", rapport.creux_differents),
         ("vecteurs absents du cache", rapport.sans_cache),
     ):
         montres = ", ".join(liste[:MONTRES]) + (" …" if len(liste) > MONTRES else "")

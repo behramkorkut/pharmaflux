@@ -123,7 +123,7 @@ def test_le_jeu_v0_suit_l_addendum() -> None:
 @pytest.mark.parametrize(
     ("ancien", "nouveau", "message"),
     [
-        ('version = "v0"', 'version = "v1"', "version « v1 »"),
+        ('version = "v0"', 'version = "v2"', "version « v2 »"),
         ('description = "Essai"', 'description = "Essai"\ncouleur = "bleu"', "inconnue"),
         ('id = "disponibilite-001"', 'id = "dispo 1"', "hors forme"),
         ('id = "disponibilite-001"', 'id = "alternatives-001"', "ne commence pas par"),
@@ -189,6 +189,40 @@ def test_jeu_mal_forme_refuse(ancien: str, nouveau: str, message: str) -> None:
     assert ancien in QUESTION_MINIMALE, "le cas de test ne porte sur rien"
     texte = QUESTION_MINIMALE.replace(ancien, nouveau, 1)
     with pytest.raises(JeuInvalide, match=message.replace("(", r"\(").replace(")", r"\)")):
+        _charger(texte)
+
+
+_DEPENSE_V1 = """\
+version = "v1"
+description = "Essai v1"
+instant = "2026-10-27T00:17:12Z"
+
+[[questions]]
+id = "depense-001"
+categorie = "depense"
+question = "Quelle dépense remboursée en 2025 pour les statines ?"
+comportement = "abstention"
+motif = "la dépense remboursée (Open Medic) n'est pas disponible avant le Lot 4"
+calculable_au = "lot4"
+"""
+
+
+def test_v1_accepte_une_abstention_differee_de_depense() -> None:
+    """Contrôle du palier 1, point 1 : en v1 une abstention peut porter « calculable_au »
+    (l'assistant s'abstient, la dépense devient calculable au Lot 4)."""
+    jeu = _charger(_DEPENSE_V1)
+    (question,) = jeu.questions
+    assert question.comportement is Comportement.ABSTENTION
+    assert question.calculable_au == "lot4"
+    assert question.motif is not None
+
+
+def test_v0_refuse_une_abstention_avec_calculable_au() -> None:
+    """La v0 ne change pas : « calculable_au » n'a de sens que pour une réponse."""
+    texte = _DEPENSE_V1.replace('version = "v1"', 'version = "v0"').replace(
+        '\ninstant = "2026-10-27T00:17:12Z"', ""
+    )
+    with pytest.raises(JeuInvalide, match="n'a de sens que pour une réponse"):
         _charger(texte)
 
 

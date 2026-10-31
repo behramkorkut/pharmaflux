@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Behram Korkut" }]
 dependencies = [
+    "anthropic>=1.0,<2",
     "confluent-kafka>=2.16.0",
     "duckdb>=1.5.6",
     "httpx>=0.28",
@@ -57,6 +58,12 @@ constraint-dependencies = [
     "httpx2<=2.13.1",              # transitif de huggingface-hub
     "httpcore2<=2.13.1",           # transitif de httpx2
     "filelock<=4.2.0",             # transitif de huggingface-hub
+    # Mission 08, palier 2 : le SDK « anthropic » et ses transitifs nouveaux, verrouillés le
+    # 30/10. Chaque plafond garde la dernière version publiée avant le 16/10 (`uv lock
+    # --exclude-newer 2026-10-16`), sans toucher aux paquets déjà verrouillés.
+    "anthropic<=1.15.0",
+    "jiter<=0.17.0",               # transitif d'anthropic (décodeur JSON)
+    "opentelemetry-api<=1.45.1",   # transitif d'anthropic (traçage facultatif)
 ]
 
 [tool.ruff]

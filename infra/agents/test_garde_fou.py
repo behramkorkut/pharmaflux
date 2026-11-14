@@ -349,9 +349,24 @@ class GardeFou(unittest.TestCase):
                 "cd x && make up",
                 "make --version demo",
                 "make -v up",
+                # Mission 10 : derrière un lanceur, la même règle (signalé par le codeur).
+                "/usr/bin/time -l make index",
+                "time -p make index",
+                "nice -n 5 make up",
+                "timeout 600 make index",
+                "env A=b make up",
+                "uv run make index",
+                "ls | xargs make",
             ):
                 with self.subTest(dossier=dossier.name, commande=commande):
                     self.assertFalse(self.bash(dossier, commande))
+            for commande in (
+                "/usr/bin/time -l make -n index",
+                "time -p uv run pytest -q",
+                "/usr/bin/time -l uv run pharmaflux evenements --help",
+            ):
+                with self.subTest(dossier=dossier.name, commande=commande):
+                    self.assertTrue(self.bash(dossier, commande))
 
     def test_docker_limite_au_projet_pharmaflux(self) -> None:
         """Mission 03 : le colima porte aussi les conteneurs d'Alamel, pour tous les rôles."""
@@ -600,6 +615,10 @@ class GardeFou(unittest.TestCase):
             "ssh pharmaflux-vps bash /srv/pharmaflux/code/courante/infra/vps/mesurer.sh",
             "ssh pharmaflux-vps curl -s http://127.0.0.1:16333/collections",
             "rsync -a a/ b/",
+            # Addendum 1 : la bascule de version, atomique, sous le verrou de la chaîne.
+            "ssh pharmaflux-vps 'ln -s versions/a1 /srv/pharmaflux/code/courante.nouveau && "
+            "flock -n /srv/pharmaflux/derive/chaine/verrou "
+            "mv -T /srv/pharmaflux/code/courante.nouveau /srv/pharmaflux/code/courante'",
         ):
             with self.subTest(commande=commande):
                 self.assertTrue(self.bash(self.codeur, commande))
@@ -678,6 +697,10 @@ class GardeFou(unittest.TestCase):
             "ssh pharmaflux-vps journalctl -u pharmaflux-collecte -n 5 --no-pager",
             "ssh pharmaflux-vps free -m",
             "ssh pharmaflux-vps /srv/pharmaflux/code/courante/.venv/bin/pharmaflux chaine etat",
+            # Addendum 1 de la mission 10 : les chemins en variables devant la commande.
+            "ssh pharmaflux-vps 'PHARMAFLUX_DATA=/home/pharmaflux/pharmaflux-data "
+            "PHARMAFLUX_DERIVE=/srv/pharmaflux/derive "
+            "/srv/pharmaflux/code/courante/.venv/bin/pharmaflux chaine etat'",
         ):
             with self.subTest(commande=commande):
                 self.assertTrue(self.bash(self.principal, commande))

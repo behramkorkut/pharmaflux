@@ -26,6 +26,9 @@ LIGNES_GARDEES = 12  # la fin de la sortie d'erreur, dans le journal des passage
 LARGEUR_GARDEE = 300  # une ligne plus longue est coupée dans le journal, pas dans la sortie
 DELAI_ARRET_S = 30.0  # laissé à une étape pour finir quand la chaîne est interrompue
 DELAI_RELAIS_S = 5.0  # laissé aux sorties d'une étape finie pour se vider
+# Un « Mo » de la chaîne est un Mio (2²⁰ octets), l'unité de « MemoryMax=512M » : un pic se
+# compare ainsi au plafond sans conversion.
+OCTETS_PAR_MO = 1 << 20
 # Ce qui arrête un passage : l'arrêt de l'unité, Ctrl-C, la session ssh qui tombe.
 SIGNAUX = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
 
@@ -109,18 +112,18 @@ def _groupe() -> Path | None:
 
 
 def pic_groupe_mo() -> int | None:
-    """Le pic de mémoire du groupe depuis son départ, en Mo ; None hors de Linux."""
+    """Le pic de mémoire du groupe depuis son départ, en Mo (2²⁰ octets) ; None hors de Linux."""
     groupe = _groupe()
     if groupe is None:
         return None
     try:
-        return int((groupe / "memory.peak").read_text(encoding="ascii")) // 1_000_000
+        return int((groupe / "memory.peak").read_text(encoding="ascii")) // OCTETS_PAR_MO
     except (OSError, ValueError):
         return None
 
 
 def partage_groupe_mo() -> int | None:
-    """La mémoire partagée du groupe (``shmem`` : tmpfs, dont un /tmp en mémoire), en Mo."""
+    """La mémoire partagée du groupe (``shmem`` : tmpfs, dont un /tmp en mémoire), en Mo (2²⁰)."""
     groupe = _groupe()
     if groupe is None:
         return None
@@ -131,7 +134,7 @@ def partage_groupe_mo() -> int | None:
     for ligne in lignes:
         cle, _, valeur = ligne.partition(" ")
         if cle == "shmem" and valeur.isdigit():
-            return int(valeur) // 1_000_000
+            return int(valeur) // OCTETS_PAR_MO
     return None
 
 
@@ -167,7 +170,7 @@ def _relayer(source: BinaryIO, cible: BinaryIO, gardees: deque[str]) -> None:
 
 def _resident_mo(usage: Any) -> int:
     # ru_maxrss : en octets sur macOS, en Ko sous Linux.
-    return int(usage.ru_maxrss) * (1 if sys.platform == "darwin" else 1024) // 1_000_000
+    return int(usage.ru_maxrss) * (1 if sys.platform == "darwin" else 1024) // OCTETS_PAR_MO
 
 
 def ignorer_les_signaux() -> None:

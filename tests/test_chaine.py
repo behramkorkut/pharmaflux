@@ -361,16 +361,39 @@ def test_les_releves_du_groupe_de_controle(tmp_path: Path, monkeypatch: pytest.M
     groupe = _groupe_factice(tmp_path, monkeypatch)
     assert etapes.pic_groupe_mo() is None and etapes.partage_groupe_mo() is None
     assert etapes.morts_par_memoire() is None
-    (groupe / "memory.peak").write_text("418000000\n", encoding="ascii")
+    # 530 Mio : 555 « Mo » décimaux, qui paraîtraient dépasser MemoryMax=512M.
+    (groupe / "memory.peak").write_text(f"{530 * 2**20}\n", encoding="ascii")
     (groupe / "memory.stat").write_text(
-        "anon 1000\nfile 2000\nshmem 12000000\ninactive_file 5\n", encoding="ascii"
+        f"anon 1000\nfile 2000\nshmem {12 * 2**20 + 2**20 - 1}\ninactive_file 5\n",
+        encoding="ascii",
     )
     (groupe / "memory.events").write_text(
         "low 0\nhigh 0\nmax 7\noom 3\noom_kill 2\noom_group_kill 0\n", encoding="ascii"
     )
-    assert etapes.pic_groupe_mo() == 418
-    assert etapes.partage_groupe_mo() == 12
+    assert etapes.pic_groupe_mo() == 530
+    assert etapes.partage_groupe_mo() == 12  # arrondi vers le bas, comme le reste
     assert etapes.morts_par_memoire() == 2
+
+
+def test_un_mo_de_la_chaine_est_l_unite_de_memorymax(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """« MemoryMax=512M » compte en puissances de deux : un groupe au plafond se lit 512, pas
+    536 ; le résident du plus gros processus suit la même unité, sous Linux comme sur macOS."""
+    assert etapes.OCTETS_PAR_MO == 1_048_576
+    groupe = _groupe_factice(tmp_path, monkeypatch)
+    (groupe / "memory.peak").write_text(f"{512 * 2**20}\n", encoding="ascii")
+    assert etapes.pic_groupe_mo() == 512
+
+    class Usage:
+        ru_maxrss = 0
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    Usage.ru_maxrss = 512 * 1024  # Ko sous Linux
+    assert etapes._resident_mo(Usage()) == 512
+    monkeypatch.setattr(sys, "platform", "darwin")
+    Usage.ru_maxrss = 512 * 2**20  # octets sur macOS
+    assert etapes._resident_mo(Usage()) == 512
 
 
 # --- le remplissage ----------------------------------------------------------------------------

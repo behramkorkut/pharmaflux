@@ -50,15 +50,26 @@ jobs:
       - name: Garde-fou Claude Code
         run: python3 infra/agents/test_garde_fou.py
 
-      - name: Scripts de planification (shellcheck)
+      - name: Scripts de planification et du VPS (shellcheck)
         run: |
-          if ls infra/planification/*.sh >/dev/null 2>&1; then
-            # même version qu'en local (uv est installé plus haut) : un shellcheck
-            # différent signale d'autres avertissements, comme SC2015 sur la PR 1
-            uvx --from shellcheck-py==0.11.0.1 shellcheck infra/planification/*.sh
-          else
-            echo "aucun script dans infra/planification/ : rien à vérifier"
-          fi
+          for dossier in infra/planification infra/vps; do
+            if ls "$dossier"/*.sh >/dev/null 2>&1; then
+              # même version qu'en local (uv est installé plus haut) : un shellcheck
+              # différent signale d'autres avertissements, comme SC2015 sur la PR 1
+              uvx --from shellcheck-py==0.11.0.1 shellcheck "$dossier"/*.sh
+            else
+              echo "aucun script dans $dossier/ : rien à vérifier"
+            fi
+          done
+
+      # Mission 10 : les deux combinaisons de fichiers compose, lues par Docker lui-même, sans
+      # rien démarrer. Celle du VPS ajoute infra/vps/vps.yml ; tests/test_vps.py (étape Tests)
+      # applique aux mêmes fichiers et aux unités systemd la liste de contrôle de l'IeC.
+      - name: Fichiers compose (le Mac et la CI, puis le VPS)
+        run: |
+          docker compose version
+          docker compose -p pharmaflux -f docker-compose.yml config --quiet
+          docker compose -p pharmaflux -f docker-compose.yml -f infra/vps/vps.yml config --quiet
 
   integration:
     # Le bus réel (mission 03) : le fichier compose du dépôt, pas un « services: »
@@ -170,6 +181,27 @@ jobs:
           uv run pharmaflux index chercher "LARIAM 250 mg est-il en rupture de stock ?" -k 3
           uv run pharmaflux index chercher "Quel est le taux de remboursement de LEVOCARNIL ?" -k 3
           uv run pharmaflux index chercher "MICROVAL est-il en tension d'approvisionnement ?" -k 3
+
+      # Mission 10 : la chaîne du VPS, sur le jeu. Un bus et un index neufs, démarrés cette fois
+      # avec les deux fichiers compose du VPS (redémarrage, échange, journaux) ; puis le premier
+      # remplissage, d'une commande : pages d'avis, événements, schémas, publication,
+      # verifier-bus, silver et sa vérification, index (encodeur de test), sa vérification, son
+      # état. La seconde fois, chaque étape reprend : rien à refaire, l'index rebâti de son cache.
+      - name: Bus et index neufs, avec les deux fichiers compose du VPS
+        run: |
+          docker compose -p pharmaflux down -v
+          docker compose -p pharmaflux -f docker-compose.yml -f infra/vps/vps.yml up -d --wait
+          for conteneur in pharmaflux-redpanda pharmaflux-qdrant; do
+            regles=$(docker inspect -f '{{.HostConfig.RestartPolicy.Name}} {{.HostConfig.LogConfig.Type}} {{index .HostConfig.LogConfig.Config "max-size"}} {{index .HostConfig.LogConfig.Config "max-file"}}' "$conteneur")
+            echo "$conteneur : $regles ; échange $(docker inspect -f '{{.HostConfig.MemorySwap}}' "$conteneur")"
+            test "$regles" = "unless-stopped json-file 10m 2"
+          done
+
+      - name: Premier remplissage de la chaîne sur le jeu (chaine remplir, deux fois)
+        run: |
+          uv run pharmaflux chaine remplir --racine "$PWD/demo/archive" --derive "$PWD/data/chaine" --modele test
+          uv run pharmaflux chaine remplir --racine "$PWD/demo/archive" --derive "$PWD/data/chaine" --modele test
+          test "$(grep -c '"issue": "complet"' data/chaine/chaine/passages.jsonl)" = 2
 
       # Tout le journal (--tail=100 n'avait gardé que 4 s au run de main sur 98505d3), la santé
       # de la grappe et la mémoire du conteneur, en artefact plutôt que dans le journal du job.

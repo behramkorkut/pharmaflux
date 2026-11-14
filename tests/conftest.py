@@ -26,6 +26,7 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -118,6 +119,25 @@ def texte_nu(sortie: str) -> str:
     contient la pousse. Une phrase se cherche donc ici, jamais dans la sortie brute.
     """
     return " ".join(_CADRE.sub(" ", _ANSI.sub("", sortie)).split())
+
+
+def commande_cli(arguments: Iterable[str]) -> tuple[Any, list[str]]:
+    """La commande de la ligne de commande que désignent ces arguments, et ce qui la suit.
+
+    Sert à vérifier, sans rien exécuter, qu'une commande écrite ailleurs (une étape de la
+    chaîne, l'``ExecStart=`` d'une unité) existe et que ses options sont connues :
+    ``commande.make_context(nom, reste)`` les analyse. Typer embarque son propre click : un
+    groupe se reconnaît à ses sous-commandes, pas à sa classe.
+    """
+    from typer.main import get_command
+
+    from pharmaflux.cli import application
+
+    commande: Any = get_command(application)
+    reste = list(arguments)
+    while reste and reste[0] in getattr(commande, "commands", {}):
+        commande = commande.commands[reste.pop(0)]
+    return commande, reste
 
 
 def chemin_fixture(entree: Entree) -> Path:

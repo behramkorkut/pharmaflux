@@ -21,7 +21,9 @@ name: pharmaflux
 
 services:
   redpanda:
-    image: docker.redpanda.com/redpandadata/redpanda:v26.2.6
+    # Épinglée par l'empreinte de son index multi-architecture, comme Qdrant (mission 10) :
+    # v26.2.6, amd64 sur le VPS et la CI, arm64 sur le Mac.
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.6@sha256:8b1076e0d61bfceb66594dc01536427ce0b529f8ead35fdab9763ab6085891ce
     container_name: pharmaflux-redpanda
     command:
       - redpanda

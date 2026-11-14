@@ -1,0 +1,102 @@
+# Pharmaflux : le premier remplissage de la chaîne sur le VPS-1 (pharmaflux chaine remplir).
+# Tout le dérivé rebâti depuis l'archive, puis vérifié : événements, bus, silver, index.
+# Unité lancée à la main (aucun minuteur), sous le compte « pharmaflux-chaine », qui lit
+# l'archive et n'écrit que le dérivé.
+# Installation, lancement, mesures, désinstallation : infra/vps/README.md.
+#
+# Chemins (tous passés en arguments : ni EnvironmentFile=, ni WorkingDirectory=) :
+#   code     /srv/pharmaflux/code/courante   (lien vers versions/<commit>, déposé par le codeur)
+#   archive  /home/pharmaflux/pharmaflux-data  (en lecture seule ici ; la collecte l'écrit)
+#   dérivé   /srv/pharmaflux/derive            (la seule écriture)
+#   modèle   /srv/pharmaflux/modeles           (à root, apporté par beko)
+
+[Unit]
+Description=Pharmaflux : premier remplissage de la chaîne (événements, bus, silver, index)
+Documentation=https://github.com/behramkorkut/pharmaflux
+# Après les conteneurs, sans les démarrer : la commande sonde elle-même le bus, le registre et
+# Qdrant avant chaque étape, et dit lequel ne répond pas. Avec Wants=, lancer cette unité
+# relèverait des conteneurs que beko aurait arrêtés exprès.
+After=pharmaflux-conteneurs.service
+
+[Service]
+Type=oneshot
+User=pharmaflux-chaine
+Group=pharmaflux-chaine
+Environment=PYTHONUNBUFFERED=1
+# /tmp est en mémoire sur ce VPS (tmpfs) : un fichier temporaire y compterait dans MemoryMax.
+# Les fichiers temporaires vont donc sur le disque, dans le dérivé ; la commande crée le dossier.
+Environment=TMPDIR=/srv/pharmaflux/derive/tmp
+ExecStart=/srv/pharmaflux/code/courante/.venv/bin/pharmaflux chaine remplir --racine /home/pharmaflux/pharmaflux-data --derive /srv/pharmaflux/derive --modeles /srv/pharmaflux/modeles
+SyslogIdentifier=pharmaflux-remplissage
+# Le journal de Pharmaflux (journalctl --namespace=pharmaflux), que le codeur lit.
+LogNamespace=pharmaflux
+
+# La construction de l'index encode toutes les fiches sur deux cœurs sans instructions VNNI :
+# une à deux heures estimées, jamais mesurées avant ce remplissage. Au-delà de six heures,
+# quelque chose est bloqué : on coupe, et chaque étape reprendra où elle en était.
+TimeoutStartSec=6h
+
+# Ressources : le VPS est partagé avec Alamel, dont les conteneurs peuvent redémarrer.
+Nice=10
+IOSchedulingClass=idle
+# Un cœur et demi sur deux, le temps du remplissage seulement (le passage horaire en aura un).
+CPUQuota=150%
+# Cinq fois moins de poids que le défaut (100) : si autre chose demande le processeur,
+# l'ordonnanceur le sert d'abord.
+CPUWeight=20
+# 512 Mo pour tout le groupe : la commande, l'étape en cours, son sous-processus et son cache
+# de pages. Sans échange : une étape trop grosse est tuée, elle ne ralentit pas la machine.
+MemoryMax=512M
+MemorySwapMax=0
+# Une étape tuée par le plafond n'arrête pas l'unité : la commande voit l'étape tuée, l'écrit
+# dans le journal des passages, et sort en 1.
+OOMPolicy=continue
+# Si toute la machine manque de mémoire, le noyau choisit la chaîne, qui reprend sans perte,
+# avant Redpanda (ses messages accusés ne sont pas tous écrits) ou Alamel.
+OOMScoreAdjust=500
+
+# Durcissement, sur le modèle de pharmaflux-collecte.service (score d'exposition sous 3).
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+# Tout le système de fichiers en lecture seule, sauf le dérivé.
+ProtectSystem=strict
+ReadWritePaths=/srv/pharmaflux/derive
+# /home est remplacé par un dossier vide : de tous les dossiers personnels, l'unité ne voit que
+# l'archive, en lecture seule. Du code non relu peut abîmer le dérivé, jamais l'archive.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/pharmaflux/pharmaflux-data
+# Ce que la chaîne écrit reste lisible par son groupe (le codeur, pour l'état), et par lui seul.
+UMask=0027
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+# Dans /proc, l'unité ne voit que ses propres processus.
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+# Aucune page à la fois écrite et exécutée. onnxruntime n'a jamais tourné sous cette directive :
+# c'est la première à soupçonner si l'étape « index » échoue (README, « si une étape échoue »).
+MemoryDenyWriteExecute=true
+# Le réseau : la boucle locale, en IPv4, et rien d'autre : ni Internet, ni les réseaux de
+# Docker. L'unité ne choisit pas les ports : sur 127.0.0.1, c'est le filtre de sortie du compte
+# (pharmaflux-sortie.service, posé par beko) qui n'ouvre que les cinq ports de Pharmaflux, et
+# lui seul qui ferme ceux d'Alamel.
+RestrictAddressFamilies=AF_INET AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+# Les appels d'un service ordinaire, moins les privilégiés et ceux des limites de ressources.
+# Un appel refusé échoue en EPERM, visible dans le journal, sans tuer le processus.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+RemoveIPC=true

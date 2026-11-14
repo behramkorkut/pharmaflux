@@ -2519,6 +2519,81 @@ def modele_verifier(nom: ArgumentModele) -> None:
     typer.echo(f"{nom} : {len(epinglage.fichiers)} fichier(s) en place, sha256 vérifiés")
 
 
+# --- chaine (mission 10) -----------------------------------------------------------------------
+# La chaîne en service : les commandes ci-dessus, enchaînées sous un verrou, chacune dans un
+# sous-processus. Rien n'y est calculé (ADR 0014).
+
+chaine = typer.Typer(
+    name="chaine",
+    help="La chaîne en service (mission 10) : les étapes enchaînées sous un verrou, de l'archive"
+    " à l'index.",
+    no_args_is_help=True,
+)
+application.add_typer(chaine)
+
+OptionDerive = Annotated[
+    Path | None,
+    typer.Option(
+        "--derive",
+        help="Dossier du dérivé (événements, silver, travail de l'index, journal des passages),"
+        " en chemin absolu. Défaut : PHARMAFLUX_DERIVE.",
+    ),
+]
+OptionModeles = Annotated[
+    Path | None,
+    typer.Option(
+        "--modeles",
+        help="Dossier des modèles, passé aux étapes de l'index. Défaut : PHARMAFLUX_MODELES,"
+        " sinon ~/pharmaflux-modeles.",
+    ),
+]
+
+
+@chaine.command("remplir")
+def chaine_remplir(
+    racine: OptionRacine = None,
+    derive: OptionDerive = None,
+    modeles: OptionModeles = None,
+    modele: OptionModele = MODELE_PAR_DEFAUT,
+) -> None:
+    """Le premier remplissage : tout le dérivé rebâti depuis l'archive, puis vérifié.
+
+    Onze étapes, chacune une commande existante : le modèle et les pages d'avis
+    contrôlés, puis les événements, les schémas, la publication, verifier-bus,
+    le silver et sa vérification, l'index, sa vérification et son état. Arrêt à
+    la première étape qui ne rend pas 0. Se relance sans danger : chaque étape
+    reprend où elle en était.
+
+    Code 0 : tout est bâti et conforme. Code 1 : une étape a échoué, a été tuée,
+    ou un service ne répond pas. Code 2 : refus (chemins, verrou tenu par une
+    autre commande de la chaîne, ou étape qui refuse). Une ligne par lancement
+    dans <derive>/chaine/passages.jsonl.
+    """
+    from pharmaflux.chaine import passage, remplissage
+    from pharmaflux.chaine.chemins import VARIABLE_DERIVE, CheminsRefuses, resoudre
+    from pharmaflux.chaine.verrou import VerrouTenu
+
+    variable = os.environ.get(VARIABLE_DERIVE)
+    try:
+        chemins = resoudre(
+            _racine(racine), derive or (Path(variable) if variable else None), modeles
+        )
+        code = passage.derouler(
+            remplissage.GENRE, remplissage.plan(chemins, modele), chemins, ecrire=_dire_chaine
+        )
+    except (CheminsRefuses, VerrouTenu) as exc:
+        typer.echo(f"remplissage refusé : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    raise typer.Exit(code=code)
+
+
+def _dire_chaine(message: str) -> None:
+    """Une ligne de la chaîne sur la sortie standard, vidée tout de suite : elle s'intercale
+    ainsi à sa place entre les sorties des étapes, relayées au fil de l'eau."""
+    typer.echo(message)
+    sys.stdout.flush()
+
+
 # --- assistant (mission 08) --------------------------------------------------------------------
 # L'assistant gouverné : refus médical et abstentions hors LLM, recherche hybride, LLM sous le
 # plafond, contrôle des citations par le code. anthropic n'est importé que par le vrai client, à

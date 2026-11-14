@@ -662,6 +662,14 @@ class GardeFou(unittest.TestCase):
             "S=ssh; $S vps1 id",
             '"$(printf ssh)" vps1 id',
             "GIT_EXTERNAL_DIFF='ssh vps1 sudo id #' git diff HEAD~1",
+            # Mission 10 : un programme sur plusieurs lignes, entre guillemets, passait. Le
+            # découpage par lignes laissait les guillemets dans les mots (« "$p" »).
+            'ssh pharmaflux-vps \'for p in /usr/bin/python3; do "$p" -I -c "import os\n'
+            "print(1)\"; done'",
+            "ssh pharmaflux-vps '/usr/bin/python3 -c \"import os\nprint(1)\"'",
+            "ssh pharmaflux-vps 'cat /srv/x\nsudo id'",
+            "ssh pharmaflux-vps '/usr/bin/$p id'",
+            "ssh pharmaflux-vps '\"$p\" id'",
         ):
             with self.subTest(commande=commande):
                 self.assertFalse(self.bash(self.codeur, commande))

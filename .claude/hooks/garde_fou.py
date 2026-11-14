@@ -474,6 +474,22 @@ def _jetons(ligne: str) -> list[str]:
         return ligne.split()
 
 
+def guillemets_sur_plusieurs_lignes(commande: str) -> bool:
+    """Vrai si une ligne ouvre des guillemets qu'une autre ferme. Le découpage par lignes de
+    ``segments`` ne juge pas ce qui est entre eux : il le garde en mots bruts, guillemets
+    compris, et un « "$p" -c … » y passerait pour un nom de commande (mission 10)."""
+    commande = re.sub(r"\\\r?\n", " ", commande)
+    for ligne in commande.split("\n"):
+        lexeur = shlex.shlex(ligne, posix=True, punctuation_chars="();<>|&`")
+        lexeur.whitespace_split = True
+        lexeur.commenters = ""
+        try:
+            list(lexeur)
+        except ValueError:
+            return True
+    return False
+
+
 def segments(
     commande: str, affectations: list[str] | None = None
 ) -> list[tuple[list[str], list[str]]]:
@@ -719,7 +735,9 @@ def verifier_distante(role: str, distante: str) -> None:
         )
     for mots, cibles in segments(distante):
         tete = Path(mots[0]).name
-        if mots[0].startswith("$") or "$(" in mots[0] or "`" in mots[0]:
+        # Un « $ » où que ce soit dans la tête (« $p », « /usr/bin/$p ») ou un guillemet resté
+        # collé au mot : le nom de la commande ne se lit pas avant le shell du VPS.
+        if "$" in mots[0] or "`" in mots[0] or mots[0][:1] in ("'", '"'):
             raise Refus("une commande cachée dans une variable n'est pas jugeable.")
         if role == "iec":
             if tete not in LECTURE_DISTANTE or ecrit_par_option(mots):
@@ -773,6 +791,12 @@ def verifier_ssh(role: str, mots: list[str], brute: str) -> None:
         )
     if role == "relecteur":
         raise Refus("le relecteur n'a rien à faire sur le VPS.")
+    if guillemets_sur_plusieurs_lignes(brute):
+        raise Refus(
+            "ssh : des guillemets ouverts sur une ligne et fermés sur une autre (un programme "
+            "sur plusieurs lignes) ne sont pas jugeables. Dépose un script avec le code, puis "
+            "lance-le par son chemin."
+        )
     reste = mots[1:]
     i = 0
     while i < len(reste) and reste[i].startswith("-"):

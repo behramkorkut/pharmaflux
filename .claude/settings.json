@@ -98,7 +98,15 @@
       "Bash(gh pr ready:*)",
       "Bash(gh pr comment:*)",
       "Bash(brew:*)",
-      "Bash(sudo:*)"
+      "Bash(sudo:*)",
+      "Bash(ssh vps1:*)",
+      "Bash(scp:*)",
+      "Bash(sftp:*)",
+      "Bash(ssh-add:*)",
+      "Bash(ssh-keygen:*)",
+      "Read(~/.ssh/**)",
+      "Edit(~/.ssh/**)",
+      "Write(~/.ssh/**)"
     ]
   },
   "hooks": {

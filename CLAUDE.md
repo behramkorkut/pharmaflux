@@ -90,6 +90,11 @@ ouvrir les PR, fusionner et installer quoi que ce soit sur le système.
 - **Système** : tu n'installes rien hors du dépôt (pas de `launchctl`,
   `crontab`, `brew`, `sudo`). Tu écris les fichiers et la procédure ;
   beko installe.
+- **Le VPS-1** (depuis la mission 10, `infra/agents/vps/README.md`) :
+  seulement par `ssh pharmaflux-vps '<commande>'`, ton compte, sans sudo ni
+  docker, depuis ta session principale, jamais depuis un sous-agent. Jamais
+  `vps1`, qui ouvre le compte root de beko. Tout fichier que root lit
+  (unité, compose) passe par ta branche, le contrôle de l'IeC, puis beko.
 
 ## Économiser le contexte
 

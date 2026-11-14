@@ -586,6 +586,117 @@ class GardeFou(unittest.TestCase):
             with self.subTest(outil=outil):
                 self.assertFalse(self.juger(self.principal, outil))
 
+    # ------------------------------------------------------- VPS (mission 10)
+
+    def test_codeur_sur_le_vps_par_son_alias(self) -> None:
+        for commande in (
+            "ssh pharmaflux-vps systemctl status pharmaflux-chaine.service",
+            "ssh pharmaflux-vps systemctl restart pharmaflux-chaine.service",
+            "git archive HEAD | ssh pharmaflux-vps 'tar -x -C /srv/pharmaflux/code/versions/a1'",
+            "ssh pharmaflux-vps ls /home/pharmaflux/pharmaflux-data",
+            "ssh -q pharmaflux-vps du -sh /srv/pharmaflux/derive",
+            "ssh pharmaflux-vps journalctl --namespace=pharmaflux -n 50 --no-pager",
+            "ssh pharmaflux-vps /srv/pharmaflux/code/courante/.venv/bin/pharmaflux index etat",
+            "ssh pharmaflux-vps bash /srv/pharmaflux/code/courante/infra/vps/mesurer.sh",
+            "ssh pharmaflux-vps curl -s http://127.0.0.1:16333/collections",
+            "rsync -a a/ b/",
+        ):
+            with self.subTest(commande=commande):
+                self.assertTrue(self.bash(self.codeur, commande))
+
+    def test_codeur_ni_root_ni_alamel_par_ssh(self) -> None:
+        for commande in (
+            "ssh vps1 uptime",
+            "ssh ubuntu@pharmaflux-vps id",
+            "ssh -l ubuntu pharmaflux-vps id",
+            "ssh -i ~/.ssh/cle pharmaflux-vps id",
+            "ssh -o User=ubuntu pharmaflux-vps id",
+            "ssh pharmaflux-vps -o ProxyCommand=x id",
+            "ssh -F /tmp/c pharmaflux-vps id",
+            "ssh -t pharmaflux-vps id",
+            "ssh pharmaflux-vps",
+            "ssh pharmaflux-vps sudo id",
+            "ssh pharmaflux-vps 'su -'",
+            "ssh pharmaflux-vps docker ps",
+            "ssh pharmaflux-vps systemd-run --unit=pharmaflux-x.service id",
+            "ssh pharmaflux-vps systemctl enable pharmaflux-chaine.service",
+            "ssh pharmaflux-vps systemctl daemon-reload",
+            "ssh pharmaflux-vps systemctl --runtime stop pharmaflux-chaine.service",
+            "ssh pharmaflux-vps systemctl start pharmaflux-collecte.service",
+            "ssh pharmaflux-vps bash -s <<FIN\nsudo id\nFIN",
+            "ssh pharmaflux-vps 'bash -c \"id\"'",
+            "ssh pharmaflux-vps python3 -",
+            "ssh pharmaflux-vps 'nohup x &'",
+            "ssh pharmaflux-vps curl 127.0.0.1:3100",
+            "ssh pharmaflux-vps ls /home/ubuntu/alamel",
+            "ssh pharmaflux-vps curl https://base-donnees-publique.medicaments.gouv.fr",
+            "ssh pharmaflux-vps journalctl --vacuum-size=1M",
+            "bash -c 'ssh pharmaflux-vps id'",
+            "timeout 5 ssh vps1 id",
+            "echo pharmaflux-vps | xargs ssh",
+            "scp x pharmaflux-vps:/tmp/x",
+            "rsync -a x pharmaflux-vps:/tmp/x",
+            "rsync -e ssh -a x y",
+            "ssh-add -l",
+            "cat ~/.ssh/id_ed25519",
+            "ls $HOME/.ssh/",
+            "S=ssh; $S vps1 id",
+            '"$(printf ssh)" vps1 id',
+            "GIT_EXTERNAL_DIFF='ssh vps1 sudo id #' git diff HEAD~1",
+        ):
+            with self.subTest(commande=commande):
+                self.assertFalse(self.bash(self.codeur, commande))
+
+    def test_codeur_n_ecrit_pas_hors_de_son_dossier_en_shell(self) -> None:
+        for commande in (
+            "echo x >> ~/.zshrc",
+            "cat > ~/.local/bin/python3 <<FIN\nexit 0\nFIN",
+            "printf x > $HOME/.local/bin/ssh",
+            f"printf x >> {self.principal}/.git/config",
+            f"echo x > {self.principal}/src/x.py",
+            "cp x ~/.zshrc",
+            "echo x | tee ~/.profile",
+            "echo x > $AILLEURS/y",
+            "echo x > ../pharmaflux/src/x.py",
+        ):
+            with self.subTest(commande=commande):
+                self.assertFalse(self.bash(self.codeur, commande))
+        for commande in (
+            "echo x > /tmp/y",
+            "echo x > notes.txt",
+            "uv run pytest -q > /dev/null 2>&1",
+            "echo x > $TMPDIR/y",
+            "cp a b",
+        ):
+            with self.subTest(commande=commande):
+                self.assertTrue(self.bash(self.codeur, commande))
+
+    def test_relecteur_et_iec_sur_le_vps(self) -> None:
+        self.assertFalse(self.bash(self.relecteur, "ssh pharmaflux-vps id"))
+        for commande in (
+            "ssh pharmaflux-vps systemctl status pharmaflux-chaine.service",
+            "ssh pharmaflux-vps journalctl -u pharmaflux-collecte -n 5 --no-pager",
+            "ssh pharmaflux-vps free -m",
+            "ssh pharmaflux-vps /srv/pharmaflux/code/courante/.venv/bin/pharmaflux chaine etat",
+        ):
+            with self.subTest(commande=commande):
+                self.assertTrue(self.bash(self.principal, commande))
+        for commande in (
+            "ssh vps1 uptime",
+            "ssh pharmaflux-vps systemctl restart pharmaflux-chaine.service",
+            "ssh pharmaflux-vps rm -rf /tmp/x",
+            "ssh pharmaflux-vps 'echo x > /tmp/x'",
+            "ssh pharmaflux-vps /srv/pharmaflux/code/courante/.venv/bin/pharmaflux collecte",
+            "grep Host ~/.ssh/config",
+        ):
+            with self.subTest(commande=commande):
+                self.assertFalse(self.bash(self.principal, commande))
+
+    def test_personne_n_ecrit_dans_le_dossier_ssh(self) -> None:
+        for dossier in (self.principal, self.codeur, self.relecteur):
+            with self.subTest(dossier=dossier):
+                self.assertFalse(self.ecrit(dossier, Path.home() / ".ssh/config"))
+
 
 if __name__ == "__main__":
     unittest.main()

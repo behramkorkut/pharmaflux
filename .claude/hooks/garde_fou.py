@@ -177,6 +177,138 @@ GIT_ECRIT_BRUT = re.compile(
 # Filet : docker ou colima appelés ailleurs qu'en tête de segment.
 CONTENEURS_BRUT = re.compile(r"(?<![\w./-])(docker(-compose)?|colima)(?![\w.-])")
 
+# Le VPS-1 (mission 10, infra/agents/vps/README.md) : un seul alias, celui du compte du
+# codeur, sans sudo ni docker ; jamais vps1, qui ouvre le compte root de beko. Ce filtre
+# n'arrête que les accidents : la barrière est sur le VPS (droits Unix, polkit à liste
+# exacte, filtre de sortie) et sur le Mac (la clé de vps1 sous phrase de passe).
+ALIAS_VPS = "pharmaflux-vps"
+OUTILS_SSH = {
+    "ssh",
+    "scp",
+    "sftp",
+    "rsync",
+    "sshfs",
+    "mosh",
+    "autossh",
+    "ssh-copy-id",
+    "ssh-add",
+    "ssh-agent",
+    "ssh-keygen",
+    "ssh-keyscan",
+}
+# Options qui ne changent ni le compte, ni la clé, ni les renvois de l'alias.
+SSH_OPTIONS_PERMISES = {"-q", "-T", "-n", "-x", "-a"}
+# Filet : ssh appelé ailleurs qu'en tête de segment (bash -c, xargs, timeout, une variable).
+SSH_BRUT = re.compile(r"(?<![\w./-])(ssh|scp|sftp|rsync|sshfs|mosh|autossh)(?![\w.-])")
+# Un mot qui nomme ~/.ssh : les clés et la configuration de beko, jamais lues par un agent.
+DOSSIER_SSH = re.compile(r"(^|/)\.ssh(/|$)")
+# Sur le VPS : ce qui donnerait root, toucherait au système ou survivrait à la commande.
+DISTANT_INTERDIT = (
+    SYSTEME
+    | {
+        "doas",
+        "pkexec",
+        "run0",
+        "systemd-run",
+        "machinectl",
+        "nsenter",
+        "unshare",
+        "chroot",
+        "setpriv",
+        "sg",
+        "newgrp",
+        "docker",
+        "docker-compose",
+        "podman",
+        "nerdctl",
+        "ctr",
+        "at",
+        "batch",
+        "loginctl",
+        "nohup",
+        "setsid",
+        "disown",
+        "screen",
+        "tmux",
+        "nft",
+        "iptables",
+        "ufw",
+        "apt",
+        "apt-get",
+        "dpkg",
+        "snap",
+        "passwd",
+        "chsh",
+        "chfn",
+        "setfacl",
+        "chattr",
+        "mount",
+        "umount",
+        "reboot",
+        "shutdown",
+        "poweroff",
+        "halt",
+    }
+    | OUTILS_SSH
+)
+# Filet sur toute la commande, heredocs compris, dès qu'elle passe par ssh.
+DISTANT_BRUT = re.compile(
+    r"(?<![\w./-])(sudo|su|doas|pkexec|run0|systemd-run|docker|podman|nsenter|crontab|"
+    r"nohup|setsid)(?![\w.-])"
+)
+# Alamel n'est jamais touché, et aucune requête ne part du VPS vers les sources.
+NOMS_INTERDITS = re.compile(
+    r"alamel|(127\.0\.0\.1|localhost):(3100|9100|9101)\b|169\.254\.169\.254|"
+    r"medicaments\.gouv\.fr|data\.gouv\.fr|has-sante\.fr",
+    re.IGNORECASE,
+)
+# Un interprète qui lit son programme sur l'entrée standard ou en argument échappe au jugement.
+INTERPRETES = {"bash", "sh", "dash", "zsh", "ksh", "python", "python3", "perl", "ruby", "node"}
+SYSTEMCTL_LECTURE = {
+    "status",
+    "show",
+    "cat",
+    "is-active",
+    "is-failed",
+    "is-enabled",
+    "list-units",
+    "list-timers",
+    "list-unit-files",
+    "--version",
+}
+SYSTEMCTL_PILOTAGE = {"start", "stop", "restart", "reset-failed"}
+SYSTEMCTL_OPTIONS_INTERDITES = (
+    "--user",
+    "--global",
+    "-H",
+    "--host",
+    "-M",
+    "--machine",
+    "--root",
+    "--runtime",
+    "--now",
+    "-f",
+    "--force",
+)
+JOURNALCTL_ECRIT = ("--vacuum", "--rotate", "--flush", "--sync", "--setup-keys", "--relinquish")
+# Ce que l'IeC lit sur le VPS ; il n'y pilote rien.
+LECTURE_DISTANTE = LECTURE | {
+    "journalctl",
+    "systemctl",
+    "free",
+    "df",
+    "du",
+    "uptime",
+    "id",
+    "uname",
+    "findmnt",
+    "nproc",
+    "pharmaflux",
+}
+PHARMAFLUX_LECTURE = (["etat"], ["--version"], ["chaine", "etat"], ["index", "etat"])
+# Où une écriture shell du codeur peut aller hors de son dossier : des brouillons jetables.
+TEMPORAIRES = ("/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/", "/dev/")
+
 
 class Refus(Exception):  # noqa: N818 (nom français voulu)
     """Appel refusé ; le message est montré à l'agent."""
@@ -255,6 +387,8 @@ def dossier_temporaire(racine: Path) -> Path:
 
 
 def verifier_ecriture(role: str, cible: Path, racine: Path, principal: Path) -> None:
+    if DOSSIER_SSH.search(str(cible)):
+        raise Refus("~/.ssh est à beko : aucun agent n'y écrit (mission 10).")
     if role == "iec":
         return
     if role == "relecteur":
@@ -320,8 +454,12 @@ def _jetons(ligne: str) -> list[str]:
         return ligne.split()
 
 
-def segments(commande: str) -> list[tuple[list[str], list[str]]]:
-    """Rend, pour chaque commande simple : (mots, cibles des redirections en écriture)."""
+def segments(
+    commande: str, affectations: list[str] | None = None
+) -> list[tuple[list[str], list[str]]]:
+    """Rend, pour chaque commande simple : (mots, cibles des redirections en écriture).
+    Les affectations de tête (« A=b commande ») sont retirées des mots ; si une liste est
+    donnée, elles y sont ajoutées, pour que leur valeur soit jugée."""
     resultat: list[tuple[list[str], list[str]]] = []
     # « \ » en fin de ligne continue la commande : recoller avant de couper en lignes,
     # sinon « git \⏎ push » donnerait deux commandes, « git » puis « push ».
@@ -339,6 +477,8 @@ def segments(commande: str) -> list[tuple[list[str], list[str]]]:
                     or mots[0] in PREFIXES
                     or mots[0] in MOTS_CLES
                 ):
+                    if affectations is not None and "=" in mots[0]:
+                        affectations.append(mots[0])
                     mots = mots[1:]
                 if mots or cibles:
                     resultat.append((mots or ["(redirection)"], cibles))
@@ -530,8 +670,146 @@ def ecrit_par_option(mots: list[str]) -> bool:
     return False
 
 
-def verifier_bash(role: str, commande: str) -> None:
+def verifier_systemctl(role: str, mots: list[str]) -> None:
+    """Sur le VPS : le codeur lit et pilote les unités que polkit lui ouvre, l'IeC lit."""
+    args = mots[1:]
+    if any(a.startswith(SYSTEMCTL_OPTIONS_INTERDITES) for a in args):
+        raise Refus("systemctl : options --user, --runtime, --now, -H, -M… interdites sur le VPS.")
+    verbe = next((a for a in args if not a.startswith("-")), "status")
+    if verbe in SYSTEMCTL_LECTURE:
+        return
+    if role == "codeur" and verbe in SYSTEMCTL_PILOTAGE:
+        if any("pharmaflux-collecte" in a for a in args):
+            raise Refus("la collecte est à beko : le codeur ne la pilote pas.")
+        return
+    raise Refus(
+        f"systemctl {verbe} : sur le VPS, le codeur lit et lance (start, stop, restart, "
+        "reset-failed) ; enable, daemon-reload, edit… sont à beko."
+    )
+
+
+def verifier_distante(role: str, distante: str) -> None:
+    """La commande envoyée au VPS par « ssh pharmaflux-vps … », segment par segment."""
+    if NOMS_INTERDITS.search(distante):
+        raise Refus(
+            "Alamel, les métadonnées de l'hébergeur et les sites sources sont hors d'atteinte."
+        )
+    for mots, cibles in segments(distante):
+        tete = Path(mots[0]).name
+        if mots[0].startswith("$") or "$(" in mots[0] or "`" in mots[0]:
+            raise Refus("une commande cachée dans une variable n'est pas jugeable.")
+        if role == "iec":
+            if tete not in LECTURE_DISTANTE or ecrit_par_option(mots):
+                raise Refus(f"« {tete} » : l'IeC ne fait que lire sur le VPS.")
+            if any(c != "/dev/null" for c in cibles):
+                raise Refus("l'IeC n'écrit rien sur le VPS.")
+            if tete == "systemctl":
+                verifier_systemctl("iec", mots)
+            if tete == "pharmaflux" and [a for a in mots[1:]] not in PHARMAFLUX_LECTURE:
+                raise Refus("pharmaflux sur le VPS : l'IeC n'en lit que l'état.")
+            if tete == "journalctl" and any(a.startswith(JOURNALCTL_ECRIT) for a in mots[1:]):
+                raise Refus("journalctl : en lecture seulement.")
+            continue
+        if tete in DISTANT_INTERDIT:
+            raise Refus(
+                f"« {tete} » sur le VPS : root, conteneurs, système et tâches qui survivent "
+                "sont à beko."
+            )
+        if tete in INTERPRETES and (
+            len(mots) == 1 or any(a in ("-s", "-", "-c", "-e", "-i") for a in mots[1:])
+        ):
+            raise Refus(
+                f"« {tete} » sans fichier de script : un programme passé à ssh échapperait au "
+                "jugement. Dépose le script avec le code, puis lance-le par son chemin."
+            )
+        if tete == "systemctl":
+            verifier_systemctl("codeur", mots)
+        if tete == "journalctl" and any(a.startswith(JOURNALCTL_ECRIT) for a in mots[1:]):
+            raise Refus("journalctl : en lecture seulement.")
+        if tete in ("curl", "wget") and not all(
+            re.match(r"^https?://(127\.0\.0\.1|localhost):\d+(/|$)", a)
+            for a in mots[1:]
+            if re.match(r"^[a-z]+://", a)
+        ):
+            raise Refus(
+                "curl et wget, sur le VPS, ne visent que les services locaux de Pharmaflux."
+            )
+
+
+def verifier_ssh(role: str, mots: list[str], brute: str) -> None:
+    """ssh, et rien d'autre de la famille, vers le seul alias du VPS (mission 10)."""
+    tete = Path(mots[0]).name
+    if tete != "ssh":
+        if tete == "rsync" and not any(
+            ":" in a or a.startswith(("-e", "--rsh", "--rsync-path")) for a in mots[1:]
+        ):
+            return  # copie locale
+        raise Refus(
+            f"« {tete} » : seul « ssh {ALIAS_VPS} <commande> » parle au VPS ; le code s'y dépose "
+            f"par « git archive … | ssh {ALIAS_VPS} 'tar -x …' »."
+        )
+    if role == "relecteur":
+        raise Refus("le relecteur n'a rien à faire sur le VPS.")
+    reste = mots[1:]
+    i = 0
+    while i < len(reste) and reste[i].startswith("-"):
+        if reste[i] not in SSH_OPTIONS_PERMISES:
+            raise Refus(f"ssh {reste[i]} : seules -q -T -n -x -a sont permises.")
+        i += 1
+    if i >= len(reste) or reste[i] != ALIAS_VPS:
+        raise Refus(
+            f"ssh ne vise que l'alias {ALIAS_VPS} (le compte du codeur) ; jamais vps1, qui "
+            "ouvre le compte root de beko, ni une adresse."
+        )
+    i += 1
+    # OpenSSH lit encore des options juste après la destination.
+    while i < len(reste) and reste[i].startswith("-"):
+        if reste[i] not in SSH_OPTIONS_PERMISES:
+            raise Refus(f"ssh {reste[i]} : seules -q -T -n -x -a sont permises.")
+        i += 1
+    distante = " ".join(reste[i:]).strip()
+    if not distante:
+        raise Refus("ssh sans commande ouvrirait une session interactive : donne la commande.")
+    if DISTANT_BRUT.search(brute):
+        raise Refus("sudo, su, docker, systemd-run, nohup… ne passent jamais par ssh.")
+    verifier_distante(role, distante)
+
+
+def verifier_cible_shell(cible: str, cwd: Path | None, racine: Path | None) -> None:
+    """Codeur : une écriture shell reste dans son dossier ou dans un dossier temporaire."""
+    if racine is None or cible.startswith("&"):
+        return
+    brut = re.sub(r"^(~|\$\{?HOME\}?)(?=/|$)", str(Path.home()), cible)
+    if re.match(r"^\$\{?TMPDIR\}?(/|$)", brut):
+        return
+    if "$" in brut or "`" in brut:
+        raise Refus(f"cible d'écriture non jugeable (variable) : {cible}")
+    chemin = Path(brut) if brut.startswith("/") else (cwd or racine) / brut
+    normal = Path(os.path.normpath(str(chemin)))
+    if chemin_relatif(normal, racine) is not None:
+        return
+    # À côté de son dossier : les autres dossiers du circuit (le dépôt principal, son .git).
+    if chemin_relatif(normal, racine.parent) is None and str(normal).startswith(TEMPORAIRES):
+        return
+    raise Refus(f"écriture hors du dossier du codeur ({racine}) : {cible}")
+
+
+def verifier_bash(
+    role: str, commande: str, racine: Path | None = None, cwd: Path | None = None
+) -> None:
     nette = retirer_heredocs(commande)
+    affectations: list[str] = []
+    decoupe = segments(nette, affectations)
+    for affectation in affectations:
+        valeur = affectation.split("=", 1)[1]
+        if (
+            SSH_BRUT.search(valeur)
+            or CONTENEURS_BRUT.search(valeur)
+            or GIT_ECRIT_BRUT.search(valeur)
+        ):
+            raise Refus(f"commande cachée dans une variable : {affectation[:60]}")
+    if any(DOSSIER_SSH.search(m) for mots, cibles in decoupe for m in mots + cibles):
+        raise Refus("~/.ssh est à beko : aucun agent n'y lit ni n'y écrit (mission 10).")
     # Variables d'une boucle « for » dont la liste nomme un chemin réservé :
     # dans le corps, « $f » désigne ce chemin (lecture permise, écriture non).
     variables_reservees: set[str] = set()
@@ -541,8 +819,22 @@ def verifier_bash(role: str, commande: str) -> None:
             re.search(r"\$\{?" + re.escape(v) + r"\b", mot) for v in variables_reservees
         )
 
-    for mots, cibles in segments(nette):
+    for mots, cibles in decoupe:
         tete = Path(mots[0]).name
+        if role != "iec" and (mots[0].startswith("$") or "$(" in mots[0] or "`" in mots[0]):
+            raise Refus("une commande cachée dans une variable n'est pas jugeable.")
+        if tete in OUTILS_SSH:
+            verifier_ssh(role, mots, commande)
+            continue
+        if role == "codeur":
+            for cible in cibles:
+                verifier_cible_shell(cible, cwd, racine)
+            if tete == "tee":
+                for a in mots[1:]:
+                    if not a.startswith("-"):
+                        verifier_cible_shell(a, cwd, racine)
+            if tete in ("cp", "mv", "install", "ln") and len(mots) > 2:
+                verifier_cible_shell(mots[-1], cwd, racine)
         # La clé de l'API : lire le script se fait par l'outil Read ; le lancer est à beko.
         if tete not in LECTURE and tete != "git" and CLE_BRUT.search(" ".join(mots)):
             raise Refus(
@@ -560,6 +852,12 @@ def verifier_bash(role: str, commande: str) -> None:
             if cache:
                 raise Refus(
                     f"« {cache.group(1)} » appelé par « {tete} » : lance-le en tête de "
+                    "commande, pour que ses règles s'appliquent."
+                )
+            cache = SSH_BRUT.search(" ".join(mots[1:]))
+            if cache:
+                raise Refus(
+                    f"« {cache.group(1)} » appelé par « {tete} » : lance ssh en tête de "
                     "commande, pour que ses règles s'appliquent."
                 )
         if tete in ("docker", "docker-compose", "colima"):
@@ -651,7 +949,12 @@ def juger(appel: dict, dossier_projet: Path) -> None:
             raise Refus(f"outil « {outil} » : GitHub en lecture seule, pour l'IeC seulement.")
         return
     if outil == "Bash":
-        verifier_bash(role, str(entree.get("command", "")))
+        verifier_bash(
+            role,
+            str(entree.get("command", "")),
+            racine,
+            Path(appel.get("cwd") or dossier_projet),
+        )
         return
     if outil in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
         brut = entree.get("file_path") or entree.get("notebook_path") or ""

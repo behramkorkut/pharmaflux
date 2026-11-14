@@ -1,6 +1,6 @@
 # Mission 10 — La mise en service sur le VPS-1 : bus, silver, index, au fil de la collecte
 
-**À :** Claude Opus 5.5 (codeur, session neuve) · **De :** ingénieur en chef (IeC)
+**À :** Claude Fable 5.2 (codeur, session neuve, effort medium, ultracode) · **De :** ingénieur en chef (IeC)
 **Réf. :** PRD v1.1 §2.2, §4 (Lots 1 à 3), §7.1, §7.2, §9, §10.1 · ADR 0001,
 0007, 0009, 0010, 0011 et 0013 · `infra/planification/README.md` ·
 `infra/index/README.md` · `docker-compose.yml` · `CLAUDE.md` ·
@@ -23,8 +23,13 @@ l'ordre :
 6. cet ordre.
 
 Tes commits portent les trailers `Commis-par: codeur` et
-`Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Le relecteur
-sera Claude Fable 5.1.
+`Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>`. Le relecteur
+sera Claude Opus 5.5, un autre modèle que toi.
+
+**Ultracode** : tes sous-agents passent par le même garde-fou que toi et
+suivent les mêmes règles. Un refus reçu par un sous-agent se signale comme
+le tien. Deux sous-agents n'écrivent jamais les mêmes fichiers, et un seul
+agent à la fois agit sur le VPS.
 
 ## Constat
 
@@ -88,11 +93,12 @@ greffon `compose` installés. L'archive y pèse 29 Mo.
   n'est exposé sur Internet dans cette mission.
 - **Aucun secret sur le VPS** : le dépôt est public, cloné en HTTPS, sans
   jeton, sans `.env`.
-- **Le compte `pharmaflux` n'entre jamais dans le groupe `docker`**, qui
-  vaut un accès root. Il fait tourner la chaîne Python et parle aux
-  services par leurs ports locaux, c'est tout. Les conteneurs sont démarrés
-  par le système (une unité, sous un compte qui en a le droit), avec le
-  projet compose `pharmaflux`.
+- **Aucun compte de Pharmaflux n'entre dans le groupe `docker`**, qui vaut
+  un accès root. La collecte reste sous `pharmaflux`. La chaîne tourne sous
+  `pharmaflux-chaine`, qui lit l'archive et parle aux services par leurs
+  ports locaux, c'est tout. Les conteneurs sont démarrés par une unité
+  système, que beko installe, avec le projet compose `pharmaflux` et des
+  fichiers compose qui appartiennent à root.
 - **La place d'Alamel est réservée.** Ses conteneurs (`alamel-app`,
   `alamel-postgres`, `alamel-minio`), ses volumes, ses fichiers et ses ports
   (3100, 9100-9101) ne sont ni lus ni touchés. Pharmaflux tient dans
@@ -109,15 +115,52 @@ greffon `compose` installés. L'archive y pèse 29 Mo.
   propre au VPS (redémarrage automatique, chemins, plafonds) va dans des
   fichiers du dépôt, jamais en modification à la main sur le VPS. Le
   `docker-compose.yml` du Mac et de la CI ne change pas de comportement.
-- **Qui fait quoi** :
+- **Qui fait quoi** (révisé le 14/11, avant le §0) :
   - **toi** : les fichiers (unités, compose, scripts, commandes), leurs
-    tests, la procédure d'installation pas à pas. Tu ne touches jamais au
-    VPS, et aucune requête ne part de ta session vers le VPS ou les sites
-    sources ;
-  - **beko** : chaque geste sur le VPS, depuis son compte SSH, en suivant
-    ta procédure, puis il te donne la sortie, que tu cites ;
-  - **l'IeC** : il peut lire l'état du VPS, en lecture seule et avec
-    l'accord de beko.
+    tests et la procédure d'installation. **Sur le VPS, tu as un compte à
+    toi**, par le seul alias `pharmaflux-vps` (voir plus bas) : tu y déposes
+    ton code, tu lances et mesures la chaîne par les unités que polkit
+    t'ouvre, et tu lis son journal ;
+  - **beko** : tout ce qui demande root sur le VPS. Il crée les comptes,
+    télécharge les images et le modèle, installe chaque fichier que root lit
+    (unités, compose) depuis le commit que l'IeC a contrôlé, puis l'ouvre
+    dans polkit ;
+  - **l'IeC** : il contrôle chaque fichier que root lira avant que beko
+    l'installe, et lit l'état du VPS par le même alias, en lecture seule.
+
+## L'accès du codeur au VPS-1 (révisé le 14/11, avant le §0)
+
+beko t'ouvre le VPS-1 par la procédure de `infra/agents/vps/README.md`.
+Lis-la en entier avant ton §0. Ce qu'elle te donne, et ce qu'elle te refuse :
+- **ton compte** n'a ni `sudo`, ni `docker`, ni terminal, ni renvoi de port.
+  Ta clé n'ouvre que lui, et seulement par `ssh pharmaflux-vps '<commande>'` :
+  le garde-fou refuse tout autre hôte (`vps1` ouvre le compte root de beko),
+  toute option qui change le compte ou la clé, toute session interactive, et
+  `sudo`, `su`, `docker`, `systemd-run`, `nohup`… derrière ssh ;
+- **ton code** se dépose dans `/srv/pharmaflux/code`, par
+  `git archive <commit> | ssh pharmaflux-vps 'tar -x -C …'`, avec son
+  Python et son environnement, lisibles par le groupe `pharmaflux-chaine`.
+  Il ne tourne que sous le compte **`pharmaflux-chaine`**, qui lit l'archive
+  et n'écrit que dans `/srv/pharmaflux/derive`. **La collecte reste sous
+  `pharmaflux`**, avec le code de `main` que beko met à jour ; tu ne la
+  pilotes pas ;
+- **tu pilotes** (`start`, `stop`, `restart`, `reset-failed`) les seules
+  unités dont le nom est dans la liste polkit, fixée par l'IeC à chaque
+  contrôle ;
+- **tu lis** le journal de Pharmaflux (`journalctl --namespace=pharmaflux`),
+  l'archive, le dérivé, `systemctl status` et `show`. Un filtre réseau te
+  ferme les ports d'Alamel, les réseaux de Docker et Internet, sauf HTTPS
+  pour `uv sync` ;
+- **un seul agent à la fois sur le VPS**, toujours la session principale.
+  Tes sous-agents de l'ultracode n'y vont pas ;
+- **un fichier que root lira** (unité, compose) ne s'installe jamais depuis
+  ton dossier du VPS : tu l'écris dans ta branche, l'IeC le contrôle au
+  commit précis, beko l'installe. Ce que l'IeC y vérifie est écrit dans la
+  procédure ; écris tes fichiers pour passer ce contrôle.
+
+Ce qui reste à beko, quoi qu'il arrive : root, les images, le modèle, le
+pare-feu, polkit, le redémarrage du VPS, la mise à jour de la collecte, et la
+clôture du compte à la fin de la mission.
 - **Aucune adresse, aucun nom d'hôte, aucun compte SSH** dans le dépôt :
   `<hote>`, comme dans `infra/planification/README.md`.
 - **Rien ne change au calcul** : ni le schéma d'événement v1, ni les
@@ -144,9 +187,10 @@ greffon `compose` installés. L'archive y pèse 29 Mo.
 
 Réponds dans `docs/rapports/mission-10/points-a-trancher.md` : pour chaque
 point, ton **constat** (mesuré quand c'est possible), ton **avis** et tes
-**questions**. Rien n'est codé avant l'addendum de l'IeC. Tes constats sur
-le VPS viennent de sorties que tu demandes à beko : écris les commandes,
-en lecture seule, dans une section « Commandes pour beko » en tête du §0.
+**questions**. Rien n'est codé avant l'addendum de l'IeC. Au §0, sur le VPS,
+tu ne fais que **lire**, par `ssh pharmaflux-vps`. Ce qui demande root (la
+mémoire des conteneurs, `docker`, le pare-feu), tu le demandes à beko dans
+une section « Commandes pour beko », en tête du §0.
 
 **A. Le VPS tel qu'il est.** Après l'arrêt d'Alamel : la mémoire, le
 disque, les versions de Docker et de `compose`, le noyau, `systemd`, le
@@ -261,10 +305,11 @@ redémarrent pour une maintenance.
    conteneurs) et 5.
    - Le fichier compose du VPS, les chemins, les plafonds, la procédure.
    - Tes mesures sur la copie du Mac : le rejeu complet, étape par étape.
-   - Rapport, commit. **Puis beko installe** et lance le premier
-     remplissage ; tu cites sa sortie dans un commit à part, avant le
-     palier 2 : durées, résidents, `silver verifier`, `index verifier`,
-     `index etat`.
+   - Rapport, commit. **Puis beko installe**, après le contrôle de l'IeC,
+     les fichiers que root lit, et les ouvre dans polkit. Tu déposes ton
+     code, tu lances le premier remplissage et tu le mesures. Tu cites tout
+     dans un commit à part, avant le palier 2 : durées, résidents,
+     `silver verifier`, `index verifier`, `index etat`.
 2. **L'enchaînement** : décisions 2, 3 et 4.
    - La commande ou le script, le déclencheur, les unités, la commande
      d'état.
@@ -328,7 +373,9 @@ Après le contrôle du palier 3, la suite est celle du circuit :
 - L'observabilité du Lot 5 ; les indicateurs de dépense du Lot 4.
 - Tout changement du calcul (événements, contrats, normalisation, topics,
   silver, gold, format de l'index).
-- Toute action de ta part sur le VPS ; toute écriture dans l'archive.
+- Sur le VPS, tout ce qui sort de ton compte : root, `docker`, le pare-feu,
+  polkit, la collecte, le redémarrage ; toute écriture dans l'archive ; tout
+  usage de `vps1`.
 - **Tout ce qui touche à Alamel** : ses conteneurs, volumes, fichiers et
   ports sur le VPS-1, les conteneurs `alamel-dev-*` du colima, et les VPS
   qui appartiennent à l'association.

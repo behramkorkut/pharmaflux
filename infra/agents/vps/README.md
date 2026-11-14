@@ -404,7 +404,7 @@ Pour un fichier compose, la cible est `/etc/pharmaflux/compose/<fichier>`.
 Après le `daemon-reload` et **avant** d'ajouter le nom à polkit, colle à l'IeC :
 
 ```bash
-systemctl show <unite> -p User -p Group -p SupplementaryGroups -p Environment -p WorkingDirectory -p ExecStart -p ExecStartPre -p Conflicts -p AllowIsolate -p OnFailure -p FailureAction -p SuccessAction -p LogNamespace
+systemctl show <unite> -p User -p Group -p SupplementaryGroups -p Environment -p EnvironmentFiles -p WorkingDirectory -p ExecStart -p ExecStartPre -p ExecStartPost -p ExecStop -p Conflicts -p AllowIsolate -p OnSuccess -p OnFailure -p FailureAction -p SuccessAction -p LogNamespace -p DropInPaths
 ```
 
 ```bash
@@ -415,11 +415,26 @@ C'est la lecture de systemd et de Docker eux-mêmes, qu'aucune ruse de syntaxe
 ne trompe. L'IeC y vérifie au moins :
 - une unité de la chaîne tourne en `User=pharmaflux-chaine`, sans `+` ni `!`
   dans ses `Exec`, sans `Conflicts=` ni `AllowIsolate=yes` ;
-- aucun `Environment`, `WorkingDirectory` ou fichier lu par root ne pointe
-  vers `/srv/pharmaflux/code` ou `/srv/pharmaflux/derive` ;
+- la règle vise ce que **root** lit ou lance (précisée par l'addendum 1 de la
+  mission 10) :
+  - une unité de la chaîne lance son `ExecStart=` sous
+    `/srv/pharmaflux/code/courante/`, c'est son rôle, et passe ses chemins en
+    arguments ; elle n'a **aucun `EnvironmentFile=`** (systemd le lit en root,
+    et suivrait un lien), ni `WorkingDirectory=` ;
+  - l'unité des conteneurs, qui tourne en root, ne nomme rien sous
+    `/srv/pharmaflux` : ni `Exec`, ni `Environment`, ni fichier ;
+- un complément d'unité (`.service.d/*.conf`) n'a qu'une section `[Unit]`,
+  et pour la collecte, seulement `OnSuccess=` et `OnFailure=` vers
+  `pharmaflux-chaine.service` ; le score de la collecte, relu après
+  (`systemd-analyze security pharmaflux-collecte.service`), ne bouge pas ;
 - dans le compose : des volumes nommés seulement, aucun montage de l'hôte,
   aucun `privileged`, `cap_add`, `user: 0`, `network_mode: host`, `pid` ou
-  `docker.sock`, et des ports sur `127.0.0.1` seulement.
+  `docker.sock`, et des ports sur `127.0.0.1` seulement ;
+- l'unité des conteneurs lance `docker compose -p pharmaflux` avec les deux
+  fichiers de `/etc/pharmaflux/compose/`, `up -d --wait --pull never` au
+  démarrage et `stop` à l'arrêt : jamais `down`, `rm` ni `-v`, qui effacent
+  les conteneurs ou les volumes du projet, ni `prune`, qui effacerait aussi
+  ce qui est arrêté, Alamel compris.
 
 Une fois le contrôle passé, ajoute le nom à la liste `unites` de la règle
 polkit (étape 5). Pour retirer une unité, l'ordre s'inverse : le nom d'abord,

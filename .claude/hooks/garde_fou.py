@@ -123,6 +123,23 @@ CLE_BRUT = re.compile(r"\bsecurity\s+(find|dump|export)-|\bavec-cle\.sh\b")
 MAKE_SIMULATION = {"-n", "--dry-run", "--just-print", "--recon"}
 # make --version (ou -v), seul, affiche la version sans lire de Makefile.
 MAKE_VERSION = (["--version"], ["-v"])
+# Lanceurs qui exécutent leurs arguments (mission 10, signalé par le codeur) :
+# « /usr/bin/time -l make index » ou « uv run make index » ne doivent pas passer
+# là où « make index » est refusé.
+LANCEURS = {
+    "time",
+    "nice",
+    "timeout",
+    "env",
+    "xargs",
+    "caffeinate",
+    "stdbuf",
+    "nohup",
+    "ionice",
+    "taskset",
+    "watch",
+    "flock",
+}
 # docker, pour tous les rôles (mission 03) : le colima de beko fait aussi
 # tourner les conteneurs d'Alamel. Hors compose, docker ne fait que lire ;
 # compose ne vise que le projet pharmaflux et ne télécharge aucune image
@@ -479,7 +496,10 @@ def segments(
                 ):
                     if affectations is not None and "=" in mots[0]:
                         affectations.append(mots[0])
-                    mots = mots[1:]
+                    retire, mots = mots[0], mots[1:]
+                    # « time -p make … » : les options de time ne sont pas la commande.
+                    while retire == "time" and mots and mots[0].startswith("-"):
+                        mots = mots[1:]
                 if mots or cibles:
                     resultat.append((mots or ["(redirection)"], cibles))
                 mots, cibles = [], []
@@ -875,6 +895,20 @@ def verifier_bash(
             raise Refus(
                 "make lance des recettes que le garde-fou ne voit pas : « make -n <cible> » "
                 "les affiche, lance ensuite les commandes elles-mêmes ; make <cible> est à beko."
+            )
+        if tete in LANCEURS:
+            lances = mots[1:]
+        elif tete == "uv" and mots[1:2] == ["run"]:
+            lances = mots[2:]
+        else:
+            lances = []
+        rang = next((k for k, a in enumerate(lances) if Path(a).name in ("make", "gmake")), None)
+        # Seules les options qui suivent make comptent : « nice -n 5 make up » n'est pas
+        # une simulation.
+        if rang is not None and not any(a in MAKE_SIMULATION for a in lances[rang + 1 :]):
+            raise Refus(
+                f"make derrière « {tete} » : la même règle que make en tête, "
+                "« make -n <cible> » seulement ; make <cible> est à beko."
             )
         if tete == "env" and any(
             a.startswith(("-u", "--unset", "-i", "--ignore")) for a in mots[1:]

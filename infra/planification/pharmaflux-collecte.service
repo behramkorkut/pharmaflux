@@ -82,10 +82,9 @@ RestrictRealtime=true
 # RestrictNamespaces : aucun espace de noms créé (conteneurs, montages, réseau).
 RestrictNamespaces=true
 LockPersonality=true
-# MemoryDenyWriteExecute : aucune page mémoire à la fois écrite et exécutée ;
-# CPython 3.12 sans JIT n'en a pas besoin. À retirer si le passage manuel
-# échoue avec (vérification de beko sur le VPS, mission 01, palier 1).
-MemoryDenyWriteExecute=true
+# Pas de MemoryDenyWriteExecute (retiré à la mission 10) : le python3.12 d'uv
+# n'a pas d'en-tête GNU_STACK, glibc rend alors exécutable la pile de chaque
+# fil, ce que la directive refuse ; l'import de numpy (OpenBLAS) en mourait.
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 # CapabilityBoundingSet vide : aucune capacité, même si un binaire en portait.
 CapabilityBoundingSet=

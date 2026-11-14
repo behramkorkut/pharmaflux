@@ -184,7 +184,6 @@ DURCISSEMENT_COMMUN = {
     "RestrictRealtime",
     "RestrictNamespaces",
     "LockPersonality",
-    "MemoryDenyWriteExecute",
     "RestrictAddressFamilies",
     "IPAddressDeny",
     "SystemCallArchitectures",
@@ -202,6 +201,8 @@ DIRECTIVES = {
             "TimeoutStopSec",
             "SyslogIdentifier",
             "LogNamespace",
+            # Le client docker ne charge pas le Python d'uv : la directive y reste.
+            "MemoryDenyWriteExecute",
         },
         "Install": {"WantedBy"},
     },
@@ -317,7 +318,6 @@ DIRECTIVES_DU_MODELE = (
     "RestrictRealtime",
     "RestrictNamespaces",
     "LockPersonality",
-    "MemoryDenyWriteExecute",
     "CapabilityBoundingSet",
     "AmbientCapabilities",
     "SystemCallArchitectures",
@@ -325,6 +325,13 @@ DIRECTIVES_DU_MODELE = (
     "SystemCallErrorNumber",
     "RemoveIPC",
 )
+
+
+def test_aucune_unite_python_ne_refuse_les_pages_ecrites_et_executees() -> None:
+    """Le python3.12 d'uv n'a pas d'en-tête GNU_STACK : glibc rend exécutable la pile de chaque
+    fil, et MemoryDenyWriteExecute empêche alors toute création de fil (vu sur le VPS, 14/11)."""
+    for unite in (COLLECTE, REMPLISSAGE):
+        assert "MemoryDenyWriteExecute" not in lire_unite(unite)["Service"], unite
 
 
 def test_le_remplissage_garde_le_durcissement_de_la_collecte() -> None:

@@ -6,7 +6,8 @@
 `infra/index/README.md` · `docker-compose.yml` · `CLAUDE.md` ·
 `docs/agents/processus.md`
 **Statut :** ordre rédigé le 14/11/2026 — §0 rendu (`af1314c`), tranché
-par l'addendum 1 (en fin d'ordre), qui change la clôture
+par l'addendum 1 (en fin d'ordre), qui change la clôture ; addendum 2 :
+le codeur passe à Claude Opus 5.5, le relecteur à Claude Fable 5.2
 **Branche :** `mission-10-mise-en-service-vps`, dans `pharmaflux-codeur/`
 (préparée par beko avec `preparer-mission.sh`). Trois paliers, chacun
 committé en local et contrôlé par l'IeC ; **aucun push** de ta part.
@@ -686,3 +687,30 @@ Elle remplace la liste « La mission est close quand » :
   le VPS à la fin de l'observation ;
 - Pharmaflux reste sous 2 Go résidents sur le VPS, mesuré comme au point B ;
 - aucun processus ni conteneur de Pharmaflux ne tourne sur le Mac.
+
+## Addendum 2 — le codeur change (14/11/2026)
+
+beko a fermé la session du codeur Claude Fable 5.2 après le palier 1, à cause
+de sa consommation de jetons. La suite de la mission est codée par une
+**session neuve, Claude Opus 5.5**.
+
+- **Les commits du codeur** portent désormais `Co-Authored-By: Claude Opus
+  5.5 <noreply@anthropic.com>`. `af1314c` et `13168f5` gardent le leur :
+  l'historique dit qui a écrit quoi.
+- **Le relecteur sera Claude Fable 5.2**, pour qu'il soit d'un autre modèle
+  que le codeur, comme le veut le circuit. Il remplace Claude Opus 5.5,
+  nommé par l'addendum 1.
+- **Plus d'ultracode** : la session travaille sans sous-agents. Elle peut en
+  lancer un pour une relecture adverse avant un commit de palier, si elle
+  le juge utile, et le dit dans son rapport.
+- **Ce que la session neuve lit d'abord** :
+  - `CLAUDE.md` et `docs/agents/processus.md` ;
+  - cet ordre et ses deux addendums ;
+  - `infra/agents/vps/README.md` ;
+  - le §0 (`docs/rapports/mission-10/points-a-trancher.md`) ;
+  - le rapport du palier 1 ;
+  - le contrôle du palier 1
+    (`docs/relectures/mission-10/controle-palier-1.md`), qu'elle commite
+    tel quel.
+- **Rien d'autre ne change.** Le palier 1 est accepté (`13168f5`), et la
+  suite est celle que décrit le contrôle.

@@ -321,6 +321,9 @@ LECTURE_DISTANTE = LECTURE | {
     "findmnt",
     "nproc",
     "pharmaflux",
+    # Comparer un fichier installé par beko au commit contrôlé (mission 10) : sha256sum
+    # n'écrit rien, -c ne fait que relire les fichiers qu'on lui nomme.
+    "sha256sum",
 }
 PHARMAFLUX_LECTURE = (["etat"], ["--version"], ["chaine", "etat"], ["index", "etat"])
 # Où une écriture shell du codeur peut aller hors de son dossier : des brouillons jetables.

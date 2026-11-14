@@ -701,10 +701,16 @@ class GardeFou(unittest.TestCase):
             "ssh pharmaflux-vps 'PHARMAFLUX_DATA=/home/pharmaflux/pharmaflux-data "
             "PHARMAFLUX_DERIVE=/srv/pharmaflux/derive "
             "/srv/pharmaflux/code/courante/.venv/bin/pharmaflux chaine etat'",
+            # Les fichiers installés par beko, comparés au commit contrôlé.
+            "ssh pharmaflux-vps 'sha256sum /etc/pharmaflux/compose/vps.yml "
+            "/etc/systemd/system/pharmaflux-conteneurs.service'",
+            'ssh pharmaflux-vps \'printf "%s  %s\\n" abc /etc/pharmaflux/compose/vps.yml '
+            "| sha256sum -c'",
         ):
             with self.subTest(commande=commande):
                 self.assertTrue(self.bash(self.principal, commande))
         for commande in (
+            "ssh pharmaflux-vps 'sha256sum /etc/pharmaflux/compose/vps.yml > /tmp/empreintes'",
             "ssh vps1 uptime",
             "ssh pharmaflux-vps systemctl restart pharmaflux-chaine.service",
             "ssh pharmaflux-vps rm -rf /tmp/x",

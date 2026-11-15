@@ -886,3 +886,23 @@ a changé.
   - La mission a dépensé 3,82 $ sur 10 $, en 190 appels. Aucun n'est sous-estimé par la
     constante 1,7.
   - `index verifier` monte à 502 Mo chez beko, pour un seuil de 512 Mo.
+
+**Mission 10, le premier remplissage sur le VPS-1** (14-15/11). Le code `eecc9f3` est déposé
+sous `code/courante`, avec les unités de `e12c14d`. Le passage `20261114T232834Z` est complet :
+11 étapes sur 11, code 0, aucune mort par la mémoire, en 3 h 51 min, dont 3 h 41 min pour
+l'index.
+
+- **L'index** est conforme au gold : 75 605 points, 21 463 fiches, échantillon réencodé au
+  cosinus minimal 0,9956.
+- **Les plafonds** :
+  - le groupe du remplissage atteint 512 Mio ;
+  - Qdrant atteint 514 Mio de `memory.peak`, dont 305 Mio de cache de fichiers ;
+  - le noyau reprend du cache, sans aucun processus tué. Le résident des étapes reste sous
+    404 Mo.
+- **L'incident de la veille** : trois collectes perdues le 14/11 (21:02, 21:17, 22:17 UTC).
+  - Cause : `MemoryDenyWriteExecute` refuse la pile exécutable des fils, parce que le Python
+    d'uv n'a pas d'en-tête `GNU_STACK`.
+  - Correctif : la directive est retirée des deux unités Python (`e12c14d`). Aucune version
+    n'est perdue.
+- **La nuit** : les 14 collectes horaires passent pendant le remplissage.
+- **Le détail** : `docs/rapports/mission-10/mesures-remplissage.md`.

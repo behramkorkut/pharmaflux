@@ -529,14 +529,40 @@ Attendu : aucune remarque, un score sous 3 pour chacune (le durcissement
 est celui du remplissage, 1,2 en ligne), aucun `OnSuccess=` ni
 `OnFailure=` sur la chaîne : un échec du passage ne relance rien.
 
+**Avant 9b, le code.** Le codeur dépose le commit contrôlé et bascule
+`courante` sous le verrou (4a) ; sans cela, chaque passage lancerait
+`chaine passer` sur une version qui ne la connaît pas. beko vérifie que le
+lien désigne bien ce commit :
+
+```bash
+ls -l /srv/pharmaflux/code/courante
+```
+
 **9b. La mise en service**, l'accord de l'IeC donné. Le minuteur d'abord :
 
 ```bash
 sudo systemctl enable --now pharmaflux-verification.timer
 ```
 
-Puis le complément de la collecte, **entre deux passages** (pas entre
-`:15` et `:20`). Son dossier :
+Puis une vérification, tout de suite (addendum 1, question 21 : après
+chaque dépôt). Elle dure environ quatre minutes ; la commande rend la main
+à sa fin :
+
+```bash
+sudo systemctl start pharmaflux-verification.service
+```
+
+À coller à l'IeC, avec `chaine etat` (ci-dessous, la commande de beko) :
+
+```bash
+systemctl show pharmaflux-verification.service -p Result -p ExecMainStatus
+```
+
+Attendu : `Result=success`, `ExecMainStatus=0`. Sinon, on s'arrête : le
+complément n'est pas posé.
+
+Seulement ensuite, le complément de la collecte, **entre deux passages**
+(pas entre `:15` et `:20`). Son dossier :
 
 ```bash
 ssh vps1 'sudo install -d -m 0755 /etc/systemd/system/pharmaflux-collecte.service.d'

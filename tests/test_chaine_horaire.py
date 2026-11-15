@@ -622,3 +622,101 @@ def test_une_verification_tuee_au_plafond_n_est_pas_circonscrite(
     (consigne,) = journal.lire(chemins.passages)
     assert consigne["arret"]["motif"] == "code 1, un processus tué par le plafond de mémoire"
     assert consigne["signalements"] == []
+
+
+# --- l'état : ce que la première ligne doit dire (contrôle du palier 2, retouche 1) ------------
+
+
+def _verification(
+    fin: str, code: int = 0, signalements: list[dict[str, str]] | None = None
+) -> dict[str, Any]:
+    return {
+        "genre": "verification",
+        "id": fin,
+        "debut": fin,
+        "fin": fin,
+        "duree_s": 240.0,
+        "issue": "complet",
+        "code": code,
+        "arret": None,
+        "signalements": signalements or [],
+        "etapes": [],
+    }
+
+
+MAINTENANT = datetime(2026, 11, 17, 4, 0, tzinfo=UTC)
+
+
+def _etat_avec(chemins: Chemins, *passages: dict[str, Any]) -> dict[str, Any]:
+    for passage_ in passages:
+        journal.ajouter(chemins.passages, passage_)
+    return etat.lire(chemins, "test", MAINTENANT)
+
+
+def test_une_verification_recente_et_conforme_laisse_le_verdict(chemins: Chemins) -> None:
+    contenu = _etat_avec(
+        chemins,
+        _passage_horaire("p0", "2026-11-15T03:17:30Z", "2026-11-15T03:17:50Z", []),
+        _verification("2026-11-17T03:44:00Z"),
+        _passage_horaire("p1", "2026-11-17T03:17:30Z", "2026-11-17T03:17:50Z", []),
+    )
+    assert contenu["verdict"] == "à jour"
+    assert contenu["age_verification_h"] == 0.3
+    ligne = next(x for x in etat.en_texte(contenu) if x.startswith("vérification"))
+    assert ligne.endswith(", il y a 0.3 h")
+
+
+def test_une_verification_en_echec_entre_dans_le_verdict(chemins: Chemins) -> None:
+    contenu = _etat_avec(
+        chemins,
+        _verification(
+            "2026-11-17T03:44:00Z",
+            code=1,
+            signalements=[{"etape": "index-verifier", "motif": "index-verifier : code 1"}],
+        ),
+        _passage_horaire("p1", "2026-11-17T03:17:30Z", "2026-11-17T03:17:50Z", []),
+    )
+    assert contenu["verdict"] == "à jour ; vérification en échec (code 1, étape index-verifier)"
+    assert etat.en_texte(contenu)[0].startswith(
+        "chaîne : à jour ; vérification en échec (code 1, étape index-verifier) ; code "
+    )
+
+
+def test_une_verification_de_plus_de_26_heures_entre_dans_le_verdict(chemins: Chemins) -> None:
+    contenu = _etat_avec(
+        chemins,
+        _verification("2026-11-16T01:00:00Z"),
+        _passage_horaire("p1", "2026-11-17T03:17:30Z", "2026-11-17T03:17:50Z", []),
+    )
+    assert contenu["verdict"] == "à jour ; dernière vérification il y a 27.0 h"
+
+
+def test_aucune_verification_apres_26_heures_de_service(chemins: Chemins) -> None:
+    contenu = _etat_avec(
+        chemins,
+        _passage_horaire("p0", "2026-11-16T01:17:30Z", "2026-11-16T01:17:50Z", []),
+        _passage_horaire("p1", "2026-11-17T03:17:30Z", "2026-11-17T03:17:50Z", []),
+    )
+    assert contenu["verdict"] == (
+        "à jour ; aucune vérification depuis la mise en service, il y a 26.7 h"
+    )
+
+
+def test_aucune_verification_avant_26_heures_ne_dit_rien(chemins: Chemins) -> None:
+    contenu = _etat_avec(
+        chemins, _passage_horaire("p1", "2026-11-17T03:17:30Z", "2026-11-17T03:17:50Z", [])
+    )
+    assert contenu["verdict"] == "à jour" and contenu["age_verification_h"] is None
+
+
+def test_un_echec_circonscrit_est_nomme_avec_son_etape(chemins: Chemins) -> None:
+    circonscrit = _passage_horaire("p1", "2026-11-17T03:17:30Z", "2026-11-17T03:17:50Z", [])
+    circonscrit["code"] = 1
+    circonscrit["signalements"] = [
+        {"etape": "publier", "motif": "2 message(s) dans la file des échecs"}
+    ]
+    contenu = _etat_avec(chemins, circonscrit)
+    assert contenu["verdict"] == (
+        "échec circonscrit au dernier passage (publier : 2 message(s) dans la file des échecs)"
+    )
+    assert "en panne" not in contenu["verdict"]

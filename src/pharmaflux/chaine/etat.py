@@ -26,6 +26,7 @@ from pharmaflux.chaine.chemins import Chemins
 from pharmaflux.collecte import manifeste
 
 GENRES = (horaire.GENRE, remplissage.GENRE, verification.GENRE)
+VERIFICATION_MAX_H = 26  # le minuteur est quotidien : un jour, plus deux heures de marge
 P95_A_PARTIR_DE = 20  # en dessous, un p95 ne veut rien dire (addendum 1, question 23)
 
 
@@ -181,16 +182,15 @@ def lire(chemins: Chemins, modele: str, maintenant: datetime) -> dict[str, Any]:
     except ValueError as exc:
         temoin, ecarts = None, [str(exc)]
     dernier_horaire = derniers[horaire.GENRE]
-    if dernier_horaire is None:
-        verdict = "jamais lancée"
-    elif dernier_horaire.get("code") not in (0, None):
-        arret = dernier_horaire.get("arret") or {}
-        verdict = f"en panne (code {dernier_horaire.get('code')}"
-        verdict += f", étape {arret['etape']})" if arret.get("etape") else ")"
-    elif non_traites:
-        verdict = f"en retard de {len(non_traites)} passage(s) de collecte"
-    else:
-        verdict = "à jour"
+    premier_horaire = next((p for p in passages if p.get("genre") == horaire.GENRE), None)
+    verdict = _verdict_du_passage(dernier_horaire, non_traites)
+    derniere_verification = derniers[verification.GENRE]
+    age_verification_h = _age_h(derniere_verification, maintenant)
+    alerte = _alerte_verification(
+        derniere_verification, age_verification_h, _age_h(premier_horaire, maintenant, "debut")
+    )
+    if alerte:
+        verdict += f" ; {alerte}"
     age_min = None
     if dernier_complet is not None:
         age_min = round(
@@ -204,6 +204,7 @@ def lire(chemins: Chemins, modele: str, maintenant: datetime) -> dict[str, Any]:
         "derniers": {g: resume(p) if p else None for g, p in derniers.items()},
         "dernier_complet": resume(dernier_complet) if dernier_complet else None,
         "age_dernier_complet_min": age_min,
+        "age_verification_h": age_verification_h,
         "derniere_erreur": resume(erreurs[-1]) if erreurs else None,
         "collecte": {
             "dernier_passage": next(reversed(collecte), None),
@@ -213,6 +214,60 @@ def lire(chemins: Chemins, modele: str, maintenant: datetime) -> dict[str, Any]:
         "collections_orphelines": (dernier_horaire or {}).get("collections_orphelines"),
         "fraicheur": fraicheur(chemins, passages),
     }
+
+
+def _etapes_en_cause(passage: dict[str, Any]) -> str:
+    """L'étape de l'arrêt, sinon celles des échecs circonscrits."""
+    arret = passage.get("arret") or {}
+    if arret.get("etape"):
+        return str(arret["etape"])
+    return ", ".join(str(s.get("etape")) for s in passage.get("signalements") or [])
+
+
+def _verdict_du_passage(passage: dict[str, Any] | None, non_traites: list[str]) -> str:
+    if passage is None:
+        return "jamais lancée"
+    code = passage.get("code")
+    if code not in (0, None) and not passage.get("arret") and passage.get("signalements"):
+        motifs = " ; ".join(f"{s.get('etape')} : {s.get('motif')}" for s in passage["signalements"])
+        return f"échec circonscrit au dernier passage ({motifs})"
+    if code not in (0, None):
+        etape = _etapes_en_cause(passage)
+        return f"en panne (code {code}" + (f", étape {etape})" if etape else ")")
+    if non_traites:
+        return f"en retard de {len(non_traites)} passage(s) de collecte"
+    return "à jour"
+
+
+def _age_h(
+    passage: dict[str, Any] | None, maintenant: datetime, champ: str = "fin"
+) -> float | None:
+    if passage is None or not passage.get(champ):
+        return None
+    ecart = maintenant - datetime.fromisoformat(str(passage[champ]))
+    return round(ecart.total_seconds() / 3600, 1)
+
+
+def _alerte_verification(
+    verification_: dict[str, Any] | None,
+    age_h: float | None,
+    age_service_h: float | None,
+) -> str | None:
+    """Ce que la dernière vérification ajoute au verdict : un échec, ou un retard de plus de
+    ``VERIFICATION_MAX_H`` heures (le minuteur est quotidien)."""
+    if verification_ is None:
+        if age_service_h is not None and age_service_h > VERIFICATION_MAX_H:
+            return f"aucune vérification depuis la mise en service, il y a {age_service_h} h"
+        return None
+    alertes = []
+    code = verification_.get("code")
+    if code not in (0, None):
+        alertes.append(
+            f"vérification en échec (code {code}, étape {_etapes_en_cause(verification_)})"
+        )
+    if age_h is not None and age_h > VERIFICATION_MAX_H:
+        alertes.append(f"dernière vérification il y a {age_h} h")
+    return " ; ".join(alertes) or None
 
 
 def _ligne_passage(passage: dict[str, Any] | None) -> str:
@@ -255,7 +310,11 @@ def en_texte(etat: dict[str, Any]) -> list[str]:
         f"collecte             dernier passage {collecte['dernier_passage'] or 'aucun'} ;"
         f" {len(collecte['non_traites'])} non traité(s) par la chaîne"
     )
-    lignes.append(f"vérification         {_ligne_passage(derniers[verification.GENRE])}")
+    age_h = etat["age_verification_h"]
+    lignes.append(
+        f"vérification         {_ligne_passage(derniers[verification.GENRE])}"
+        + (f", il y a {age_h} h" if age_h is not None else "")
+    )
     lignes.append(f"remplissage          {_ligne_passage(derniers[remplissage.GENRE])}")
     disque = etat["disque"]
     if disque:

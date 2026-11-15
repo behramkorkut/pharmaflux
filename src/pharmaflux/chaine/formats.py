@@ -26,7 +26,8 @@ NOM_TEMOIN = "formats.json"
 # Le format des tables du silver. À incrémenter quand leur schéma change (colonnes, types,
 # colonnes de version), ou leur façon d'appliquer un événement, à contrat égal.
 FORMAT_SILVER = 1
-# L'empreinte du schéma des tables au format FORMAT_SILVER (tests/test_chaine_formats.py).
+# L'empreinte du schéma des tables au format FORMAT_SILVER, que vérifie
+# tests/test_chaine_horaire.py::test_le_numero_du_silver_suit_son_schema.
 EMPREINTE_SILVER = "823d617ef4aee4fbbdafbef30f1f22c146338aaaf0411d64cad57bd3b50f88e7"
 
 # Ce qu'un format changé oblige à rebâtir, du plus petit au plus grand.

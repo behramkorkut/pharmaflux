@@ -906,3 +906,16 @@ l'index.
     n'est perdue.
 - **La nuit** : les 14 collectes horaires passent pendant le remplissage.
 - **Le détail** : `docs/rapports/mission-10/mesures-remplissage.md`.
+
+**Mission 10, palier 2 : l'enchaînement** (15/11). Le code est en `95a35ac` : `chaine passer`,
+`chaine verifier`, `chaine etat`, le témoin des formats, les unités du passage et des
+vérifications (03:40 UTC), et le complément `OnSuccess=` et `OnFailure=` de la collecte.
+
+- **Sur le VPS**, la version est déposée sans bascule. Les unités passent `systemd-analyze
+  verify` avec un score hors ligne de 1,1.
+- **Le débit d'e5** a été mesuré sous le compte du codeur : 4,76 fragments/s au défaut, 5,42
+  avec un seul fil.
+  - La tranche du compte est plafonnée à un cœur : l'effet de `ProcSubset=pid` reste à mesurer
+    sous l'unité.
+  - Rien n'est changé.
+- **Le détail** : `docs/rapports/mission-10/palier-2.md`.

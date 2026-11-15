@@ -33,7 +33,7 @@ et `CPUUsageNSec` valent `[not set]`.
 | `git diff --stat eecc9f3 e12c14d -- src/` | vide : le code de `e12c14d` est celui qui a tourné |
 | unités installées | celles de `e12c14d`. sha256 vérifiés par l'IeC : remplissage `f9b05d8e…`, collecte `3a0d0834…` |
 | `docker-compose.yml`, `infra/vps/vps.yml`, unité des conteneurs | inchangés depuis `13168f5` |
-| CI | verte, run `43640515099` sur `eecc9f3`. Le run de la fusion `5febda7` est demandé à l'IeC |
+| CI | verte : run `43640515099` sur `eecc9f3`, et run `43651258447` sur la fusion `5febda7` (pull_request, lancé le 14/11 à 23:03 UTC) |
 | modèle | `e5-small-int8`, révision `761b726`, 4 empreintes conformes |
 
 **La preuve de polkit** : le premier `systemctl start --no-block
@@ -124,9 +124,47 @@ cache compris, sur toute la vie des conteneurs, et non une lecture instantanée.
 - au matin, le résident est de 156 Mio, dont 47 Mio anonymes, et le cache de fichiers est de
   305 Mio.
 
-La pression vient donc du cache des segments, pas de la mémoire propre de Qdrant. Les deux pics
-(Qdrant, et le groupe du remplissage à 512,6 Mio) dépassent de 2 Mio le plafond nominal. C'est
-la marge de facturation du noyau, et non un dépassement réel.
+La pression vient donc du cache des segments, pas de la mémoire propre de Qdrant.
+
+**Les deux pics dépassent un peu le plafond nominal**, 536 870 912 octets (512 Mio) :
+
+| | `memory.peak` | dépassement |
+|---|---|---|
+| groupe du remplissage | 537 477 120 octets | 606 208 octets (0,6 Mio) |
+| Qdrant | 539 193 344 octets | 2 322 432 octets (2,2 Mio) |
+
+C'est la marge de facturation du noyau, et non un dépassement réel.
+
+**Décision de l'IeC (contrôle de `e047fc0`) : les plafonds restent tels quels.**
+- Aucun processus n'a été tué.
+- Le résident des étapes reste à 404 Mo au plus.
+- La pression sur Qdrant vient du cache de fichiers (47 Mio de mémoire anonyme).
+
+À l'observation (palier 3), on relèvera pour Qdrant les compteurs `max` et `oom_kill` de
+`memory.events`, et la durée de quelques recherches : la reprise du cache peut ralentir la
+recherche.
+
+## La borne de la question 3 (addendum 1, B)
+
+La somme des pics mesurés, sur des mesures de nature différente :
+
+| | pic | ce que c'est |
+|---|---|---|
+| Redpanda | 241,7 Mio | `memory.peak` du scope, relevé par beko |
+| Qdrant | 514,2 Mio | `memory.peak` du scope, relevé par beko |
+| remplissage | 512,6 Mio | `memory.peak` du groupe de l'unité, relevé pendant l'index |
+| collecte | 99,2 Mo | voir ci-dessous |
+| **somme** | **1 367,7 Mio** | sous 2 Gio |
+
+**C'est une borne haute avant l'observation, et non la mesure du palier 3.** Chaque pic compte
+le cache de fichiers, et les quatre pics ne sont pas simultanés.
+
+**D'où vient le 99,2 de la collecte.** La collecte ne mesure pas sa mémoire elle-même. Le
+chiffre vient de la ligne `Finished` que systemd écrit à la fin du passage manuel
+`20261114T232356Z` : c'est le pic de mémoire du groupe de l'unité (`MemoryPeak`). Je l'écris
+tel quel. systemd compte en puissances de deux, donc ce sont des Mio. Je ne l'ai pas lu
+moi-même : le journal système de la collecte demande `sudo`, et ce relevé a été fait par
+l'IeC.
 
 ## Les collectes pendant la nuit
 
@@ -169,11 +207,25 @@ Le verrou de la chaîne et la collecte ne se sont pas gênés.
   lignes, dans une boucle `ssh` entre guillemets, passait. Je n'emploie plus cette forme. Un
   diagnostic passe désormais par un script déposé avec le code.
 
+## La coupure du registre à l'étape `schemas`
+
+Un POST au registre a été coupé sans réponse (`RemoteProtocolError`), puis il a réussi au
+2ᵉ essai. C'est la même intermittence du registre que celle déjà vue en CI (missions 06, 09
+et 10), vue ici pour la première fois sur le VPS. Elle est notée pour la mission 11, et rien
+n'est changé.
+
 ## Pour le palier 2
 
 - `infra/vps/README.md` et `infra/planification/README.md` §5 : les deux passages qui citent
   `MemoryDenyWriteExecute` comme premier suspect sont à remettre à jour.
 - La bascule de version sous `flock` (point 2 du contrôle du palier 1).
-- Mesurer l'effet de `ProcSubset=pid` sur la durée de l'encodage (avertissement `cpuinfo`).
-- Les plafonds touchés, par Qdrant et par le groupe du remplissage : à décider par l'IeC, rien
-  n'est changé ici.
+- **Le débit de l'encodage** (décision de l'IeC).
+  - Le constat : l'index n'a occupé qu'environ un cœur. L'unité en permet 1,5
+    (`CPUQuota=150%`) sur 2, et Alamel était arrêté.
+  - L'hypothèse, à vérifier : onnxruntime choisit son nombre de fils d'après `cpuinfo`, que
+    `ProcSubset=pid` lui cache.
+  - La mesure : le débit sur un échantillon fixe, avec le nombre de fils laissé au défaut,
+    puis fixé à 2 (`intra_op_num_threads`), et une proposition à la clé.
+  - `ProcSubset=pid` n'est pas retiré sans mesure. Le diagnostic passe par un script déposé
+    avec le code.
+- Les plafonds et le délai de 6 h restent tels quels (décision de l'IeC).

@@ -535,7 +535,7 @@ est celui du remplissage, 1,2 en ligne), aucun `OnSuccess=` ni
 lien désigne bien ce commit :
 
 ```bash
-ls -l /srv/pharmaflux/code/courante
+sudo ls -l /srv/pharmaflux/code/courante
 ```
 
 **9b. La mise en service**, l'accord de l'IeC donné. Le minuteur d'abord :

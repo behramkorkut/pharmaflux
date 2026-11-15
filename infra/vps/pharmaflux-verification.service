@@ -1,0 +1,87 @@
+# Pharmaflux : les vérifications quotidiennes de la chaîne (pharmaflux chaine verifier).
+# Le bus, le silver et l'index relus contre l'archive : verifier-bus, silver verifier,
+# index verifier, index etat --complet. Rien n'est bâti.
+# Lancée chaque jour à 03:40 UTC par pharmaflux-verification.timer, loin de minuit où tombent
+# les changements ; sous le même verrou que le passage horaire, elle ne le chevauche jamais.
+# Installation, lecture de l'état, désinstallation : infra/vps/README.md.
+#
+# Chemins (tous passés en arguments : ni EnvironmentFile=, ni WorkingDirectory=) :
+#   code     /srv/pharmaflux/code/courante
+#   archive  /home/pharmaflux/pharmaflux-data  (en lecture seule)
+#   dérivé   /srv/pharmaflux/derive            (le journal des passages, le dossier temporaire)
+#   modèle   /srv/pharmaflux/modeles
+
+[Unit]
+Description=Pharmaflux : vérifications quotidiennes de la chaîne (bus, silver, index)
+Documentation=https://github.com/behramkorkut/pharmaflux
+After=pharmaflux-conteneurs.service
+
+[Service]
+Type=oneshot
+User=pharmaflux-chaine
+Group=pharmaflux-chaine
+Environment=PYTHONUNBUFFERED=1
+Environment=TMPDIR=/srv/pharmaflux/derive/tmp
+ExecStart=/srv/pharmaflux/code/courante/.venv/bin/pharmaflux chaine verifier --racine /home/pharmaflux/pharmaflux-data --derive /srv/pharmaflux/derive --modeles /srv/pharmaflux/modeles
+SyslogIdentifier=pharmaflux-verification
+LogNamespace=pharmaflux
+
+# Environ quatre minutes mesurées au remplissage (verifier-bus 31 s, silver verifier 99 s,
+# index verifier 116 s). Au-delà de 40 minutes, quelque chose est bloqué, et le passage de
+# 04:17 trouverait le verrou tenu.
+TimeoutStartSec=40min
+
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=100%
+CPUWeight=20
+MemoryMax=512M
+MemorySwapMax=0
+OOMPolicy=continue
+OOMScoreAdjust=500
+
+# Durcissement, sur le modèle de pharmaflux-collecte.service (score d'exposition sous 3).
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+# Tout le système de fichiers en lecture seule, sauf le dérivé.
+ProtectSystem=strict
+ReadWritePaths=/srv/pharmaflux/derive
+# /home est remplacé par un dossier vide : de tous les dossiers personnels, l'unité ne voit que
+# l'archive, en lecture seule. Du code non relu peut abîmer le dérivé, jamais l'archive.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/pharmaflux/pharmaflux-data
+# Ce que la chaîne écrit reste lisible par son groupe (le codeur, pour l'état), et par lui seul.
+UMask=0027
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+# Dans /proc, l'unité ne voit que ses propres processus.
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+# Pas de MemoryDenyWriteExecute : le python3.12 d'uv n'a pas d'en-tête GNU_STACK, si bien que
+# glibc rend exécutable la pile de chaque fil, ce que la directive refuse (EACCES) ; la chaîne,
+# numpy et onnxruntime ne pourraient créer aucun fil (relevé sur le VPS le 14/11, mission 10).
+# Le réseau : la boucle locale, en IPv4, et rien d'autre : ni Internet, ni les réseaux de
+# Docker. L'unité ne choisit pas les ports : sur 127.0.0.1, c'est le filtre de sortie du compte
+# (pharmaflux-sortie.service, posé par beko) qui n'ouvre que les cinq ports de Pharmaflux, et
+# lui seul qui ferme ceux d'Alamel.
+RestrictAddressFamilies=AF_INET AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+# Les appels d'un service ordinaire, moins les privilégiés et ceux des limites de ressources.
+# Un appel refusé échoue en EPERM, visible dans le journal, sans tuer le processus.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+RemoveIPC=true

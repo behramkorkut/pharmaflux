@@ -79,6 +79,7 @@ if TYPE_CHECKING:  # le silver ne s'importe que dans ses commandes (K.1)
     from pharmaflux.assistant.evaluation import Estimation as Estimation_
     from pharmaflux.assistant.notation import Indicateurs as Indicateurs_
     from pharmaflux.assistant.notation import Note as Note_
+    from pharmaflux.chaine.chemins import Chemins
     from pharmaflux.gold.typage import EntiteTypee as EntiteTypee_
     from pharmaflux.gold.vues import Vues as Vues_
     from pharmaflux.silver.consommation import LecteurSilver
@@ -2570,21 +2571,154 @@ def chaine_remplir(
     dans <derive>/chaine/passages.jsonl.
     """
     from pharmaflux.chaine import passage, remplissage
-    from pharmaflux.chaine.chemins import VARIABLE_DERIVE, CheminsRefuses, resoudre
+    from pharmaflux.chaine.chemins import CheminsRefuses
     from pharmaflux.chaine.verrou import VerrouTenu
 
-    variable = os.environ.get(VARIABLE_DERIVE)
     try:
-        chemins = resoudre(
-            _racine(racine), derive or (Path(variable) if variable else None), modeles
-        )
+        chemins = _chemins_de_la_chaine(racine, derive, modeles)
         code = passage.derouler(
-            remplissage.GENRE, remplissage.plan(chemins, modele), chemins, ecrire=_dire_chaine
+            remplissage.GENRE,
+            remplissage.plan(chemins, modele),
+            chemins,
+            ecrire=_dire_chaine,
+            controle=remplissage.controle(chemins, modele),
+            conclure=remplissage.conclure(chemins, modele),
         )
     except (CheminsRefuses, VerrouTenu) as exc:
         typer.echo(f"remplissage refusé : {exc}", err=True)
         raise typer.Exit(code=2) from exc
     raise typer.Exit(code=code)
+
+
+@chaine.command("passer")
+def chaine_passer(
+    racine: OptionRacine = None,
+    derive: OptionDerive = None,
+    modeles: OptionModeles = None,
+    modele: OptionModele = MODELE_PAR_DEFAUT,
+) -> None:
+    """Le passage horaire : ce que la collecte vient d'archiver, porté jusqu'à l'index.
+
+    Cinq étapes, chacune une commande existante qui saute ce qu'elle a déjà
+    fait : evenements --reprendre, schemas enregistrer, publier --reprendre,
+    silver consommer, index mettre-a-jour. Sans archive nouvelle, le passage
+    est à vide. Il ne construit jamais l'index.
+
+    Code 0 : tout est passé, ou une autre commande de la chaîne tient le verrou
+    (une ligne le dit ; le passage suivant rattrape). Code 1 : une étape a
+    échoué ou a été tuée, un service ne répond pas, ou la file des échecs a
+    reçu des messages (le passage continue alors). Code 2 : refus (chemins,
+    dérivé bâti avec d'autres formats, étape qui refuse), avec le geste à faire.
+    """
+    from pharmaflux.chaine import horaire, passage
+    from pharmaflux.chaine.chemins import CheminsRefuses
+    from pharmaflux.chaine.verrou import VerrouTenu
+
+    try:
+        chemins = _chemins_de_la_chaine(racine, derive, modeles)
+    except CheminsRefuses as exc:
+        typer.echo(f"passage refusé : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    try:
+        code = passage.derouler(
+            horaire.GENRE,
+            horaire.plan(chemins, modele),
+            chemins,
+            ecrire=_dire_chaine,
+            controle=horaire.controle(chemins, modele),
+            circonscrit=horaire.circonscrit(chemins),
+            complements=horaire.complements(chemins),
+            conclure=horaire.conclure(chemins, modele, orphelines=horaire.collections_orphelines),
+        )
+    except VerrouTenu as exc:
+        # Addendum 1, question 9 : ce n'est pas une panne, et on n'attend pas.
+        _dire_chaine(f"passage sauté : {exc}")
+        raise typer.Exit(code=0) from exc
+    raise typer.Exit(code=code)
+
+
+@chaine.command("verifier")
+def chaine_verifier(
+    racine: OptionRacine = None,
+    derive: OptionDerive = None,
+    modeles: OptionModeles = None,
+    modele: OptionModele = MODELE_PAR_DEFAUT,
+) -> None:
+    """Les vérifications quotidiennes : verifier-bus, silver verifier, index verifier, index etat.
+
+    Toutes sont lancées, même après une vérification en échec. Code 0 : tout est
+    conforme, ou une autre commande de la chaîne tient le verrou (une ligne le
+    dit). Code 1 : une vérification n'est pas conforme ou a été tuée, ou un
+    service ne répond pas. Code 2 : chemins refusés.
+    """
+    from pharmaflux.chaine import passage, verification
+    from pharmaflux.chaine.chemins import CheminsRefuses
+    from pharmaflux.chaine.verrou import VerrouTenu
+
+    try:
+        chemins = _chemins_de_la_chaine(racine, derive, modeles)
+    except CheminsRefuses as exc:
+        typer.echo(f"vérification refusée : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    try:
+        code = passage.derouler(
+            verification.GENRE,
+            verification.plan(chemins, modele),
+            chemins,
+            ecrire=_dire_chaine,
+            circonscrit=verification.circonscrit,
+        )
+    except VerrouTenu as exc:
+        _dire_chaine(f"vérification sautée : {exc}")
+        raise typer.Exit(code=0) from exc
+    raise typer.Exit(code=code)
+
+
+class FormatEtatChaine(StrEnum):
+    TEXTE = "texte"
+    JSON = "json"
+
+
+@chaine.command("etat")
+def chaine_etat(
+    racine: OptionRacine = None,
+    derive: OptionDerive = None,
+    modele: OptionModele = MODELE_PAR_DEFAUT,
+    format_: Annotated[
+        FormatEtatChaine, typer.Option("--format", help="texte (défaut) ou json.")
+    ] = FormatEtatChaine.TEXTE,
+) -> None:
+    """L'état de la chaîne, sans rien lancer ni écrire : verdict, derniers passages, retard sur
+    la collecte, disque, collections orphelines, fraîcheur, formats, dernière erreur.
+
+    Sans option, les chemins se lisent dans PHARMAFLUX_DATA et PHARMAFLUX_DERIVE.
+    Code 0 : l'état est lu (quel qu'il soit). Code 2 : chemins refusés.
+    """
+    from datetime import UTC, datetime
+
+    from pharmaflux.chaine import etat
+    from pharmaflux.chaine.chemins import CheminsRefuses
+
+    try:
+        chemins = _chemins_de_la_chaine(racine, derive, None)
+    except CheminsRefuses as exc:
+        typer.echo(f"état illisible : {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    contenu = etat.lire(chemins, modele, datetime.now(UTC))
+    if format_ is FormatEtatChaine.JSON:
+        typer.echo(json.dumps(contenu, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        for ligne in etat.en_texte(contenu):
+            typer.echo(ligne)
+
+
+def _chemins_de_la_chaine(
+    racine: Path | None, derive: Path | None, modeles: Path | None
+) -> Chemins:
+    from pharmaflux.chaine.chemins import VARIABLE_DERIVE, resoudre
+
+    variable = os.environ.get(VARIABLE_DERIVE)
+    return resoudre(_racine(racine), derive or (Path(variable) if variable else None), modeles)
 
 
 def _dire_chaine(message: str) -> None:

@@ -12,6 +12,10 @@ Relancer le remplissage est sans danger : ``evenements``, ``publier`` et
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
+from pharmaflux.chaine import formats
 from pharmaflux.chaine.chemins import Chemins
 from pharmaflux.chaine.etapes import Etape
 from pharmaflux.chaine.sante import COURTIER, QDRANT, REGISTRE
@@ -58,3 +62,41 @@ def plan(chemins: Chemins, modele: str = MODELE_PAR_DEFAUT) -> list[Etape]:
         Etape("index-verifier", ("index", "verifier", *index), (QDRANT,)),
         Etape("index-etat", ("index", "etat", "--complet"), (QDRANT,)),
     ]
+
+
+def controle(chemins: Chemins, modele: str) -> Callable[[], str | None]:
+    """Le remplissage reconstruit l'index, mais reprend les événements, le bus et le silver : il
+    refuse un dérivé dont le silver ou les contrats ont changé de format (chaine.formats)."""
+
+    def verifier() -> str | None:
+        try:
+            temoin = formats.lire(chemins.formats)
+        except ValueError as exc:
+            return str(exc)
+        if temoin is None:
+            return None
+        attendu = formats.attendus(modele)
+        differents = [
+            cle
+            for cle in formats.ecarts(temoin, attendu)
+            if cle not in formats.REBATIS_PAR_LE_REMPLISSAGE
+        ]
+        return formats.refus(differents, temoin, attendu) if differents else None
+
+    return verifier
+
+
+def conclure(chemins: Chemins, modele: str) -> Callable[[str, int], dict[str, Any]]:
+    """Un remplissage complet écrit le témoin : le dérivé est bâti avec les formats du code."""
+
+    def finir(issue: str, code: int) -> dict[str, Any]:
+        from pharmaflux.chaine.passage import COMPLET, commit_du_code
+
+        if issue != COMPLET or code != 0:
+            return {}
+        formats.ecrire(
+            chemins.formats, formats=formats.attendus(modele), commit=commit_du_code(), par=GENRE
+        )
+        return {"temoin_ecrit": True}
+
+    return finir

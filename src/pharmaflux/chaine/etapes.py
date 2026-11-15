@@ -44,6 +44,9 @@ class Etape:
     nom: str
     arguments: tuple[str, ...]  # ce qui suit « pharmaflux » sur la ligne de commande
     services: tuple[str, ...] = ()  # sondés avant le lancement (chaine.sante)
+    # Le geste à faire quand l'étape refuse (code 2, ses services répondant) : un refus ne se
+    # répare pas seul, le passage suivant refuserait de même.
+    geste: str = ""
 
 
 @dataclass(slots=True)

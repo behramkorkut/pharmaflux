@@ -147,10 +147,12 @@ l'heure suivante : à signaler à l'IeC avant de toucher au plafond.
 
 Si le passage manuel échoue avec la nouvelle unité (code de sortie autre
 que 0 ou 1, `SIGSYS`, `Operation not permitted` dans le journal), la
-directive en cause se lit dans `journalctl` ; la première à suspecter est
-`MemoryDenyWriteExecute=true`, que l'ordre de la mission 01 prévoit de
-retirer si Python ne la supporte pas sur le VPS. Le signaler au codeur
-avec la ligne du journal, ne pas modifier l'unité à la main.
+directive en cause se lit dans `journalctl`. `MemoryDenyWriteExecute`,
+longtemps la première suspecte, n'est plus dans l'unité : retirée à la
+mission 10 (`e12c14d`), parce que le `python3.12` d'uv n'a pas d'en-tête
+`GNU_STACK` et que la directive empêchait toute création de fil (l'import
+de numpy en mourait). Le signaler au codeur avec la ligne du journal, ne
+pas modifier l'unité à la main.
 
 ## 6. Vérifier
 

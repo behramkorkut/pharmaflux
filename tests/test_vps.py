@@ -23,6 +23,12 @@ COMPOSE = Path("docker-compose.yml")
 COMPOSE_VPS = VPS / "vps.yml"
 CONTENEURS = VPS / "pharmaflux-conteneurs.service"
 REMPLISSAGE = VPS / "pharmaflux-remplissage.service"
+CHAINE = VPS / "pharmaflux-chaine.service"
+VERIFICATION = VPS / "pharmaflux-verification.service"
+MINUTEUR_VERIFICATION = VPS / "pharmaflux-verification.timer"
+COMPLEMENT_COLLECTE = VPS / "pharmaflux-collecte.service.d" / "chaine.conf"
+# Les unités de la chaîne, sous le même compte et le même durcissement : la commande de chacune.
+UNITES_DE_LA_CHAINE = {REMPLISSAGE: "remplir", CHAINE: "passer", VERIFICATION: "verifier"}
 COLLECTE = Path("infra/planification/pharmaflux-collecte.service")
 PROCEDURE = VPS / "README.md"
 
@@ -206,43 +212,56 @@ DIRECTIVES = {
         },
         "Install": {"WantedBy"},
     },
-    REMPLISSAGE: {
-        "Unit": {"Description", "Documentation", "After"},
-        "Service": DURCISSEMENT_COMMUN
-        | {
-            "Type",
-            "User",
-            "Group",
-            "Environment",
-            "ExecStart",
-            "SyslogIdentifier",
-            "LogNamespace",
-            "TimeoutStartSec",
-            "Nice",
-            "IOSchedulingClass",
-            "CPUQuota",
-            "CPUWeight",
-            "MemoryMax",
-            "MemorySwapMax",
-            "OOMPolicy",
-            "OOMScoreAdjust",
-            "ReadWritePaths",
-            "BindReadOnlyPaths",
-            "UMask",
-            "ProtectProc",
-            "ProcSubset",
-            "IPAddressAllow",
-            "CapabilityBoundingSet",
-            "AmbientCapabilities",
-            "SystemCallFilter",
-            "SystemCallErrorNumber",
-            "RemoveIPC",
-        },
+    **{
+        unite: {
+            "Unit": {"Description", "Documentation", "After"},
+            "Service": DURCISSEMENT_COMMUN
+            | {
+                "Type",
+                "User",
+                "Group",
+                "Environment",
+                "ExecStart",
+                "SyslogIdentifier",
+                "LogNamespace",
+                "TimeoutStartSec",
+                "Nice",
+                "IOSchedulingClass",
+                "CPUQuota",
+                "CPUWeight",
+                "MemoryMax",
+                "MemorySwapMax",
+                "OOMPolicy",
+                "OOMScoreAdjust",
+                "ReadWritePaths",
+                "BindReadOnlyPaths",
+                "UMask",
+                "ProtectProc",
+                "ProcSubset",
+                "IPAddressAllow",
+                "CapabilityBoundingSet",
+                "AmbientCapabilities",
+                "SystemCallFilter",
+                "SystemCallErrorNumber",
+                "RemoveIPC",
+            },
+        }
+        for unite in UNITES_DE_LA_CHAINE
     },
+    MINUTEUR_VERIFICATION: {
+        "Unit": {"Description", "Documentation"},
+        "Timer": {"OnCalendar", "Persistent", "AccuracySec", "Unit"},
+        "Install": {"WantedBy"},
+    },
+    COMPLEMENT_COLLECTE: {"Unit": {"OnSuccess", "OnFailure"}},
 }
 
 
-@pytest.mark.parametrize("chemin", [CONTENEURS, REMPLISSAGE], ids=str)
+@pytest.mark.parametrize(
+    "chemin",
+    [CONTENEURS, *UNITES_DE_LA_CHAINE, MINUTEUR_VERIFICATION, COMPLEMENT_COLLECTE],
+    ids=str,
+)
 def test_une_unite_ne_porte_que_des_directives_connues(chemin: Path) -> None:
     """Une liste fermée, pas une liste d'interdits : ExecCondition=, FailureAction=,
     LoadCredential=, RootDirectory= ou toute directive ajoutée fait échouer ce test, et doit
@@ -330,18 +349,20 @@ DIRECTIVES_DU_MODELE = (
 def test_aucune_unite_python_ne_refuse_les_pages_ecrites_et_executees() -> None:
     """Le python3.12 d'uv n'a pas d'en-tête GNU_STACK : glibc rend exécutable la pile de chaque
     fil, et MemoryDenyWriteExecute empêche alors toute création de fil (vu sur le VPS, 14/11)."""
-    for unite in (COLLECTE, REMPLISSAGE):
+    for unite in (COLLECTE, *UNITES_DE_LA_CHAINE):
         assert "MemoryDenyWriteExecute" not in lire_unite(unite)["Service"], unite
 
 
-def test_le_remplissage_garde_le_durcissement_de_la_collecte() -> None:
-    modele, unite = lire_unite(COLLECTE)["Service"], lire_unite(REMPLISSAGE)["Service"]
+@pytest.mark.parametrize("chemin", UNITES_DE_LA_CHAINE, ids=str)
+def test_la_chaine_garde_le_durcissement_de_la_collecte(chemin: Path) -> None:
+    modele, unite = lire_unite(COLLECTE)["Service"], lire_unite(chemin)["Service"]
     for directive in DIRECTIVES_DU_MODELE:
         assert unite.get(directive) == modele[directive], directive
 
 
-def test_le_remplissage_tourne_sous_le_compte_de_la_chaine() -> None:
-    unite = lire_unite(REMPLISSAGE)
+@pytest.mark.parametrize("chemin", UNITES_DE_LA_CHAINE, ids=str)
+def test_la_chaine_tourne_sous_son_compte(chemin: Path) -> None:
+    unite = lire_unite(chemin)
     service = unite["Service"]
     assert service["User"] == ["pharmaflux-chaine"] and service["Group"] == ["pharmaflux-chaine"]
     # Ni ce que systemd lirait ou lancerait en root, ni ce qui arrêterait une autre unité.
@@ -360,33 +381,36 @@ def test_le_remplissage_tourne_sous_le_compte_de_la_chaine() -> None:
     assert not {"Conflicts", "AllowIsolate", "OnSuccess", "OnFailure", "Requires"} & set(
         unite["Unit"]
     )
-    assert "Install" not in unite  # lancée à la main, jamais au démarrage
+    # Lancée à la main, par la collecte ou par son minuteur : jamais au démarrage.
+    assert "Install" not in unite
     assert service["LogNamespace"] == ["pharmaflux"]
-    assert "pharmaflux-collecte" not in REMPLISSAGE.name
+    assert "pharmaflux-collecte" not in chemin.name
     # Elle ne démarre pas les conteneurs : la commande sonde les services elle-même.
     assert (
         unite["Unit"]["After"] == ["pharmaflux-conteneurs.service"] and "Wants" not in unite["Unit"]
     )
 
 
-def test_la_commande_du_remplissage_existe_et_porte_ses_chemins() -> None:
+@pytest.mark.parametrize(("chemin", "nom"), UNITES_DE_LA_CHAINE.items(), ids=str)
+def test_la_commande_de_la_chaine_existe_et_porte_ses_chemins(chemin: Path, nom: str) -> None:
     """Un seul Exec, sans préfixe (+, !, -, @, :), sous la version en service ; ses options sont
     celles que la ligne de commande connaît, et tous ses chemins sont en arguments, absolus."""
-    execution = une(lire_unite(REMPLISSAGE), "Service", "ExecStart")
+    execution = une(lire_unite(chemin), "Service", "ExecStart")
     assert re.match(r"[A-Za-z/]", execution), "aucun préfixe d'exécution"
     binaire, *arguments = shlex.split(execution)
     assert binaire == "/srv/pharmaflux/code/courante/.venv/bin/pharmaflux"
     commande, reste = commande_cli(arguments)
-    assert commande.name == "remplir"
-    parametres = commande.make_context("remplir", list(reste)).params
+    assert commande.name == nom and arguments[0] == "chaine"
+    parametres = commande.make_context(nom, list(reste)).params
     assert Path(parametres["racine"]) == Path("/home/pharmaflux/pharmaflux-data")
     assert Path(parametres["derive"]) == Path("/srv/pharmaflux/derive")
     assert Path(parametres["modeles"]) == Path("/srv/pharmaflux/modeles")
     assert parametres["modele"] == "e5-small-int8"
 
 
-def test_le_remplissage_lit_l_archive_et_n_ecrit_que_le_derive() -> None:
-    service = lire_unite(REMPLISSAGE)["Service"]
+@pytest.mark.parametrize("chemin", UNITES_DE_LA_CHAINE, ids=str)
+def test_la_chaine_lit_l_archive_et_n_ecrit_que_le_derive(chemin: Path) -> None:
+    service = lire_unite(chemin)["Service"]
     assert service["ReadWritePaths"] == ["/srv/pharmaflux/derive"]
     assert service["BindReadOnlyPaths"] == ["/home/pharmaflux/pharmaflux-data"]
     assert "BindPaths" not in service  # c'est par là que la collecte écrit l'archive
@@ -397,27 +421,62 @@ def test_le_remplissage_lit_l_archive_et_n_ecrit_que_le_derive() -> None:
     ]
 
 
-def test_le_remplissage_a_ses_plafonds() -> None:
-    """Les valeurs tranchées par l'addendum 1 (B, F, M)."""
-    unite = lire_unite(REMPLISSAGE)
+@pytest.mark.parametrize(
+    ("chemin", "quota", "delai"),
+    [(REMPLISSAGE, "150%", "6h"), (CHAINE, "100%", "50min"), (VERIFICATION, "100%", "40min")],
+    ids=str,
+)
+def test_la_chaine_a_ses_plafonds(chemin: Path, quota: str, delai: str) -> None:
+    """Les valeurs tranchées par l'addendum 1 (B, F, M) : 150 % pour le remplissage, 100 % pour
+    le passage et la vérification (question 16)."""
+    unite = lire_unite(chemin)
     attendu = {
         "MemoryMax": "512M",
         "MemorySwapMax": "0",
         "OOMPolicy": "continue",
         "OOMScoreAdjust": "500",
-        "CPUQuota": "150%",
+        "CPUQuota": quota,
         "CPUWeight": "20",
-        "TimeoutStartSec": "6h",
+        "TimeoutStartSec": delai,
     }
     for directive, valeur in attendu.items():
         assert une(unite, "Service", directive) == valeur, directive
 
 
-def test_le_remplissage_ne_joint_que_la_boucle_locale() -> None:
-    unite = lire_unite(REMPLISSAGE)
+@pytest.mark.parametrize("chemin", UNITES_DE_LA_CHAINE, ids=str)
+def test_la_chaine_ne_joint_que_la_boucle_locale(chemin: Path) -> None:
+    unite = lire_unite(chemin)
     assert une(unite, "Service", "IPAddressDeny") == "any"
     assert une(unite, "Service", "IPAddressAllow") == "127.0.0.1"
     assert une(unite, "Service", "RestrictAddressFamilies") == "AF_INET AF_UNIX"
+
+
+def test_le_passage_ne_relance_rien_en_echec() -> None:
+    """Pas de boucle collecte → chaîne → collecte : la chaîne n'a ni OnFailure= ni OnSuccess=."""
+    unite = lire_unite(CHAINE)["Unit"]
+    assert not {"OnFailure", "OnSuccess", "Wants", "Requires"} & set(unite)
+    # Un passage coupé à 50 minutes laisse la place au passage de collecte suivant.
+    assert une(lire_unite(CHAINE), "Service", "TimeoutStartSec") == "50min"
+
+
+def test_le_complement_de_la_collecte_n_ajoute_que_le_declencheur() -> None:
+    """Addendum 1, question 6 : OnSuccess= et OnFailure= dans [Unit], rien d'autre ; le fichier
+    de la collecte ne change pas."""
+    assert lire_unite(COMPLEMENT_COLLECTE) == {
+        "Unit": {
+            "OnSuccess": ["pharmaflux-chaine.service"],
+            "OnFailure": ["pharmaflux-chaine.service"],
+        }
+    }
+    assert COMPLEMENT_COLLECTE.parent.name == f"{COLLECTE.name}.d"
+
+
+def test_les_verifications_tombent_a_03_40_utc() -> None:
+    minuteur = lire_unite(MINUTEUR_VERIFICATION)
+    assert une(minuteur, "Timer", "OnCalendar") == "*-*-* 03:40:00 UTC"
+    assert une(minuteur, "Timer", "Unit") == VERIFICATION.name
+    assert une(minuteur, "Timer", "Persistent") == "true"
+    assert minuteur["Install"] == {"WantedBy": ["timers.target"]}
 
 
 # --- la procédure ------------------------------------------------------------------------------
@@ -441,7 +500,7 @@ def test_chaque_commande_de_la_procedure_tient_sur_une_ligne() -> None:
         assert bloc.count("\n") == 1, bloc  # une commande par bloc : elle se copie telle quelle
 
 
-LECTURES_DOCKER = ("image ls", "ps", "stats")  # hors compose : rien d'autre, sauf ci-dessous
+LECTURES_DOCKER = ("image ls", "ps", "stats", "inspect")  # hors compose, sauf ci-dessous
 RETRAIT_DES_VOLUMES = "sudo docker volume rm pharmaflux-redpanda pharmaflux-qdrant"
 
 
@@ -470,10 +529,15 @@ def test_un_fichier_que_root_lit_vient_du_commit_controle() -> None:
         cible = re.search(r"/etc/(systemd/system|pharmaflux/compose)/\S+", bloc)
         if not cible or re.match(r"sudo (rm|docker|systemd-analyze) |systemd-analyze ", bloc):
             continue
+        if bloc.startswith("ssh vps1 'sudo install -d -m 0755 /etc/systemd/system/"):
+            assert bloc.strip().endswith(".service.d'"), bloc  # le dossier d'un complément
+            continue
         installes += 1
         assert re.match(r"git show <commit>:\S+ \| ssh vps1 'sudo tee /etc/", bloc), bloc
         assert "/srv/pharmaflux" not in bloc and not re.search(r"\b(ln|cp|link)\b", bloc), bloc
-    assert installes == 4  # deux fichiers compose, deux unités
+    # Deux fichiers compose ; les unités des conteneurs, du remplissage, du passage, de la
+    # vérification et son minuteur ; le complément de la collecte.
+    assert installes == 8
 
 
 def test_la_procedure_ne_touche_pas_a_l_archive_sans_garde() -> None:
@@ -494,7 +558,17 @@ def test_la_procedure_ne_touche_pas_a_l_archive_sans_garde() -> None:
 
 def test_la_procedure_a_toutes_ses_etapes() -> None:
     titres = re.findall(r"(?m)^## (.*)$", PROCEDURE.read_text(encoding="utf-8"))
-    for debut in ("Étape 0.", "Étape 1.", "Étape 2.", "Étape 3.", "Étape 4.", "Étapes 5 à 8."):
+    for debut in (
+        "Étape 0.",
+        "Étape 1.",
+        "Étape 2.",
+        "Étape 3.",
+        "Étape 4.",
+        "Étapes 5 à 8.",
+        "Étape 9.",
+        "L'état de la chaîne",
+        "Les relevés de beko",
+    ):
         assert any(titre.startswith(debut) for titre in titres), debut
     assert any(titre.startswith("Désinstaller") for titre in titres)
 

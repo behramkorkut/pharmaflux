@@ -1,10 +1,12 @@
-# La chaîne sur le VPS-1 : services et premier remplissage
+# La chaîne sur le VPS-1 : services, premier remplissage, enchaînement
 
 Depuis la mission 10, tout ce qui tourne en continu vit sur le VPS-1 : la
 collecte (mission 00, `infra/planification/README.md`), puis la chaîne qui
 va de l'archive à l'index. Cette procédure installe les services (Redpanda,
 Qdrant) et fait le **premier remplissage** : tout le dérivé rebâti depuis
-l'archive, puis vérifié. L'enchaînement horaire vient au palier 2.
+l'archive, puis vérifié. Puis elle met en service l'**enchaînement** :
+chaque passage de collecte lance un passage de la chaîne, et les
+vérifications tournent chaque jour à 03:40 UTC.
 
 Fichiers de ce dossier :
 
@@ -13,6 +15,10 @@ Fichiers de ce dossier :
 | `vps.yml` | second fichier compose : redémarrage, échange, délai d'arrêt, journaux | beko, sous `/etc/pharmaflux/compose/` |
 | `pharmaflux-conteneurs.service` | démarre et arrête les deux conteneurs (`docker compose -p pharmaflux`) | beko, sous `/etc/systemd/system/` |
 | `pharmaflux-remplissage.service` | `pharmaflux chaine remplir`, sous le compte `pharmaflux-chaine` | beko, puis ouvert au codeur dans polkit |
+| `pharmaflux-chaine.service` | `pharmaflux chaine passer`, le passage horaire | beko, sous `/etc/systemd/system/` |
+| `pharmaflux-collecte.service.d/chaine.conf` | complément de la collecte : `OnSuccess=` et `OnFailure=` vers le passage | beko, sous `/etc/systemd/system/pharmaflux-collecte.service.d/` |
+| `pharmaflux-verification.service`, `.timer` | `pharmaflux chaine verifier`, chaque jour à 03:40 UTC | beko, sous `/etc/systemd/system/` |
+| `mesurer_encodage.py` | le débit de l'encodage selon le nombre de fils (palier 2), lancé par le codeur | rien à installer |
 
 ## Qui fait quoi
 
@@ -57,7 +63,7 @@ il se rebâtit depuis l'archive, et rien de dérivé n'est sauvegardé.
 |---|---|---|
 | Redpanda | 1 Go, sans échange | `mem_limit` (`docker-compose.yml`), `memswap_limit` (`vps.yml`) |
 | Qdrant | 512 Mo, sans échange | les mêmes |
-| Remplissage | 512 Mo, sans échange | `MemoryMax`, `MemorySwapMax` de l'unité |
+| Remplissage, passage, vérification | 512 Mo, sans échange, une seule à la fois (le verrou) | `MemoryMax`, `MemorySwapMax` de chaque unité |
 | Collecte | 256 Mo | `pharmaflux-collecte.service` (inchangée) |
 
 Somme pendant le remplissage : 2 048 Mo, et 2 304 Mo pendant les 25
@@ -71,7 +77,7 @@ groupe ; ce qui se mesure contre les 2 Go, c'est le résident réel (étape 8).
   c'est exactement ce qu'un nettoyage efface.
 - **Aucune commande `docker compose` sans `-p pharmaflux`** et sans les
   deux fichiers de `/etc/pharmaflux/compose/`. Hors de `compose`, seulement
-  les lectures écrites ici (`image ls`, `ps`, `stats`) et, à la
+  les lectures écrites ici (`image ls`, `ps`, `stats`, `inspect`) et, à la
   désinstallation, `volume rm` sur les deux volumes nommés, jamais un autre.
 - **`/etc/docker/daemon.json` ne se touche pas** : le démon est partagé
   avec Alamel.
@@ -328,10 +334,15 @@ ssh pharmaflux-vps 'env UV_PYTHON_INSTALL_DIR=/srv/pharmaflux/code/python UV_LIN
 - `UV_LINK_MODE=copy` : sans lui, `uv` lie les fichiers depuis son cache,
   et ils garderaient le groupe du codeur, illisible pour la chaîne.
 
-La bascule, atomique : un lien neuf, puis un renommage.
+La bascule, atomique : un lien neuf, puis un renommage, **sous le verrou de
+la chaîne**. `flock -n` ne prend le verrou que si aucune commande de la
+chaîne ne tourne : sinon il sort en 1 sans rien basculer, et on relance
+hors de la minute `:17`. Le passage en cours finirait de toute façon sur sa
+version (l'interprète est fixé à son départ) ; le verrou évite qu'un
+passage commence entre le lien et le renommage.
 
 ```bash
-ssh pharmaflux-vps 'ln -sfn versions/<commit> /srv/pharmaflux/code/courante.neuf && mv -T /srv/pharmaflux/code/courante.neuf /srv/pharmaflux/code/courante'
+ssh pharmaflux-vps 'ln -sfn versions/<commit> /srv/pharmaflux/code/courante.neuf && flock -n /srv/pharmaflux/derive/chaine/verrou mv -T /srv/pharmaflux/code/courante.neuf /srv/pharmaflux/code/courante'
 ```
 
 Les droits et la version :
@@ -356,8 +367,8 @@ Deux versions restent sur le disque, celle en service et la précédente
 retire par son chemin exact, `rm -r /srv/pharmaflux/code/versions/<ancien
 commit>`, jamais celle que désigne `readlink /srv/pharmaflux/code/courante`.
 
-Une bascule ultérieure, quand la chaîne existe, se fait **sous son
-verrou** : `flock -n /srv/pharmaflux/derive/chaine/verrou -c '<la bascule>'`.
+Au premier dépôt (palier 1), le verrou n'existait pas encore : le lien a
+été posé sans lui (voie a de l'IeC). Le remplissage l'a créé.
 
 **4b. L'unité de remplissage (beko)**, sur le Mac :
 
@@ -465,21 +476,179 @@ journal de l'unité porte la sortie de la commande.
 | `Operation not permitted`, `SIGSYS` | une directive de durcissement | le codeur, avec la ligne du journal |
 | `code 2` | un refus de l'étape, écrit en clair dans sa sortie | le codeur |
 
-Les directives à soupçonner, dans l'ordre : `MemoryDenyWriteExecute`
-(onnxruntime), `SystemCallFilter=~@resources` (affinité des fils),
-`ProcSubset=pid` (comptage des cœurs), `IPAddressAllow=127.0.0.1` (si
+Les directives à soupçonner, dans l'ordre : `SystemCallFilter=~@resources`
+(affinité des fils), `ProcSubset=pid` (comptage des cœurs : onnxruntime
+écrit alors « cpuinfo_initialize failed »), `IPAddressAllow=127.0.0.1` (si
 Docker réécrit la destination), `RestrictAddressFamilies`. Une directive ne
 tombe que sur la ligne du journal qui la désigne.
+`MemoryDenyWriteExecute` n'est plus dans les unités de Python : le
+`python3.12` d'uv n'a pas d'en-tête `GNU_STACK`, et la directive empêchait
+toute création de fil (mission 10, 14/11).
 
 Après toute mort de Redpanda (mémoire, redémarrage du démon Docker), la
 première commande est `verifier-bus` : Redpanda accuse réception avant
 d'écrire, et la chaîne croirait publié ce qui ne l'est plus.
 
+## Étape 9. L'enchaînement (beko)
+
+Quatre fichiers, depuis le commit contrôlé : le passage horaire, les
+vérifications et leur minuteur, puis le complément de la collecte, en
+dernier, parce que c'est lui qui met la chaîne en service. Le code déposé
+doit être celui de ce commit, ou un commit dont les unités ne diffèrent pas
+(4a, sous le verrou).
+
+**9a. Les unités**, sur le Mac :
+
+```bash
+git show <commit>:infra/vps/pharmaflux-chaine.service | ssh vps1 'sudo tee /etc/systemd/system/pharmaflux-chaine.service > /dev/null && sudo chmod 0644 /etc/systemd/system/pharmaflux-chaine.service'
+```
+
+```bash
+git show <commit>:infra/vps/pharmaflux-verification.service | ssh vps1 'sudo tee /etc/systemd/system/pharmaflux-verification.service > /dev/null && sudo chmod 0644 /etc/systemd/system/pharmaflux-verification.service'
+```
+
+```bash
+git show <commit>:infra/vps/pharmaflux-verification.timer | ssh vps1 'sudo tee /etc/systemd/system/pharmaflux-verification.timer > /dev/null && sudo chmod 0644 /etc/systemd/system/pharmaflux-verification.timer && sudo systemctl daemon-reload'
+```
+
+Sur le VPS, à coller à l'IeC :
+
+```bash
+sudo systemd-analyze verify /etc/systemd/system/pharmaflux-chaine.service /etc/systemd/system/pharmaflux-verification.service /etc/systemd/system/pharmaflux-verification.timer; echo "verify -> $?"
+```
+
+```bash
+systemctl show pharmaflux-chaine.service pharmaflux-verification.service -p User -p Group -p SupplementaryGroups -p Environment -p EnvironmentFiles -p WorkingDirectory -p ExecStart -p ExecStartPre -p ExecStartPost -p ExecStop -p Conflicts -p OnSuccess -p OnFailure -p FailureAction -p SuccessAction -p LogNamespace -p DropInPaths
+```
+
+```bash
+systemd-analyze security pharmaflux-chaine.service --no-pager | tail -1; systemd-analyze security pharmaflux-verification.service --no-pager | tail -1
+```
+
+Attendu : aucune remarque, un score sous 3 pour chacune (le durcissement
+est celui du remplissage, 1,2 en ligne), aucun `OnSuccess=` ni
+`OnFailure=` sur la chaîne : un échec du passage ne relance rien.
+
+**9b. La mise en service**, l'accord de l'IeC donné. Le minuteur d'abord :
+
+```bash
+sudo systemctl enable --now pharmaflux-verification.timer
+```
+
+Puis le complément de la collecte, **entre deux passages** (pas entre
+`:15` et `:20`). Son dossier :
+
+```bash
+ssh vps1 'sudo install -d -m 0755 /etc/systemd/system/pharmaflux-collecte.service.d'
+```
+
+```bash
+git show <commit>:infra/vps/pharmaflux-collecte.service.d/chaine.conf | ssh vps1 'sudo tee /etc/systemd/system/pharmaflux-collecte.service.d/chaine.conf > /dev/null && sudo chmod 0644 /etc/systemd/system/pharmaflux-collecte.service.d/chaine.conf && sudo systemctl daemon-reload'
+```
+
+```bash
+systemctl show pharmaflux-collecte.service -p OnSuccess -p OnFailure -p DropInPaths; systemctl list-timers --all --no-pager | grep pharmaflux
+```
+
+Attendu : `OnSuccess=pharmaflux-chaine.service`, la même ligne pour
+`OnFailure=`, le complément dans `DropInPaths`, et deux minuteurs : la
+collecte (`:17`) et les vérifications (03:40 UTC). Le fichier
+`pharmaflux-collecte.service` ne change pas d'un octet.
+
+**9c. La liste polkit se vide.** Pendant l'observation, le codeur lit et ne
+lance rien (addendum 1, I) : beko retire `"pharmaflux-remplissage.service"`
+de la liste `unites` de `/etc/polkit-1/rules.d/60-pharmaflux-codeur.rules`.
+Aucune autre unité n'y entre.
+
+Le premier passage part à la fin de la collecte suivante. Il écrit le
+témoin des formats (`/srv/pharmaflux/derive/chaine/formats.json`) : le
+remplissage du palier 1 l'a précédé.
+
+## L'état de la chaîne
+
+`pharmaflux chaine etat` lit le journal des passages, le manifeste et le
+témoin. Il ne lance rien, n'écrit rien et ne joint aucun service. La
+première ligne dit tout : `à jour`, `en retard de N passage(s) de
+collecte`, ou `en panne (code N, étape X)`.
+
+Le codeur, depuis le Mac :
+
+```bash
+ssh pharmaflux-vps '/srv/pharmaflux/code/courante/.venv/bin/pharmaflux chaine etat --racine /home/pharmaflux/pharmaflux-data --derive /srv/pharmaflux/derive'
+```
+
+L'IeC, sans option, ses chemins en deux variables devant la commande :
+
+```bash
+ssh pharmaflux-vps 'PHARMAFLUX_DATA=/home/pharmaflux/pharmaflux-data PHARMAFLUX_DERIVE=/srv/pharmaflux/derive /srv/pharmaflux/code/courante/.venv/bin/pharmaflux chaine etat'
+```
+
+beko, le matin, sur le VPS, par son compte (une fois celui du codeur clos) :
+
+```bash
+sudo -u pharmaflux-chaine env PHARMAFLUX_DATA=/home/pharmaflux/pharmaflux-data PHARMAFLUX_DERIVE=/srv/pharmaflux/derive /srv/pharmaflux/code/courante/.venv/bin/pharmaflux chaine etat
+```
+
+Le détail, avec la dernière erreur de chaque passage et le délai de chaque
+archive : `--format json`. Les lignes de chaque étape sont dans le journal
+de Pharmaflux :
+
+```bash
+ssh pharmaflux-vps 'journalctl --namespace=pharmaflux -u pharmaflux-chaine.service -u pharmaflux-verification.service -n 40 --no-pager'
+```
+
+| Ce qui se lit | Ce que c'est | Qui agit |
+|---|---|---|
+| `passage sauté : une autre commande de la chaîne tourne` | le verrou est tenu (une vérification, un remplissage) | personne : le passage suivant rattrape. Si l'âge du dernier passage complet grandit, beko et l'IeC regardent |
+| `échec circonscrit (… file des échecs …)` | des messages refusés par leur contrat, rangés à part | le codeur, à l'IeC : le bus reste cohérent |
+| `refusé avant toute étape (le dérivé a été bâti avec d'autres formats …)` | le code déposé a changé un format | le geste est écrit dans la phrase : remplissage, ou dérivé à rebâtir |
+| `"geste"` dans `"arret"` | une étape refuse, par exemple sans index | le geste écrit |
+
+## Les relevés de beko
+
+Le compte du codeur ne peut pas nommer Docker : les conteneurs se mesurent
+par beko, sur le VPS, au début de l'observation, après le redémarrage, et à
+la fin. La mesure instantanée (`memory.current` − `inactive_file`) :
+
+```bash
+sudo docker stats --no-stream pharmaflux-redpanda pharmaflux-qdrant
+```
+
+Le pic de chaque conteneur, depuis son démarrage : une borne haute, cache
+compris, et non une lecture instantanée. Avec les compteurs `max` (le noyau
+a repris de la mémoire au plafond) et `oom_kill` (un processus tué) :
+
+```bash
+for c in pharmaflux-redpanda pharmaflux-qdrant; do id=$(sudo docker inspect -f '{{.Id}}' $c); g=/sys/fs/cgroup/system.slice/docker-$id.scope; echo "== $c"; sudo cat $g/memory.peak; sudo grep -E '^(anon|file) ' $g/memory.stat; sudo grep -E '^(max|oom_kill) ' $g/memory.events; done
+```
+
+Le redémarrage du VPS, au milieu de l'observation, est à beko (`sudo
+reboot`), hors de la minute `:17`. Après lui : les conteneurs reviennent
+par leur unité, la collecte rattrape son passage (`Persistent=true`), et ce
+passage relance la chaîne. Aucun geste de plus.
+
 ## Désinstaller (beko)
 
-L'ordre s'inverse : le nom sort de polkit d'abord, le fichier ensuite.
-Retire `"pharmaflux-remplissage.service"` de la liste `unites` de
-`/etc/polkit-1/rules.d/60-pharmaflux-codeur.rules`, puis :
+L'ordre s'inverse. Le complément de la collecte part d'abord : la chaîne
+n'est plus lancée, et la collecte continue seule, comme avant la mission.
+
+```bash
+sudo rm /etc/systemd/system/pharmaflux-collecte.service.d/chaine.conf && sudo systemctl daemon-reload
+```
+
+Puis les vérifications et le passage :
+
+```bash
+sudo systemctl disable --now pharmaflux-verification.timer; sudo systemctl stop pharmaflux-chaine.service pharmaflux-verification.service
+```
+
+```bash
+sudo rm /etc/systemd/system/pharmaflux-verification.timer /etc/systemd/system/pharmaflux-verification.service /etc/systemd/system/pharmaflux-chaine.service && sudo systemctl daemon-reload
+```
+
+Le nom du remplissage sort de polkit s'il y est encore (retirer
+`"pharmaflux-remplissage.service"` de la liste `unites` de
+`/etc/polkit-1/rules.d/60-pharmaflux-codeur.rules`), puis :
 
 ```bash
 sudo systemctl stop pharmaflux-remplissage.service; sudo systemctl disable --now pharmaflux-conteneurs.service

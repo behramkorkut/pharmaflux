@@ -58,6 +58,11 @@ class Chemins:
     def passages(self) -> Path:
         return self.chaine / "passages.jsonl"
 
+    @property
+    def formats(self) -> Path:
+        """Le témoin des formats avec lesquels le dérivé a été bâti (chaine.formats)."""
+        return self.chaine / "formats.json"
+
 
 def _contient(parent: Path, enfant: Path) -> bool:
     return enfant == parent or parent in enfant.parents

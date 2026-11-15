@@ -203,6 +203,20 @@ jobs:
           uv run pharmaflux chaine remplir --racine "$PWD/demo/archive" --derive "$PWD/data/chaine" --modele test
           test "$(grep -c '"issue": "complet"' data/chaine/chaine/passages.jsonl)" = 2
 
+      # Le palier 2 : deux passages horaires à vide (chaque étape lancée, rien à faire), les
+      # vérifications quotidiennes, puis l'état, en texte et en JSON, qui doit dire « à jour ».
+      - name: Passage horaire, vérifications et état de la chaîne sur le jeu
+        run: |
+          uv run pharmaflux chaine passer --racine "$PWD/demo/archive" --derive "$PWD/data/chaine" --modele test
+          uv run pharmaflux chaine passer --racine "$PWD/demo/archive" --derive "$PWD/data/chaine" --modele test
+          uv run pharmaflux chaine verifier --racine "$PWD/demo/archive" --derive "$PWD/data/chaine" --modele test
+          uv run pharmaflux chaine etat --racine "$PWD/demo/archive" --derive "$PWD/data/chaine" --modele test
+          uv run pharmaflux chaine etat --racine "$PWD/demo/archive" --derive "$PWD/data/chaine" --modele test --format json > data/chaine/etat.json
+          test "$(jq -r .verdict data/chaine/etat.json)" = "à jour"
+          test "$(jq -r '.ecarts_de_formats | length' data/chaine/etat.json)" = 0
+          test "$(jq -r .derniers.verification.code data/chaine/etat.json)" = 0
+          test "$(grep -c '"genre": "passage"' data/chaine/chaine/passages.jsonl)" = 2
+
       # Tout le journal (--tail=100 n'avait gardé que 4 s au run de main sur 98505d3), la santé
       # de la grappe et la mémoire du conteneur, en artefact plutôt que dans le journal du job.
       - name: Diagnostic du courtier en cas d'échec

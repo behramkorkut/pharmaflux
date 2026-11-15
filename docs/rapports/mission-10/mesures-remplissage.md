@@ -153,7 +153,7 @@ La somme des pics mesurés, sur des mesures de nature différente :
 | Redpanda | 241,7 Mio | `memory.peak` du scope, relevé par beko |
 | Qdrant | 514,2 Mio | `memory.peak` du scope, relevé par beko |
 | remplissage | 512,6 Mio | `memory.peak` du groupe de l'unité, relevé pendant l'index |
-| collecte | 99,2 Mo | voir ci-dessous |
+| collecte | 99,2 Mio | voir ci-dessous |
 | **somme** | **1 367,7 Mio** | sous 2 Gio |
 
 **C'est une borne haute avant l'observation, et non la mesure du palier 3.** Chaque pic compte
@@ -185,7 +185,7 @@ Le verrou de la chaîne et la collecte ne se sont pas gênés.
 - **Le correctif** :
   - retour à `67d9d3c`, avec un passage à 22:48 ;
   - correctif `e12c14d` (contrôle `a1b7e09`), et collecte sur `main` (`a38436b`) ;
-  - passage manuel `20261114T232356Z` : 12 fichiers inchangés, 0 erreur, pic de 99,2 Mo avec
+  - passage manuel `20261114T232356Z` : 12 fichiers inchangés, 0 erreur, pic de 99,2 Mio avec
     numpy chargé.
 - **Le bilan** : aucune version perdue.
 

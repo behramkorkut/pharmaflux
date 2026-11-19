@@ -919,3 +919,22 @@ vérifications (03:40 UTC), et le complément `OnSuccess=` et `OnFailure=` de la
     sous l'unité.
   - Rien n'est changé.
 - **Le détail** : `docs/rapports/mission-10/palier-2.md`.
+
+**Mission 10, la chaîne en service** (15-19/11). `f35d797` est déposé, et l'enchaînement est
+installé par beko le 15/11. Le premier passage horaire part à 19:17 UTC.
+
+- **L'observation, jusqu'au 19/11 à 21:17 UTC** : 99 passages horaires et 6 vérifications,
+  tous complets, en code 0, sans processus tué.
+- **Le redémarrage du VPS-1** (16/11, 19:31 UTC) est rattrapé sans aucun geste.
+- **Le contenu vide** : la BDPM a servi `CIS_InfoImportantes` vide quatre fois (17/11 et
+  19/11). Le garde-fou de volume l'a écarté, et le fichier revenu n'a porté aucun événement.
+- **Quatre passages porteurs sur cinq**, avec un délai médian de 63 s et un maximum de 115 s.
+  Le lot du mardi n'est pas venu le 17/11 ; on attend le 24/11.
+- **La relance d'Alamel** (18/11, 16-17 h UTC) ajoute 2 s aux passages et retire environ
+  20 Mio au résident de l'étape `index`. Rien ne casse.
+- **Deux écarts connus.**
+  - Le champ `declencheur` est vide : systemd voit deux déclencheurs, la même collecte.
+  - Le chiffre en Mo décimaux de la commande `index` se lit à tort contre un seuil en Mio.
+- **Le palier 3** : l'ADR 0014, l'état du README, le contexte, la mise à jour après la fusion
+  et après la clôture, et le Mac au repos (`infra/vps/README.md`).
+- **Le détail** : `docs/rapports/mission-10/observation.md`, en cours, et `palier-3.md`.

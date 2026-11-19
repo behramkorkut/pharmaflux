@@ -653,6 +653,122 @@ reboot`), hors de la minute `:17`. Après lui : les conteneurs reviennent
 par leur unité, la collecte rattrape son passage (`Persistent=true`), et ce
 passage relance la chaîne. Aucun geste de plus.
 
+## Après la fusion : le VPS sur `main` (beko)
+
+La collecte est sur `main` depuis le palier 1 (étape 0). Après la fusion, seul
+le code de la chaîne change, et il se dépose comme à l'étape 4a, avant la
+clôture du compte du codeur, depuis le Mac de beko qui porte sa clé
+(`pharmaflux-vps`).
+
+1. **Le commit** : celui de la fusion, en entier.
+
+   ```bash
+   git fetch origin && git rev-parse origin/main
+   ```
+
+2. **Ce qui change dans `src/` depuis la version en service** : si un format
+   a changé, la chaîne refusera avant toute étape et nommera le geste
+   (« L'état de la chaîne »).
+
+   ```bash
+   git diff --stat "$(ssh pharmaflux-vps 'cat /srv/pharmaflux/code/courante/VERSION')" origin/main -- src
+   ```
+
+3. **Le dépôt, la bascule sous le verrou, les droits et la version** : les
+   commandes de l'étape 4a, avec ce commit.
+4. **Une vérification**, puis l'état, sur le VPS (`ssh vps1`), hors de la
+   minute `:17`. Le passage suivant part tout seul.
+
+   ```bash
+   sudo systemctl start pharmaflux-verification.service
+   ```
+
+   ```bash
+   systemctl show pharmaflux-verification.service -p Result -p ExecMainStatus
+   ```
+
+   Attendu : `Result=success`, `ExecMainStatus=0`, puis `chaine etat` à
+   `à jour`, « dérivé bâti par » l'ancien commit, « code » le nouveau.
+5. **Les fichiers que root lit** : si un fichier de `infra/vps/` a changé
+   entre les deux commits, il se réinstalle comme à l'étape 9a, depuis ce
+   commit, après le contrôle de l'IeC.
+
+   ```bash
+   git diff --stat "$(ssh pharmaflux-vps 'cat /srv/pharmaflux/code/courante/VERSION')" origin/main -- infra/vps infra/planification
+   ```
+
+Puis le compte du codeur se ferme (`infra/agents/vps/README.md`, « Clôture
+d'une mission ») : `/srv/pharmaflux/code` passe à root, la chaîne continue.
+
+## Mettre à jour après la clôture (beko)
+
+Le geste reste `git archive` (addendum 1, question 19), mais il ne passe pas
+par root : `uv sync` construit le projet et peut lancer du code téléchargé.
+Le dépôt se fait donc par le compte du codeur, rouvert le temps du dépôt :
+
+1. rouvrir le compte avec une clé neuve : « Pour rouvrir le compte », puis
+   les étapes 11 à 13 de `infra/agents/vps/README.md` ;
+2. les étapes 1 à 4 de la section précédente ;
+3. refermer le compte : « Clôture d'une mission ».
+
+Rien ne presse : la chaîne tourne sur sa version tant qu'on n'en dépose pas
+d'autre. Un changement de format (le silver, l'index, un contrat) demande
+en plus le geste que nomme le refus : `chaine remplir`, ou un dérivé
+rebâti.
+
+## Le Mac au repos (beko, à la clôture)
+
+Plus rien de Pharmaflux ne tourne sur le Mac : ni conteneur, ni tâche
+planifiée, ni processus. Toutes les commandes nomment le projet
+`pharmaflux` : les conteneurs `alamel-dev-*` du colima ne sont ni lus ni
+touchés.
+
+1. **Les conteneurs**, depuis le dépôt : arrêtés et retirés, **les volumes
+   restent** (`make down` lance `docker compose -p pharmaflux down`, sans
+   `-v`).
+
+   ```bash
+   make down
+   ```
+
+2. **Ce qui doit être vide.**
+
+   ```bash
+   docker ps -a --filter name=pharmaflux --format '{{.Names}} {{.Status}}'
+   ```
+
+   ```bash
+   launchctl list | grep -i pharmaflux
+   ```
+
+   ```bash
+   ls ~/Library/LaunchAgents | grep -i pharmaflux
+   ```
+
+   ```bash
+   pgrep -fl 'pharmaflux|redpanda|qdrant'
+   ```
+
+   Attendu : aucune ligne pour chacune. Si `pgrep` montre une session de
+   Claude Code ouverte dans le dépôt, ce n'est pas un processus de
+   Pharmaflux : seuls `pharmaflux`, `redpanda` ou `qdrant` en tête de
+   commande comptent.
+3. **Ce qui reste** : les volumes `pharmaflux-redpanda` et
+   `pharmaflux-qdrant`, que `docker volume ls --filter name=pharmaflux`
+   montre. On garde aussi :
+   - `~/pharmaflux-data` : la copie de l'archive, la sauvegarde, que
+     `rapatrier.sh` tient à jour chaque semaine ;
+   - `~/pharmaflux-modeles/e5-small-int8` : le modèle épinglé ;
+   - `data/assistant` : le compte du budget des missions ;
+   - `data/index/cache-vecteurs.sqlite` : environ 24 minutes d'encodage
+     épargnées à la prochaine construction.
+4. **Ce qui peut s'effacer, à la demande de beko seulement** : les deux
+   volumes (`docker compose -p pharmaflux down -v`), `data/demo`, et le
+   second modèle de `~/pharmaflux-modeles`, que la chaîne n'utilise pas.
+5. **Relancer la démo**, pour une mission future, puis revenir au repos :
+   `make up`, `make demo`, `make silver`, `make gold`, `make index`, puis
+   `make down`.
+
 ## Désinstaller (beko)
 
 L'ordre s'inverse. Le complément de la collecte part d'abord : la chaîne

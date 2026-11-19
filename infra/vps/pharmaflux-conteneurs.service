@@ -1,0 +1,64 @@
+# Pharmaflux : les conteneurs du bus (Redpanda) et de la base vectorielle (Qdrant) sur le
+# VPS-1. Unité système, en root : c'est le client « docker », qui parle au démon. Aucun compte
+# de Pharmaflux n'est dans le groupe docker, qui vaut un accès root.
+# Installation, vérification, désinstallation : infra/vps/README.md.
+#
+# L'unité ne lit que deux fichiers, à root, sous /etc/pharmaflux/compose/ (installés par beko
+# après le contrôle de l'IeC). Elle ne nomme rien sous /srv/pharmaflux, que le codeur écrit.
+# Elle démarre les conteneurs (« up ») et les arrête (« stop »), sans jamais rien effacer :
+# ni « down », ni « rm », ni « -v ». Les volumes du bus et de l'index restent.
+
+[Unit]
+Description=Pharmaflux : conteneurs du bus et de la base vectorielle (Redpanda, Qdrant)
+Documentation=https://github.com/behramkorkut/pharmaflux
+# Après Docker, sans en dépendre durement : avec Requires= ou PartOf=, une mise à jour du paquet
+# Docker arrêterait cette unité, « stop » marquerait les conteneurs comme arrêtés à la main, et
+# leur politique « unless-stopped » ne les relèverait plus.
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# « up -d » ne recrée un conteneur que si sa configuration a changé ; ses volumes sont nommés,
+# ils restent. « --wait » rend la main quand Redpanda et Qdrant se disent sains, ou échoue.
+# « --pull never » : les images sont tirées par beko, vérifiées par leur empreinte, jamais ici.
+ExecStart=/usr/bin/docker compose -p pharmaflux -f /etc/pharmaflux/compose/docker-compose.yml -f /etc/pharmaflux/compose/vps.yml up -d --wait --wait-timeout 180 --pull never
+# « stop » garde les conteneurs et leurs volumes. Chaque conteneur a son délai d'arrêt (vps.yml).
+ExecStop=/usr/bin/docker compose -p pharmaflux -f /etc/pharmaflux/compose/docker-compose.yml -f /etc/pharmaflux/compose/vps.yml stop
+# Plus longs que « --wait-timeout » et que le plus long délai d'arrêt d'un conteneur (1 min).
+TimeoutStartSec=240
+TimeoutStopSec=120
+SyslogIdentifier=pharmaflux-conteneurs
+# Le journal de Pharmaflux, que le codeur lit, pas celui du système.
+LogNamespace=pharmaflux
+
+# Durcissement : le peu qui tient pour un client Docker lancé par root. Le démon, lui, est hors
+# de l'unité ; un score d'exposition ne dirait rien de ce que font les conteneurs. La vraie
+# garde est dans les deux fichiers compose (volumes nommés, ports sur 127.0.0.1, aucun
+# privilège), contrôlés par l'IeC et par tests/test_vps.py.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+# /usr, /boot et /etc en lecture seule : le client ne fait que lire ses deux fichiers.
+ProtectSystem=full
+# Les dossiers personnels, celui de root compris, sont invisibles.
+ProtectHome=yes
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+# Le client ne parle qu'au démon, par son socket Unix : aucune adresse réseau.
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

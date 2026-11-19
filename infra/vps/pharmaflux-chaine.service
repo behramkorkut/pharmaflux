@@ -1,0 +1,95 @@
+# Pharmaflux : le passage horaire de la chaîne sur le VPS-1 (pharmaflux chaine passer).
+# Ce que la collecte vient d'archiver, porté jusqu'à l'index : événements, schémas, publication,
+# silver, mise à jour de l'index. Chaque étape saute ce qu'elle a déjà fait : sans archive
+# nouvelle, le passage est à vide.
+# Lancée par la fin de chaque passage de collecte, quel que soit son code (OnSuccess= et
+# OnFailure= du complément pharmaflux-collecte.service.d/chaine.conf) ; aucun minuteur.
+# Installation, lecture de l'état, désinstallation : infra/vps/README.md.
+#
+# Chemins (tous passés en arguments : ni EnvironmentFile=, ni WorkingDirectory=) :
+#   code     /srv/pharmaflux/code/courante   (lien vers versions/<commit>, déposé par le codeur)
+#   archive  /home/pharmaflux/pharmaflux-data  (en lecture seule ici ; la collecte l'écrit)
+#   dérivé   /srv/pharmaflux/derive            (la seule écriture)
+#   modèle   /srv/pharmaflux/modeles           (à root, apporté par beko)
+
+[Unit]
+Description=Pharmaflux : passage horaire de la chaîne (de l'archive à l'index)
+Documentation=https://github.com/behramkorkut/pharmaflux
+# Après les conteneurs, sans les démarrer (comme le remplissage) : la commande sonde le bus, le
+# registre et Qdrant avant chaque étape, et dit lequel ne répond pas.
+After=pharmaflux-conteneurs.service
+# Aucun OnFailure= : un échec du passage ne relance rien. La boucle collecte → chaîne → collecte
+# est impossible.
+
+[Service]
+Type=oneshot
+User=pharmaflux-chaine
+Group=pharmaflux-chaine
+Environment=PYTHONUNBUFFERED=1
+# /tmp est en mémoire sur ce VPS (tmpfs) : les fichiers temporaires vont sur le disque.
+Environment=TMPDIR=/srv/pharmaflux/derive/tmp
+ExecStart=/srv/pharmaflux/code/courante/.venv/bin/pharmaflux chaine passer --racine /home/pharmaflux/pharmaflux-data --derive /srv/pharmaflux/derive --modeles /srv/pharmaflux/modeles
+SyslogIdentifier=pharmaflux-chaine
+LogNamespace=pharmaflux
+
+# Un passage à vide dure moins d'une minute, un lot du mardi quelques minutes (réencodage des
+# fiches touchées). Au-delà de 50 minutes, il chevaucherait le passage de collecte suivant :
+# on coupe, et le passage suivant reprend (les vecteurs déjà calculés restent dans le cache).
+TimeoutStartSec=50min
+
+Nice=10
+IOSchedulingClass=idle
+# Un cœur sur deux (addendum 1, question 16).
+CPUQuota=100%
+CPUWeight=20
+# 512 Mo pour tout le groupe, sans échange, comme le remplissage.
+MemoryMax=512M
+MemorySwapMax=0
+OOMPolicy=continue
+OOMScoreAdjust=500
+
+# Durcissement, sur le modèle de pharmaflux-collecte.service (score d'exposition sous 3).
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+# Tout le système de fichiers en lecture seule, sauf le dérivé.
+ProtectSystem=strict
+ReadWritePaths=/srv/pharmaflux/derive
+# /home est remplacé par un dossier vide : de tous les dossiers personnels, l'unité ne voit que
+# l'archive, en lecture seule. Du code non relu peut abîmer le dérivé, jamais l'archive.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/pharmaflux/pharmaflux-data
+# Ce que la chaîne écrit reste lisible par son groupe (le codeur, pour l'état), et par lui seul.
+UMask=0027
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+# Dans /proc, l'unité ne voit que ses propres processus.
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+# Pas de MemoryDenyWriteExecute : le python3.12 d'uv n'a pas d'en-tête GNU_STACK, si bien que
+# glibc rend exécutable la pile de chaque fil, ce que la directive refuse (EACCES) ; la chaîne,
+# numpy et onnxruntime ne pourraient créer aucun fil (relevé sur le VPS le 14/11, mission 10).
+# Le réseau : la boucle locale, en IPv4, et rien d'autre : ni Internet, ni les réseaux de
+# Docker. L'unité ne choisit pas les ports : sur 127.0.0.1, c'est le filtre de sortie du compte
+# (pharmaflux-sortie.service, posé par beko) qui n'ouvre que les cinq ports de Pharmaflux, et
+# lui seul qui ferme ceux d'Alamel.
+RestrictAddressFamilies=AF_INET AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+# Les appels d'un service ordinaire, moins les privilégiés et ceux des limites de ressources.
+# Un appel refusé échoue en EPERM, visible dans le journal, sans tuer le processus.
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+RemoveIPC=true

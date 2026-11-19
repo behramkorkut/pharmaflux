@@ -75,9 +75,12 @@ class GardeFou(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls._tmp.cleanup()
 
-    def juger(self, dossier: Path, outil: str, **entree: str) -> bool:
-        """True si l'appel passe, False s'il est refusé (code 2)."""
-        appel = {"tool_name": outil, "tool_input": entree, "cwd": str(dossier)}
+    def juger(self, dossier: Path, outil: str, agent_id: str | None = None, **entree: str) -> bool:
+        """True si l'appel passe, False s'il est refusé (code 2). Avec ``agent_id``, l'appel
+        vient d'un sous-agent, comme Claude Code le dit au crochet."""
+        appel: dict[str, object] = {"tool_name": outil, "tool_input": entree, "cwd": str(dossier)}
+        if agent_id is not None:
+            appel["agent_id"] = agent_id
         env = dict(SANS_CLAUDE, CLAUDE_PROJECT_DIR=str(dossier))
         sortie = subprocess.run(
             [sys.executable, "-I", str(CROCHET)],
@@ -728,6 +731,61 @@ class GardeFou(unittest.TestCase):
         ):
             with self.subTest(commande=commande):
                 self.assertFalse(self.bash(self.principal, commande))
+
+    def test_iec_lit_l_etat_de_la_chaine_avec_ses_options(self) -> None:
+        pfx = "/srv/pharmaflux/code/courante/.venv/bin/pharmaflux"
+        for commande in (
+            f"ssh pharmaflux-vps '{pfx} chaine etat --format json'",
+            f"ssh pharmaflux-vps '{pfx} chaine etat --racine /home/pharmaflux/pharmaflux-data "
+            "--derive /srv/pharmaflux/derive --format json'",
+            "ssh pharmaflux-vps 'PHARMAFLUX_DATA=/home/pharmaflux/pharmaflux-data "
+            f"PHARMAFLUX_DERIVE=/srv/pharmaflux/derive {pfx} chaine etat --format=texte'",
+        ):
+            with self.subTest(commande=commande):
+                self.assertTrue(self.bash(self.principal, commande))
+        for commande in (
+            f"ssh pharmaflux-vps '{pfx} chaine etat --format yaml'",
+            f"ssh pharmaflux-vps '{pfx} chaine etat --racine'",
+            f"ssh pharmaflux-vps '{pfx} chaine etat --racine --derive /srv/pharmaflux/derive'",
+            f"ssh pharmaflux-vps '{pfx} chaine etat --modele e5'",
+            f"ssh pharmaflux-vps '{pfx} chaine passer --racine /home/pharmaflux/pharmaflux-data'",
+            f"ssh pharmaflux-vps '{pfx} index construire --format json'",
+        ):
+            with self.subTest(commande=commande):
+                self.assertFalse(self.bash(self.principal, commande))
+
+    def test_un_sous_agent_n_a_pas_le_vps(self) -> None:
+        # CLAUDE.md, « Le VPS-1 » : seulement depuis la session principale.
+        sous_agent = "a1b2c3"
+        for dossier, commande in (
+            (self.principal, "ssh pharmaflux-vps free -m"),
+            (self.codeur, "ssh pharmaflux-vps systemctl status pharmaflux-chaine.service"),
+            (self.codeur, "ssh pharmaflux-vps ls /home/pharmaflux/pharmaflux-data"),
+        ):
+            with self.subTest(dossier=dossier.name, commande=commande):
+                self.assertTrue(self.bash(dossier, commande))
+                self.assertFalse(self.juger(dossier, "Bash", agent_id=sous_agent, command=commande))
+        for dossier, commande in (
+            (self.codeur, "git archive HEAD | ssh pharmaflux-vps 'tar -x -C /tmp/x'"),
+            (self.principal, "cd /tmp && ssh pharmaflux-vps uptime"),
+            (self.principal, "ssh-add -l"),
+        ):
+            with self.subTest(dossier=dossier.name, commande=commande):
+                self.assertFalse(self.juger(dossier, "Bash", agent_id=sous_agent, command=commande))
+        # Le terminal de l'application échapperait au refus : fermé au sous-agent de l'IeC.
+        self.assertFalse(
+            self.juger(
+                self.principal, "mcp__terminal__run_in_terminal", agent_id=sous_agent, command="ls"
+            )
+        )
+        # Le reste du travail d'un sous-agent ne change pas.
+        for dossier, commande in (
+            (self.codeur, "git status"),
+            (self.codeur, "rsync -a a/ b/"),
+            (self.principal, "grep -n ssh infra/agents/vps/README.md"),
+        ):
+            with self.subTest(dossier=dossier.name, commande=commande):
+                self.assertTrue(self.juger(dossier, "Bash", agent_id=sous_agent, command=commande))
 
     def test_personne_n_ecrit_dans_le_dossier_ssh(self) -> None:
         for dossier in (self.principal, self.codeur, self.relecteur):

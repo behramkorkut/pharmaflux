@@ -195,9 +195,11 @@ GIT_ECRIT_BRUT = re.compile(
 CONTENEURS_BRUT = re.compile(r"(?<![\w./-])(docker(-compose)?|colima)(?![\w.-])")
 
 # Le VPS-1 (mission 10, infra/agents/vps/README.md) : un seul alias, celui du compte du
-# codeur, sans sudo ni docker ; jamais vps1, qui ouvre le compte root de beko. Ce filtre
-# n'arrête que les accidents : la barrière est sur le VPS (droits Unix, polkit à liste
-# exacte, filtre de sortie) et sur le Mac (la clé de vps1 sous phrase de passe).
+# codeur, sans sudo ni docker ; jamais vps1, qui ouvre le compte root de beko. Seulement
+# depuis la session principale : un sous-agent (Claude Code lui donne un « agent_id ») n'a
+# aucun outil ssh. Ce filtre n'arrête que les accidents : la barrière est sur le VPS (droits
+# Unix, polkit à liste exacte, filtre de sortie) et sur le Mac (les clés sous phrase de
+# passe, celle du VPS chargée dans l'agent ssh par beko seul).
 ALIAS_VPS = "pharmaflux-vps"
 OUTILS_SSH = {
     "ssh",
@@ -326,6 +328,8 @@ LECTURE_DISTANTE = LECTURE | {
     "sha256sum",
 }
 PHARMAFLUX_LECTURE = (["etat"], ["--version"], ["chaine", "etat"], ["index", "etat"])
+# « chaine etat » ne lance ni n'écrit rien : ses chemins et son format en option (mission 10).
+CHAINE_ETAT_OPTIONS = {"--racine": None, "--derive": None, "--format": {"texte", "json"}}
 # Où une écriture shell du codeur peut aller hors de son dossier : des brouillons jetables.
 TEMPORAIRES = ("/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/", "/dev/")
 
@@ -727,6 +731,30 @@ def verifier_systemctl(role: str, mots: list[str]) -> None:
     )
 
 
+def pharmaflux_en_lecture(args: list[str]) -> bool:
+    """Les commandes pharmaflux que l'IeC lance sur le VPS : l'état, rien d'autre."""
+    if args in PHARMAFLUX_LECTURE:
+        return True
+    if args[:2] != ["chaine", "etat"]:
+        return False
+    reste = args[2:]
+    i = 0
+    while i < len(reste):
+        option, egal, valeur = reste[i].partition("=")
+        if not egal:
+            if i + 1 >= len(reste):
+                return False
+            valeur = reste[i + 1]
+            i += 1
+        i += 1
+        if option not in CHAINE_ETAT_OPTIONS or not valeur or valeur.startswith("-"):
+            return False
+        permises = CHAINE_ETAT_OPTIONS[option]
+        if permises is not None and valeur not in permises:
+            return False
+    return True
+
+
 def verifier_distante(role: str, distante: str) -> None:
     """La commande envoyée au VPS par « ssh pharmaflux-vps … », segment par segment."""
     if NOMS_INTERDITS.search(distante):
@@ -746,7 +774,7 @@ def verifier_distante(role: str, distante: str) -> None:
                 raise Refus("l'IeC n'écrit rien sur le VPS.")
             if tete == "systemctl":
                 verifier_systemctl("iec", mots)
-            if tete == "pharmaflux" and [a for a in mots[1:]] not in PHARMAFLUX_LECTURE:
+            if tete == "pharmaflux" and not pharmaflux_en_lecture(mots[1:]):
                 raise Refus("pharmaflux sur le VPS : l'IeC n'en lit que l'état.")
             if tete == "journalctl" and any(a.startswith(JOURNALCTL_ECRIT) for a in mots[1:]):
                 raise Refus("journalctl : en lecture seulement.")
@@ -777,14 +805,19 @@ def verifier_distante(role: str, distante: str) -> None:
             )
 
 
-def verifier_ssh(role: str, mots: list[str], brute: str) -> None:
+def verifier_ssh(role: str, mots: list[str], brute: str, sous_agent: bool = False) -> None:
     """ssh, et rien d'autre de la famille, vers le seul alias du VPS (mission 10)."""
     tete = Path(mots[0]).name
+    if tete == "rsync" and not any(
+        ":" in a or a.startswith(("-e", "--rsh", "--rsync-path")) for a in mots[1:]
+    ):
+        return  # copie locale
+    if sous_agent:
+        raise Refus(
+            f"« {tete} » depuis un sous-agent : le VPS ne se lit et ne se pilote que depuis la "
+            "session principale (CLAUDE.md, « Le VPS-1 »)."
+        )
     if tete != "ssh":
-        if tete == "rsync" and not any(
-            ":" in a or a.startswith(("-e", "--rsh", "--rsync-path")) for a in mots[1:]
-        ):
-            return  # copie locale
         raise Refus(
             f"« {tete} » : seul « ssh {ALIAS_VPS} <commande> » parle au VPS ; le code s'y dépose "
             f"par « git archive … | ssh {ALIAS_VPS} 'tar -x …' »."
@@ -842,7 +875,11 @@ def verifier_cible_shell(cible: str, cwd: Path | None, racine: Path | None) -> N
 
 
 def verifier_bash(
-    role: str, commande: str, racine: Path | None = None, cwd: Path | None = None
+    role: str,
+    commande: str,
+    racine: Path | None = None,
+    cwd: Path | None = None,
+    sous_agent: bool = False,
 ) -> None:
     nette = retirer_heredocs(commande)
     affectations: list[str] = []
@@ -871,7 +908,7 @@ def verifier_bash(
         if role != "iec" and (mots[0].startswith("$") or "$(" in mots[0] or "`" in mots[0]):
             raise Refus("une commande cachée dans une variable n'est pas jugeable.")
         if tete in OUTILS_SSH:
-            verifier_ssh(role, mots, commande)
+            verifier_ssh(role, mots, commande, sous_agent)
             continue
         if role == "codeur":
             for cible in cibles:
@@ -999,9 +1036,15 @@ def juger(appel: dict, dossier_projet: Path) -> None:
     )
     outil = appel.get("tool_name", "")
     entree = appel.get("tool_input") or {}
+    # Claude Code donne un « agent_id » aux appels d'un sous-agent, jamais à ceux de la
+    # session principale.
+    sous_agent = bool(appel.get("agent_id"))
     # Le terminal de l'application et le pilotage d'écran tournent hors de
-    # Claude Code (sans CLAUDECODE) : ils échapperaient aux crochets git.
-    if role != "iec" and re.match(r"mcp__(terminal|computer-use|claude-in-chrome)__", outil):
+    # Claude Code (sans CLAUDECODE) : ils échapperaient aux crochets git, et au refus de ssh
+    # pour un sous-agent.
+    if (role != "iec" or sous_agent) and re.match(
+        r"mcp__(terminal|computer-use|claude-in-chrome)__", outil
+    ):
         raise Refus(f"outil « {outil} » réservé : il contourne les garde-fous de ton rôle.")
     # Un connecteur GitHub échappe aux règles de Bash : lecture seule, pour l'IeC seulement.
     if outil.startswith("mcp__") and "github" in outil.lower():
@@ -1015,6 +1058,7 @@ def juger(appel: dict, dossier_projet: Path) -> None:
             str(entree.get("command", "")),
             racine,
             Path(appel.get("cwd") or dossier_projet),
+            sous_agent,
         )
         return
     if outil in ("Edit", "Write", "MultiEdit", "NotebookEdit"):

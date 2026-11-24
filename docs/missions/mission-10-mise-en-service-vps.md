@@ -7,9 +7,12 @@
 `docs/agents/processus.md`
 **Statut :** ordre rédigé le 14/11/2026 — §0 rendu (`af1314c`), tranché
 par l'addendum 1 (en fin d'ordre), qui change la clôture ; addendum 2 :
-le codeur passe à Claude Opus 5.5, le relecteur à Claude Fable 5.2
+le codeur passe à Claude Opus 5.5, le relecteur à Claude Fable 5.2 ;
+addendum 3 (24/11) : l'étape `index` tuée le 20/11, un palier 4 et une
+seconde observation
 **Branche :** `mission-10-mise-en-service-vps`, dans `pharmaflux-codeur/`
-(préparée par beko avec `preparer-mission.sh`). Trois paliers, chacun
+(préparée par beko avec `preparer-mission.sh`). Trois paliers (quatre
+depuis l'addendum 3), chacun
 committé en local et contrôlé par l'IeC ; **aucun push** de ta part.
 
 Tu n'as pas codé les missions précédentes dans cette session. Lis, dans
@@ -714,3 +717,127 @@ de sa consommation de jetons. La suite de la mission est codée par une
     tel quel.
 - **Rien d'autre ne change.** Le palier 1 est accepté (`13168f5`), et la
   suite est celle que décrit le contrôle.
+
+## Addendum 3 — l'étape `index` tuée le 20/11 : un palier 4 (24/11/2026)
+
+### Le constat
+
+- Le lot de la semaine est arrivé le **vendredi 20/11 à 10:17 UTC**, et non
+  le mardi : 7 archives, 5 200 CIS touchés par une version.
+- L'étape `index` a été **tuée cinq fois de suite par son plafond** de
+  512 Mio, aux passages de 10:17 à 14:18, à un résident de 514-515 Mio.
+- Le passage de 15:17 l'a finie seul, par la reprise. Le délai de ce lot est
+  de 18 253 s. Personne n'est intervenu.
+- **La cause**, dans l'analyse du codeur (`392dfcd`), revérifiée dans le code
+  par l'IeC :
+  - `mettre_a_jour` traite les fragments par lots de 256 CIS. Pour chaque
+    lot, il encode avec le modèle chargé, puis il écrit tout le lot en une
+    seule requête ;
+  - il n'applique pas ce que fait `construire` depuis la mission 09 :
+    `remplir_cache`, puis `liberer`, puis l'écriture ;
+  - sa mémoire croît donc avec ce qui change dans un lot, sans borne.
+- **Le risque** : une tentative tuée pendant l'encodage d'un lot n'en garde
+  rien. La suivante meurt au même endroit, et la chaîne reste arrêtée
+  jusqu'à un geste.
+
+### La décision
+
+- **La voie (c) de la question 4** (addendum 1), dans cette mission, avant
+  la fusion. beko l'a validée le 24/11.
+- **Le plafond ne bouge pas** : 512 Mio, et aucune unité ne change.
+- **Le lot du vendredi 20/11 tient lieu de lot du mardi** pour la clôture
+  (deuxième point). L'IeC le décide sur pièces : c'est le lot de la semaine,
+  et il est passé sans geste de personne.
+
+### Le palier 4 : des lots bornés dans `index mettre-a-jour`
+
+1. **La mémoire ne dépend plus de la taille d'un lot de la BDPM.**
+   - Les textes à encoder (fragments ajoutés ou remplacés, absents du cache)
+     passent par le cache, en lots bornés, avant toute écriture dans Qdrant.
+     Puis `liberer()`.
+   - Les écritures se font par requêtes bornées en nombre de points, et les
+     retraits de même.
+   - Aucune structure ne grandit avec le nombre de CIS touchés, hors leurs
+     codes.
+2. **La reprise reste ce qu'elle est.**
+   - `vise` est écrit d'abord, l'instant à la fin.
+   - Chaque écriture est idempotente.
+   - Dans chaque CIS, on écrit avant de retirer : un CIS n'est jamais vide.
+   - Une tentative tuée perd au plus un lot d'encodage.
+3. **Le calcul ne change pas** : les fragments, leurs identifiants, leurs
+   charges, le format de l'index, le témoin des formats.
+4. **L'avancée se lit.**
+   - Une ligne par lot sur la sortie d'erreur : CIS faits sur CIS touchés,
+     textes encodés, points écrits, points retirés, résident courant.
+   - La chaîne garde les 12 dernières lignes de chaque étape dans
+     `passages.jsonl`. La dernière ligne d'une tentative tuée dit donc où
+     elle est morte.
+5. **Les tests**, sans réseau :
+   - aucun appel à l'encodeur après la première écriture ;
+   - des appels et des requêtes bornés, quelle que soit la taille du lot,
+     sur un lot de test plus grand que les bornes ;
+   - la reprise après une coupure à chaque lot, jusqu'au même index final ;
+   - sur le jeu de démo, le même index final qu'avant le palier, et
+     `index verifier` conforme, cosinus de l'échantillon compris. C'est la
+     condition de la question 4. Le rapport cite le verdict de la CI.
+6. **Ce qui attend le commit de l'observation** : l'ADR 0014, le README,
+   `docs/CONTEXTE.md` et le journal. Les retouches 1 à 5 du contrôle du
+   palier 3 restent dans l'arbre, hors du commit du palier 4.
+7. **Vérifications locales, rapport `palier-4.md`, un commit**, puis tu
+   t'arrêtes. Un résident mesuré sur le Mac ne valide aucun plafond
+   (addendum 1). La preuve se fait sur le VPS.
+
+### Le dépôt
+
+- **L'ordre** :
+  1. le contrôle du palier 4 par l'IeC ;
+  2. beko pousse, et la CI de la PR passe au vert ;
+  3. le codeur dépose le commit par l'étape 4a de `infra/vps/README.md` :
+     `git archive`, `uv sync`, la bascule sous le verrou hors de la minute
+     `:17`, puis les droits et la version.
+- **La vérification d'après le dépôt** (question 21) est lancée par beko,
+  car la liste polkit reste vide. Il colle `Result` et `ExecMainStatus` à
+  l'IeC.
+- **La version `f35d797` reste sur le disque.** Revenir en arrière, c'est
+  rebasculer le lien, sur décision de l'IeC.
+- **Si un gros lot arrive avant le dépôt**, rien ne change : la chaîne
+  réessaie seule, et personne ne relance.
+
+### La seconde observation, et la clôture
+
+La clôture de l'addendum 1 reste, avec ces changements :
+- **les 48 heures sans intervention** se comptent depuis la vérification
+  d'après le dépôt ;
+- **la preuve** : le prochain lot qui touche au moins 1 000 CIS passe en un
+  seul passage, sans étape tuée. Le résident de l'étape `index` reste sous
+  le seuil d'alerte de 450 Mio, et ses lignes d'avancée sont dans le
+  journal ;
+- **au moins trois passages porteurs sur la nouvelle version**, ce lot
+  compris. Les six passages porteurs et le lot du 20/11 de la première
+  observation restent acquis ;
+- **la borne** : si aucun lot de cette taille n'est arrivé dans les
+  14 jours qui suivent le dépôt, l'IeC décide sur pièces. Les pièces sont
+  les tests, les passages porteurs de la nouvelle version et les
+  vérifications ;
+- **à la fin** : les trois vérifications sont conformes, les 2 Go sont
+  mesurés comme au point B (relevés de beko), et le Mac est au repos. Il
+  l'est déjà : la sortie de beko est acceptée.
+
+Les relevés de beko du 25/11 ferment la première observation : les morts
+du 20/11 vues par le noyau et par systemd, les conteneurs, les cgroups.
+
+### L'ordre des commits
+
+1. **Le palier 4** : le code, les tests et `palier-4.md`. Puis le contrôle
+   de l'IeC, le dépôt, et la seconde observation.
+2. **Le commit de l'observation**, à la fin de la seconde observation :
+   - les retouches 1 à 5 du contrôle du palier 3 ;
+   - l'incident du 20/11 ;
+   - les chiffres des deux observations ;
+   - les contrôles des paliers 3 et 4, tels quels.
+3. **Le contrôle de l'IeC** sur ce commit clôt les paliers 3 et 4. Suivent
+   la relecture (Claude Fable 5.2), `pr.md`, la revue finale, la fusion, le
+   VPS sur `main`, et la fermeture du compte du codeur.
+
+**Rien d'autre ne change** : les plafonds, les unités, la liste polkit vide,
+l'accès au VPS et le budget de 0 $.

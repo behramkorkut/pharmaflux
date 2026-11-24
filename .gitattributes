@@ -1,0 +1,3 @@
+# Le commit entre dans VERSION à chaque « git archive » : la chaîne déposée sur le VPS sait
+# quel code elle tourne, sans dossier .git (mission 10, infra/vps/README.md).
+VERSION export-subst

@@ -18,6 +18,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -428,7 +429,22 @@ def citer(charge_: dict[str, Any]) -> str:
 
 # --- mettre à jour -----------------------------------------------------------------------------
 
-LOT_CIS = 256  # CIS traités à la fois par la mise à jour
+LOT_CIS = 256  # CIS lus à la fois par la mise à jour (leurs points existants, leurs fragments)
+LOT_TEXTES = LOT  # textes encodés à la fois, puis gardés au cache (mise à jour)
+LOT_POINTS = LOT  # points écrits, ou retirés, par requête (mise à jour)
+OCTETS_PAR_MIO = 1 << 20
+
+
+def resident_courant_mio() -> int:
+    """Le résident de ce processus en Mio, maintenant (Linux) ; ailleurs, son maximum."""
+    try:
+        pages = int(Path("/proc/self/statm").read_text(encoding="ascii").split()[1])
+    except (OSError, IndexError, ValueError):
+        import resource  # macOS : pas de /proc ; ru_maxrss y est en octets
+
+        octets = 1 if sys.platform == "darwin" else 1024
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * octets // OCTETS_PAR_MIO
+    return pages * os.sysconf("SC_PAGE_SIZE") // OCTETS_PAR_MIO
 
 
 def canonique(charge_: dict[str, Any]) -> str:
@@ -454,11 +470,37 @@ class BilanMiseAJour:
     duree_s: float
 
 
+@dataclass(slots=True)
+class _Avancee:
+    """Ce que la mise à jour a fait jusqu'ici : une ligne par lot sur la sortie d'erreur, pour
+    que la dernière ligne d'une tentative tuée dise où elle est morte."""
+
+    touches: int
+    journal: Any
+    cis: int = 0
+    comptes: dict[str, int] = field(
+        default_factory=lambda: dict.fromkeys(
+            ("ajoutes", "remplaces", "retires", "inchanges", "encodes"), 0
+        )
+    )
+
+    def ligne(self, phase: str) -> None:
+        if self.journal is None:
+            return
+        c = self.comptes
+        self.journal(
+            f"mise à jour, {phase} : CIS {self.cis}/{self.touches} ; {c['encodes']} encodé(s),"
+            f" {c['ajoutes'] + c['remplaces']} écrit(s), {c['retires']} retiré(s) ;"
+            f" résident {resident_courant_mio()} Mio"
+        )
+
+
 def mettre_a_jour(
     qdrant: Qdrant,
     encodeur: Encodeur,
     fragments: Fragments,
     cache: Cache,
+    journal: Any = None,
 ) -> BilanMiseAJour:
     """Les fragments des CIS touchés remplacés, ceux qui ont disparu retirés, puis l'instant.
 
@@ -466,6 +508,11 @@ def mettre_a_jour(
     instant : une coupure laisse l'ancien, et la commande suivante refait l'intervalle.
     Chaque étape est idempotente (écriture par identifiant, suppression par différence), et un
     CIS n'est jamais vide entre deux étapes : on écrit d'abord, on retire ensuite.
+
+    La mémoire ne dépend pas de la taille du lot (incident du 20/11, addendum 3) : les textes
+    absents du cache sont d'abord encodés par ``LOT_TEXTES`` et gardés au cache, puis le modèle
+    est rendu ; l'écriture lit ensuite le seul cache, par requêtes de ``LOT_POINTS`` points au
+    plus. Une tentative tuée perd au plus un lot d'encodage.
     """
     debut = time.monotonic()
     etat = etat_exige(qdrant)
@@ -488,22 +535,25 @@ def mettre_a_jour(
         )
     collection, depuis, reprise = etat["collection"], etat["instant"], etat["vise"] is not None
     qdrant.ecrire_etat(etat | {"vise": fragments.instant})
-    comptes = {"ajoutes": 0, "remplaces": 0, "retires": 0, "inchanges": 0, "encodes": 0}
     touches = set(fragments.touches)
+    avancee = _Avancee(len(touches), journal)
+    _encoder_d_abord(encodeur, cache, fragments, avancee)
+    encodeur.liberer()  # tout est au cache : l'écriture n'a plus besoin du modèle
+    avancee.cis = 0
     vus: set[str] = set()
     lot: dict[str, list[dict[str, Any]]] = {}
     for fragment in fragments.lire():
         cis = fragment["code_cis"]
         if cis not in lot and len(lot) == LOT_CIS:
-            _remplacer(qdrant, collection, encodeur, cache, lot, comptes)
+            _remplacer(qdrant, collection, cache, lot, avancee)
             lot = {}
         lot.setdefault(cis, []).append(fragment)
         vus.add(cis)
-    _remplacer(qdrant, collection, encodeur, cache, lot, comptes)
+    _remplacer(qdrant, collection, cache, lot, avancee)
     disparus = sorted(touches - vus)  # touchés, mais plus aucune fiche à cet instant
     for rang in range(0, len(disparus), LOT_CIS):
         vides: dict[str, list[dict[str, Any]]] = {c: [] for c in disparus[rang : rang + LOT_CIS]}
-        _remplacer(qdrant, collection, encodeur, cache, vides, comptes)
+        _remplacer(qdrant, collection, cache, vides, avancee)
     total = qdrant.compter(collection)
     qdrant.ecrire_etat(
         etat
@@ -525,21 +575,56 @@ def mettre_a_jour(
         fragments.par_has,
         fragments=total,
         duree_s=time.monotonic() - debut,
-        **comptes,
+        **avancee.comptes,
     )
+
+
+def _encoder_d_abord(
+    encodeur: Encodeur, cache: Cache, fragments: Fragments, avancee: _Avancee
+) -> None:
+    """Chaque texte absent du cache est encodé, par ``LOT_TEXTES``, et gardé au cache.
+
+    Un fragment inchangé a déjà son vecteur au cache (``verifier`` l'exige) : seuls les textes
+    des fragments ajoutés ou changés s'encodent, comme dans ``remplir_cache``.
+    """
+    lot: list[dict[str, Any]] = []
+    dernier = None
+    for fragment in fragments.lire():
+        if fragment["code_cis"] != dernier:
+            dernier = fragment["code_cis"]
+            avancee.cis += 1
+        lot.append({"empreinte_texte": fragment["empreinte_texte"], "texte": fragment["texte"]})
+        if len(lot) == LOT_TEXTES:
+            avancee.comptes["encodes"] += vecteurs_de(encodeur, cache, lot)[1]
+            avancee.ligne("encodage")
+            lot = []
+    if lot:
+        avancee.comptes["encodes"] += vecteurs_de(encodeur, cache, lot)[1]
+    avancee.ligne("encodage")
+
+
+def _du_cache(cache: Cache, fragments: Sequence[dict[str, Any]]) -> list[Vecteurs]:
+    """Les vecteurs, du seul cache : après l'encodage, l'écriture n'appelle jamais le modèle."""
+    empreintes = [str(f["empreinte_texte"]) for f in fragments]
+    connus = cache.lire(sorted(set(empreintes)))
+    manquants = len(set(empreintes) - set(connus))
+    if manquants:
+        raise IndexRefuse(f"{manquants} texte(s) absent(s) du cache après l'encodage")
+    return [connus[e] for e in empreintes]
 
 
 def _remplacer(
     qdrant: Qdrant,
     collection: str,
-    encodeur: Encodeur,
     cache: Cache,
     par_cis: dict[str, list[dict[str, Any]]],
-    comptes: dict[str, int],
+    avancee: _Avancee,
 ) -> None:
-    """Pour un lot de CIS : écrire les fragments nouveaux ou changés, puis retirer les autres."""
+    """Pour un lot de CIS : écrire les fragments nouveaux ou changés, puis retirer les autres,
+    par requêtes de ``LOT_POINTS`` points au plus."""
     if not par_cis:
         return
+    comptes = avancee.comptes
     existants = {
         str(p["id"]): canonique(p["payload"])
         for p in qdrant.parcourir(collection, filtre_egal("code_cis", sorted(par_cis)))
@@ -556,10 +641,26 @@ def _remplacer(
             a_ecrire.append(f)
         else:
             comptes["inchanges"] += 1
-    comptes["encodes"] += _ecrire_lot(qdrant, collection, encodeur, cache, a_ecrire)
+    for rang in range(0, len(a_ecrire), LOT_POINTS):
+        tranche = a_ecrire[rang : rang + LOT_POINTS]
+        qdrant.ecrire(
+            collection,
+            [
+                Point(
+                    str(f["identifiant"]),
+                    v.tolist(),
+                    charge(f),
+                    lexical.en_creux(lexical.vecteur_document(f["texte"])),
+                )
+                for f, v in zip(tranche, _du_cache(cache, tranche), strict=True)
+            ],
+        )
     retires = sorted(set(existants) - {f["identifiant"] for f in nouveaux})
-    qdrant.supprimer_ids(collection, retires)
+    for rang in range(0, len(retires), LOT_POINTS):
+        qdrant.supprimer_ids(collection, retires[rang : rang + LOT_POINTS])
     comptes["retires"] += len(retires)
+    avancee.cis += len(par_cis)
+    avancee.ligne("écriture")
 
 
 # --- vérifier ----------------------------------------------------------------------------------

@@ -224,10 +224,11 @@ Détail et chiffres : `docs/rapports/mission-00/points-a-trancher.md`.
 | Quoi | Où |
 |---|---|
 | Spécifications (PRD) | `01_Specifications/` |
-| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `suivi.py`, `schemas/` ; `demo/` : `jeu.py`, `rejeu_accelere.py` ; `silver/` : `entrepot.py`, `schema.py`, `expressions.py`, `application.py`, `construction.py`, `consommation.py`, `etat.py`, `sql.py`, `comparaison.py`, `verification.py` ; `gold/` : `typage.py`, `qualite.py`, `vues.py`, `questions.py`, `rendu.py`, `sql.py` ; `index/` : `fragments.py`, `lexical.py`, `construction.py`, `changements.py`, `encodeur.py`, `modeles.py`, `qdrant.py`, `evaluation.py` ; `assistant/` : `chemin.py`, `regles.py`, `repere.py`, `sections.py`, `client.py`, `controle.py`, `budget.py`, `cache.py`, `notation.py`, `evaluation.py` ; `has/` (mission 09) : `perimetre.py`, `client.py`, `collecte.py`, `manifeste.py`, `extraction.py`, `verification.py`, `inspection.py` ; `index/pages_has.py` ; `demo/has.py` |
+| Code | `src/pharmaflux/` : `cli.py`, `bronze.py` (lecture de l'archive), `tomlstrict.py` ; `collecte/` : `catalogue.py` (14 entrées), `page.py` (lecture de la page BDPM), `empreintes.py`, `telechargement.py`, `archive.py`, `manifeste.py`, `passage.py` (orchestration), `etat.py` ; `contrats/` : `modele.py`, `chargeur.py`, `verification.py`, `normalisation.py`, `profil.py`, `rendu.py`, `bdpm/*.toml` ; `evaluation/` : `questions.py`, `verification.py` ; `evenements/` : `snapshot.py`, `schema.py`, `comparaison.py`, `volume.py`, `bilan.py`, `rejeu.py` ; `bus/` : `enveloppe.py`, `client.py`, `registre.py`, `publication.py`, `verification.py`, `suivi.py`, `schemas/` ; `demo/` : `jeu.py`, `rejeu_accelere.py` ; `silver/` : `entrepot.py`, `schema.py`, `expressions.py`, `application.py`, `construction.py`, `consommation.py`, `etat.py`, `sql.py`, `comparaison.py`, `verification.py` ; `gold/` : `typage.py`, `qualite.py`, `vues.py`, `questions.py`, `rendu.py`, `sql.py` ; `index/` : `fragments.py`, `lexical.py`, `construction.py`, `changements.py`, `encodeur.py`, `modeles.py`, `qdrant.py`, `evaluation.py` ; `assistant/` : `chemin.py`, `regles.py`, `repere.py`, `sections.py`, `client.py`, `controle.py`, `budget.py`, `cache.py`, `notation.py`, `evaluation.py` ; `has/` (mission 09) : `perimetre.py`, `client.py`, `collecte.py`, `manifeste.py`, `extraction.py`, `verification.py`, `inspection.py` ; `index/pages_has.py` ; `demo/has.py` ; `chaine/` (mission 10) : `chemins.py`, `verrou.py`, `sante.py`, `etapes.py`, `journal.py`, `passage.py`, `remplissage.py`, `horaire.py`, `verification.py`, `formats.py`, `etat.py` |
 | Tests et fixtures | `tests/`, `tests/fixtures/` |
 | Démo : jeu figé, Makefile, prérequis | `demo/` (archive et `README.md`), `Makefile`, `infra/demo/prerequis.sh` |
 | Planification de la collecte (systemd, rapatriement) | `infra/planification/` |
+| La chaîne sur le VPS-1 (compose, unités, procédure, Mac au repos) | `infra/vps/` ; le compte du codeur : `infra/agents/vps/` |
 | Décisions d'architecture | `docs/adr/` (gabarit : `0000-modele.md`) |
 | Journal | `docs/journal.md` (ajout en fin de fichier) |
 | Profil des sources | `docs/donnees/` (mission 01) |
@@ -480,3 +481,34 @@ la demande. Aucun appel réseau vers les sources.
   index au format 4) : 88/91 réponses correctes, liens rendus 26/26, aucune citation invalide,
   aucun conseil médical ; la mission a dépensé 3,82 $ sur 10 $.
 
+## La chaîne en service sur le VPS-1 (mission 10)
+
+- **Ce qui tourne** (ADR 0014, `infra/vps/README.md`) :
+  - Redpanda et Qdrant, projet compose `pharmaflux`, sur `127.0.0.1`, plafonnés à 1 Go et
+    512 Mo ;
+  - la collecte, sous `pharmaflux`, inchangée ;
+  - la chaîne, sous `pharmaflux-chaine`, qui lit l'archive et écrit `/srv/pharmaflux/derive`.
+- **`pharmaflux chaine`** :
+  - `passer` est lancé par `OnSuccess=` et `OnFailure=` de la collecte. Il enchaîne
+    `evenements`, `schemas`, `publier`, `silver consommer` et `index mettre-a-jour` ;
+  - `verifier` tourne chaque jour à 03:40 UTC ;
+  - `remplir` rebâtit tout depuis l'archive ;
+  - `etat` se lit en texte ou en JSON.
+- **Le journal** est `derive/chaine/passages.jsonl`. Chaque étape y porte sa durée, son
+  résident en Mio (2²⁰ octets), le pic du groupe et ses morts par la mémoire.
+- **Le verrou** est un `flock` : une commande à la fois. Tenu, il fait sortir en code 0.
+- **Les refus.**
+  - Le témoin `derive/chaine/formats.json` refuse un format changé avant toute étape, et nomme
+    le geste.
+  - `FORMAT_SILVER` (`chaine/formats.py`) se change avec le schéma des tables : un test
+    échoue sinon.
+- **Le code déposé.** Une version par dossier (`git archive`), et `VERSION` par
+  `export-subst`. Le lien `courante` se bascule sous le verrou.
+- **Les pièges.**
+  - La ligne « résident maximal » des commandes `index` compte en Mo décimaux, et le journal en
+    Mio : 432 Mio valent 453 Mo.
+  - Le champ `declencheur` reste vide : systemd voit deux déclencheurs, la même collecte deux
+    fois.
+  - Aucun nettoyage de Docker sur le VPS : les conteneurs d'Alamel y sont arrêtés.
+- **Sur le Mac** : plus aucun conteneur ni tâche planifiée de Pharmaflux. La démo se relance à
+  la demande, `make up` … `make down`.

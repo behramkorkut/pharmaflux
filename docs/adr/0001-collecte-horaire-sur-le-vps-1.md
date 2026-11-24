@@ -1,7 +1,8 @@
 # ADR-0001 — Collecter toutes les heures sur le VPS-1, sans requête conditionnelle
 
 **Statut :** accepté (décision prise à la mission 00, consignée ici) · **Date :** 2026-10-26 · **Mission :** 01
-**Remplace / remplacé par :** —
+**Remplace / remplacé par :** — · **Complété par :** ADR 0014 (la chaîne, lancée par chaque
+passage de la collecte, sur le même VPS)
 
 ## Contexte
 

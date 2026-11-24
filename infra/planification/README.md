@@ -7,6 +7,11 @@ minuteur systemd. L'archive principale y vit sous
 semaine sur le Mac par `rapatrier.sh` (rsync en tirage, jamais de
 suppression). Deux copies, parce que l'archive est irremplaçable.
 
+Depuis la mission 10, la chaîne qui va de l'archive à l'index tourne aussi
+sur ce VPS, sous un autre compte : ses services, son premier remplissage et
+ses unités sont dans `infra/vps/README.md`. Le codeur y a un compte à lui
+(`infra/agents/vps/README.md`) ; il ne pilote toujours pas la collecte.
+
 Fichiers de ce dossier :
 
 | Fichier | Rôle |
@@ -16,7 +21,7 @@ Fichiers de ce dossier :
 | `rapatrier.sh` | Mac ← VPS, hôte en paramètre, `rsync -a` sans `--delete` |
 
 Toutes les commandes ci-dessous sont exécutées **par beko** (le codeur ne
-touche pas au VPS), depuis son propre compte SSH, **sans jamais changer de
+touche ni à la collecte ni à son compte), depuis son propre compte SSH, **sans jamais changer de
 répertoire** : `/home/pharmaflux` n'est pas traversable par les autres
 comptes tant que l'étape 2 n'est pas terminée, et chaque commande porte
 donc son chemin absolu. `<hote>` désigne le VPS tel que la configuration
@@ -142,10 +147,12 @@ l'heure suivante : à signaler à l'IeC avant de toucher au plafond.
 
 Si le passage manuel échoue avec la nouvelle unité (code de sortie autre
 que 0 ou 1, `SIGSYS`, `Operation not permitted` dans le journal), la
-directive en cause se lit dans `journalctl` ; la première à suspecter est
-`MemoryDenyWriteExecute=true`, que l'ordre de la mission 01 prévoit de
-retirer si Python ne la supporte pas sur le VPS. Le signaler au codeur
-avec la ligne du journal, ne pas modifier l'unité à la main.
+directive en cause se lit dans `journalctl`. `MemoryDenyWriteExecute`,
+longtemps la première suspecte, n'est plus dans l'unité : retirée à la
+mission 10 (`e12c14d`), parce que le `python3.12` d'uv n'a pas d'en-tête
+`GNU_STACK` et que la directive empêchait toute création de fil (l'import
+de numpy en mourait). Le signaler au codeur avec la ligne du journal, ne
+pas modifier l'unité à la main.
 
 ## 6. Vérifier
 

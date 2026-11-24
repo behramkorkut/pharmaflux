@@ -1,0 +1,40 @@
+# Pharmaflux sur le VPS-1 : ce qui s'ajoute à docker-compose.yml, et rien d'autre (mission 10,
+# ADR 0014). Second fichier compose, jamais seul :
+#
+#   docker compose -p pharmaflux -f docker-compose.yml -f vps.yml …
+#
+# sur le VPS, par la seule unité pharmaflux-conteneurs.service, depuis /etc/pharmaflux/compose/
+# (deux fichiers à root, installés par beko après le contrôle de l'IeC : infra/vps/README.md).
+#
+# Ce fichier ne porte que des réglages qui se remplacent d'un bloc quand compose fusionne les
+# deux fichiers : le redémarrage, l'échange, le délai d'arrêt, les journaux. Il ne nomme ni
+# image, ni commande, ni port, ni volume, ni variable : sur ces points, ce qui tourne sur le VPS
+# est ce que la CI teste. tests/test_vps.py le vérifie.
+services:
+  redpanda:
+    # Relève le conteneur s'il tombe, ou si le démon Docker redémarre. Un conteneur arrêté par
+    # « stop » (l'unité, à l'arrêt du VPS) reste arrêté jusqu'au « up » de l'unité.
+    restart: unless-stopped
+    # Égal à mem_limit (1g dans docker-compose.yml) : pas d'échange. Au-delà du plafond, le
+    # conteneur est tué et relancé, plutôt que de pousser la machine en échange à côté d'Alamel.
+    memswap_limit: 1g
+    # Redpanda accuse réception avant d'écrire (mode dev-container, write_caching) : un arrêt
+    # propre lui laisse le temps de vider son cache. 10 s par défaut, trop court pour en être sûr.
+    stop_grace_period: 1m
+    # Le pilote par défaut garde tout : deux fichiers de 10 Mo au plus par conteneur.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "2"
+
+  qdrant:
+    restart: unless-stopped
+    # Égal à mem_limit (512m dans docker-compose.yml).
+    memswap_limit: 512m
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "2"

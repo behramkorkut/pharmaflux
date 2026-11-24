@@ -58,7 +58,7 @@ s'abstient quand il ne sait pas et refuse le conseil médical. Un jeu de
 88 questions le note sans juge LLM : 44 bonnes réponses sur 49, aucune
 citation invalide, aucun conseil médical, 1,03 $ (ADR 0012).
 
-**Mission 09 en cours** : le corpus des avis de la HAS. Une collecte polie des
+**Mission 09 fusionnée** (PR #10) : le corpus des avis de la HAS. Une collecte polie des
 pages d'avis de la Commission de la transparence (722 pages, avis depuis 2024),
 leur texte extrait mot pour mot et indexé à côté des fiches. L'assistant cite
 une page d'avis : son lien, la date de l'avis et la date de consultation sont
@@ -69,12 +69,40 @@ l'archive mais hors de l'index. Un jeu v2 de 144 questions mesure le texte des
 avis et les correctifs de la mission 08, sur des questions figées avant eux
 (ADR 0013).
 
+**Mission 10 en cours** : la mise en service sur le VPS-1. La chaîne tourne
+seule, au fil de la collecte : chaque passage horaire lance les événements, le
+bus, le silver et la mise à jour de l'index, une commande à la fois, sous un
+compte sans droits, dans des unités systemd durcies. Elle se vérifie chaque nuit
+et se lit en une commande (`pharmaflux chaine etat`).
+- **L'observation**, du 15 au 19/11 : 99 passages horaires, tous complets, et un
+  redémarrage du VPS rattrapé sans geste.
+- **Les fichiers servis vides** par la BDPM ont été écartés quatre fois, sans
+  faire échouer la chaîne.
+- **Le délai**, de l'archive à l'index, est de 63 s en médiane. La cible du PRD
+  est 60 s (ADR 0014).
+
+Ce qui tourne où :
+
+```text
+VPS-1 (2 cœurs, 3,8 Go ; partagé avec la pré-production d'Alamel)
+├── pharmaflux-collecte.timer     toutes les heures à :17
+│   └── pharmaflux-collecte       compte pharmaflux : la BDPM → l'archive (bronze, manifeste)
+│       └── OnSuccess / OnFailure
+│           └── pharmaflux-chaine compte pharmaflux-chaine, 512 Mo, une commande à la fois :
+│                                 evenements → publier → silver → index mettre-a-jour
+├── pharmaflux-verification.timer chaque jour à 03:40 UTC : bus, silver, index
+└── pharmaflux-conteneurs         Redpanda (1 Go) et Qdrant (512 Mo), sur 127.0.0.1
+
+Mac de beko : le développement et les tests ; la copie de l'archive (rapatrier.sh,
+chaque semaine). Aucun conteneur ni tâche planifiée de Pharmaflux.
+```
+
 | Lot | Contenu | État |
 |---|---|---|
 | 0 | archivage des sources, profilage, décisions d'architecture | fait |
-| 1 | collecte, détection des changements, flux d'événements (Redpanda) | fait sur le Mac ; le VPS reste |
+| 1 | collecte, détection des changements, flux d'événements (Redpanda) | fait, en service sur le VPS-1 (mission 10) |
 | 2 | lakehouse Iceberg + DuckDB, historique, voyage dans le temps | fait |
-| 3 | assistant gouverné (sources citées, abstention) | en cours : l'index (mission 07) et l'assistant (mission 08) faits ; les avis de la HAS (mission 09) |
+| 3 | assistant gouverné (sources citées, abstention) | en cours : l'index (mission 07), l'assistant (mission 08) et les avis de la HAS (mission 09) faits ; l'index tenu à jour sur le VPS-1 (mission 10), l'assistant pas encore en service |
 | 4 | volet assurance : dépense exposée aux ruptures (Open Medic) | à venir |
 | 5 | observabilité, objectifs de service, incidents provoqués | à venir |
 

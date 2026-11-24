@@ -1,0 +1,16 @@
+# Pharmaflux : les vérifications quotidiennes de la chaîne, à 03:40 UTC.
+# Installation et désinstallation : infra/vps/README.md.
+
+[Unit]
+Description=Pharmaflux : vérifications quotidiennes de la chaîne (03:40 UTC)
+Documentation=https://github.com/behramkorkut/pharmaflux
+
+[Timer]
+OnCalendar=*-*-* 03:40:00 UTC
+# Un VPS éteint à 03:40 rattrape la vérification à son démarrage.
+Persistent=true
+AccuracySec=1min
+Unit=pharmaflux-verification.service
+
+[Install]
+WantedBy=timers.target

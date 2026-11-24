@@ -18,7 +18,8 @@ que personne n'intervienne.
 
 **Qui est tué, et où (question 2)**
 - C'est le processus principal de `index mettre-a-jour`, et non le sous-processus des fragments.
-- Il est tué dans sa boucle d'écriture, après 200 à 1 030 s.
+- Il est tué dans la boucle de la mise à jour, après 200 à 1 030 s, pendant le traitement d'un
+  lot : entre l'encodage de ce lot et son écriture, sans qu'on sache à quel moment (section 2).
 - Il y porte le modèle, l'encodage d'un lot entier, puis l'écriture du lot dans Qdrant en une
   seule requête.
 - Le code de la mission 09 l'écrit lui-même : encoder et écrire en même temps fait monter le pic.
@@ -45,7 +46,7 @@ relève demain. Ils trancheront ce qui reste ouvert à la question 2.
 
 ## Les faits, revérifiés
 
-Le 24/11 vers 14:00 UTC, par `pharmaflux-vps`, en lecture seule, avec l'accord de beko. J'ai lu
+Le 24/11 à 13:27 UTC, par `pharmaflux-vps`, en lecture seule, avec l'accord de beko. J'ai lu
 `derive/chaine/passages.jsonl` (222 lignes) et `chaine etat --format json`. Les faits de l'IeC
 se vérifient tous.
 

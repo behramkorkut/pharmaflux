@@ -54,7 +54,8 @@ def publier_jusqu_a(sortie: Path, entrepot: Entrepot, borne: str, faits: set[str
 def invoquer(*arguments: str) -> str:
     resultat = CliRunner().invoke(application, list(arguments))
     assert resultat.exit_code == 0, resultat.output
-    return resultat.output
+    # La sortie seule : l'avancée de la mise à jour, une ligne par lot, va sur la sortie d'erreur.
+    return resultat.stdout
 
 
 def test_le_jeu_en_quatre_tranches_l_index_egal_a_sa_reconstruction(

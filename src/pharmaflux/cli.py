@@ -2159,7 +2159,9 @@ def index_mettre_a_jour(
             )
             cache = construction.Cache(travail, encodeur_.empreinte)
             try:
-                bilan = construction.mettre_a_jour(client, encodeur_, fragments, cache)
+                bilan = construction.mettre_a_jour(
+                    client, encodeur_, fragments, cache, lambda ligne: typer.echo(ligne, err=True)
+                )
             finally:
                 cache.close()
     except (construction.IndexRefuse, encodeur.ModeleIndisponible, QdrantIndisponible) as exc:

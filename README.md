@@ -558,6 +558,36 @@ contexte neuf avant publication. Le circuit, les ordres de mission, les
 rapports et les relectures sont dans [`docs/`](docs/) : ils font partie de
 ce que ce dépôt montre.
 
+### Veille : ce circuit face à Claude Ship
+
+Le 23/11/2026, Anthropic a lancé en bêta
+[Claude Ship](https://claude.com/resources/articles/introducing-claude-ship),
+trois agents qui relisent, corrigent et approuvent les pull requests
+GitHub : Code Review, PR Steward et Claude Approvals. Le circuit de ce
+dépôt, établi un mois plus tôt
+([`docs/agents/processus.md`](docs/agents/processus.md), 24/10/2026),
+repose sur les mêmes principes et s'en écarte par des choix assumés.
+Comparaison au 27/11/2026, d'après l'annonce et la
+[documentation](https://code.claude.com/docs/en/claude-ship) :
+
+| | Claude Ship | Circuit Pharmaflux |
+|---|---|---|
+| Corriger ≠ approuver | PR Steward pousse des correctifs, sans approuver ni fusionner (par conception) ; Claude Approvals décide de l'approbation | le codeur commite en local, le relecteur n'écrit que sa relecture, aucun agent ne pousse |
+| Relecture | Code Review vérifie ses constats avant de les publier dans la PR | relecteur à contexte neuf, d'un autre modèle de préférence |
+| Règles | politique d'approbation en langage naturel, dans un fichier du dépôt | `CLAUDE.md` et `docs/agents/`, versionnés sur `main` |
+| Traçabilité | après chaque push, un commentaire : ce qui a changé, comment l'annuler | un rapport par palier ; corrections par nouveaux commits, réponse point par point |
+| Confiance | mode observation recommandé avant d'exiger l'approbation de Claude | relecteur lancé à la main tant que le circuit n'est pas rodé |
+| Point de départ | la pull request | l'ordre de mission : questions (§0) avant tout code, puis paliers contrôlés un à un |
+| CI | PR Steward répare dans la PR : CI en échec, conflits | tout est vérifié en local avant le push : un push, une CI par mission |
+| Bornes de l'agent | droits du développeur et règles de branche du dépôt | crochet Claude Code et crochets git (testés en CI), permissions `deny` |
+| Fusion | approbation automatique possible des changements routiniers, selon la politique | par le chef de projet seul, après une relecture CONFORME et un feu vert écrit |
+
+Ship automatise ce que ce circuit fait encore à la main, lancer le
+relecteur puis transmettre sa relecture au codeur : c'est la piste
+« Plus tard » de [`processus.md`](docs/agents/processus.md). À l'inverse,
+`/ship` pousse et ouvre la pull request lui-même ; ici, ces deux gestes
+restent au chef de projet.
+
 ## Licences des données
 
 BDPM : citation de la source et de sa date, aucune altération (l'archive
